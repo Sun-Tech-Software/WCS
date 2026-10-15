@@ -1,0 +1,243 @@
+@* The row of outcomes under the bar (passata grafica, 2026-09-29): what the page has to say after a
+   gesture or about a condition - the save's report and the creation's, a refused cut, the drawing out
+   of reach, the live channel that could not be built, the decoration that could not be read, the
+   devices the drawing does not show - one line each, in the tone of the outcome, the newest on top.
+   Until then each was a band of its own stacked above the bar, and a long report pushed the drawing
+   down by its whole height.
+
+   A line is one sentence. The whole report is behind "Details", in a floating window (DrawioWindow)
+   that holds it exactly as the page showed it before the row existed, ids and classes included: shut,
+   the window is hidden, not removed, so whoever reads the report by id still finds it. The X closes a
+   transient outcome; one that lasts as long as its condition has none. A line about a failure keeps
+   what came back - the host's answer, or the failure's own type and message - behind a "?" right after
+   its sentence (DrawioNoticeLine.LineDetail; row 37 of the queue, extended to the whole page on 10/10).
+
+   At most two lines are shown; the others are there, hidden, behind "+N more", with their windows -
+   an outcome further down is still on the page. The windows are rendered here, after the lines, and
+   drawio-windows.js finds the column they must stay under from this row as it does from the bar.
+
+   Each line's buttons are described by the line's sentence (aria-describedby): every line has a
+   "Details" and a "Dismiss", and a screen reader must be able to tell whose. "Details" on a window
+   that is open but behind another one brings it to the front instead of shutting it, as the bar's
+   buttons do (the owner's decision D1, drawio-windows.js bringToFrontIfBehind). A button that the
+   gesture takes away - "+N more" and "Show fewer" move from one line to another, the X goes with its
+   line - hands the keyboard's focus on: to the button in its new place, or to the row itself; only if
+   the focus was lost meanwhile, not if the operator has put it elsewhere (queue item 38). *@
+
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+
+<div id="drawio-notices" class="drawio-notices" role="region" aria-label="Outcomes" tabindex="-1" @ref="_row">
+    @for (var i = 0; i < _shown.Count; i++)
+    {
+        var notice = _shown[i];
+        var index = i;
+        var sentence = SentenceIdOf(notice);
+        <div @key="notice.Id" id="@($"{notice.Id}-notice")" class="@($"drawio-notices-line drawio-notices-{ToneClass(notice.Tone)}")"
+             hidden="@(index >= VisibleLines && !_expanded)">
+            <p id="@sentence" class="@LineClassOf(notice)" role="@notice.LineRole">@notice.Line</p>
+            @if (notice.LineDetail is { } lineDetail)
+            {
+                <DrawioHelp Id="@($"{sentence}-help")" Label="Technical detail of the failure">
+                    <p id="@($"{sentence}-detail")" class="drawio-failure-detail">@lineDetail</p>
+                </DrawioHelp>
+            }
+            @if (notice.Details is not null)
+            {
+                <button type="button" id="@($"{notice.Id}-details-toggle")" class="drawio-notices-button"
+                        aria-expanded="@(_openDetails.Contains(notice.Id) ? "true" : "false")" aria-controls="@($"{notice.Id}-details")"
+                        aria-describedby="@sentence" @onclick="() => ToggleDetailsAsync(notice.Id)"><DrawioIcon Name="details" />Details</button>
+            }
+            @if (MoreButtonGoesAfter(index))
+            {
+                <button type="button" id="drawio-notices-more" class="drawio-notices-button drawio-notices-more" @ref="_more"
+                        aria-expanded="@(_expanded ? "true" : "false")" @onclick="ToggleMore">@(_expanded ? "Show fewer" : $"+{_shown.Count - VisibleLines} more")</button>
+            }
+            @if (notice.Dismissable)
+            {
+                <button type="button" id="@($"{notice.Id}-dismiss")" class="drawio-btn-icon drawio-notices-dismiss"
+                        aria-label="Dismiss" aria-describedby="@sentence" @onclick="() => Dismiss(notice.Id)"><DrawioIcon Name="close" /></button>
+            }
+        </div>
+    }
+    @* In the page's order, not the row's: a window is never moved in the page when an outcome comes on
+       top of the row - a moved element loses the keyboard's focus. Keyed apart from the lines, which
+       are siblings of the windows in this row. *@
+    @foreach (var notice in Notices)
+    {
+        if (notice.Details is null || _dismissed.Contains(notice.Id)) continue;
+        <DrawioWindow @key="@($"{notice.Id}-details")" Id="@($"{notice.Id}-details")" Class="drawio-notices-details" Title="@notice.DetailsTitle"
+                      Open="_openDetails.Contains(notice.Id)" OnClose="() => _openDetails.Remove(notice.Id)"
+                      Place="_placeOf[notice.Id]" Help="notice.Help">@notice.Details</DrawioWindow>
+    }
+</div>
+
+@code {
+    [Inject] private IJSRuntime JS { get; set; } = null!;
+
+    /// <summary>How many lines the row shows before "+N more".</summary>
+    private const int VisibleLines = 2;
+
+    /// <summary>
+    /// The outcomes the page has now, in its order of precedence: of several that arrive together, the
+    /// first goes on top. Which one is newest is this component's to remember (<see cref="_rankOf"/>).
+    /// </summary>
+    [Parameter, EditorRequired] public IReadOnlyList<DrawioNoticeLine> Notices { get; set; } = [];
+
+    /// <summary>The outcomes shown, the newest first; the ones closed with their X are not among them.</summary>
+    private List<DrawioNoticeLine> _shown = [];
+
+    /// <summary>
+    /// For each outcome on the page, which occurrence of it this row has seen and its rank: the higher,
+    /// the newer. Forgotten when the page stops having it, so that an outcome coming back is new.
+    /// </summary>
+    private readonly Dictionary<string, (long Occurrence, long Rank)> _rankOf = [];
+
+    private readonly HashSet<string> _dismissed = [];
+    private readonly HashSet<string> _openDetails = [];
+
+    /// <summary>
+    /// Where each report's window opens when this browser remembers nothing about it: a cascade of its
+    /// own, right of and below the sections', one step further for each report met - two reports open
+    /// at once never lie exactly one on the other.
+    /// </summary>
+    private readonly Dictionary<string, DrawioWindowPlace> _placeOf = [];
+
+    private long _lastRank;
+    private bool _expanded;
+
+    protected override void OnParametersSet()
+    {
+        // From the last to the first: of the outcomes that arrive in the same render, the first of the
+        // page's list gets the highest rank, and goes on top.
+        for (var i = Notices.Count - 1; i >= 0; i--)
+        {
+            var notice = Notices[i];
+            if (_rankOf.TryGetValue(notice.Id, out var seen) && seen.Occurrence == notice.Occurrence) continue;
+            _rankOf[notice.Id] = (notice.Occurrence, ++_lastRank);
+            _dismissed.Remove(notice.Id);
+        }
+
+        foreach (var notice in Notices)
+        {
+            var step = _placeOf.Count % 6;
+            if (notice.Details is not null) _placeOf.TryAdd(notice.Id, new DrawioWindowPlace(120 + 32 * step, 170 + 32 * step, 640, 400));
+        }
+
+        foreach (var gone in _rankOf.Keys.Where(id => Notices.All(notice => notice.Id != id)).ToList())
+        {
+            _rankOf.Remove(gone);
+            _dismissed.Remove(gone);
+            _openDetails.Remove(gone);
+        }
+
+        _shown = [.. Notices.Where(notice => !_dismissed.Contains(notice.Id)).OrderByDescending(notice => _rankOf[notice.Id].Rank)];
+        if (_shown.Count <= VisibleLines) _expanded = false;
+    }
+
+    private ElementReference _row;
+    private ElementReference _more;
+
+    /// <summary>Where the keyboard's focus goes after the render, when the gesture took its button away; null for nowhere.</summary>
+    private Func<ElementReference>? _focusNext;
+
+    private IJSObjectReference? _windows;
+
+    /// <summary>
+    /// "Details": a shut window opens; an open one that is behind another comes to the front and stays
+    /// open; the one in front of the open windows shuts - what the bar's buttons do (see
+    /// DrawioEditor.PressSectionButtonAsync). Without the windows module the answer is "in front".
+    /// </summary>
+    private async Task ToggleDetailsAsync(string id)
+    {
+        if (_openDetails.Add(id)) return;
+        if (await BroughtToTheFrontAsync($"{id}-details")) return;
+        _openDetails.Remove(id);
+    }
+
+    private async Task<bool> BroughtToTheFrontAsync(string windowId)
+    {
+        try
+        {
+            _windows ??= await JS.InvokeAsync<IJSObjectReference?>("import", DrawioWindow.ModulePath);
+            return _windows is not null && await _windows.InvokeAsync<bool>("bringToFrontIfBehind", windowId);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>"+N more" or "Show fewer": the button moves to another line, a new element - the focus follows it there.</summary>
+    private void ToggleMore()
+    {
+        _expanded = !_expanded;
+        _focusNext = () => _more;
+    }
+
+    /// <summary>The X: its line goes, and the X with it - the focus goes to the row, which holds the lines left.</summary>
+    private void Dismiss(string id)
+    {
+        _dismissed.Add(id);
+        _openDetails.Remove(id);
+        _shown.RemoveAll(notice => notice.Id == id);
+        if (_shown.Count <= VisibleLines) _expanded = false;
+        _focusNext = () => _row;
+    }
+
+    /// <summary>
+    /// The hand-off of the focus a gesture asked for, a round trip after the render: only if the focus
+    /// was lost meanwhile (the windows module's focusIfLost) - a focus the operator has put elsewhere
+    /// before it lands stays there (queue item 38). The component's one late hand-off of a focus its
+    /// gesture took away. "Details" on an open window behind another also moves the focus a round trip
+    /// after the press (<see cref="BroughtToTheFrontAsync"/>, the windows module's bringToFrontIfBehind),
+    /// and always: that is the gesture's own result - the window comes to the front with the focus,
+    /// owner's decision D1, as with the bar's buttons - and not a hand-off for a button that went.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusNext is not { } next) return;
+        _focusNext = null;
+        try
+        {
+            _windows ??= await JS.InvokeAsync<IJSObjectReference?>("import", DrawioWindow.ModulePath);
+            if (_windows is not null) await _windows.InvokeVoidAsync("focusIfLost", next());
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException or InvalidOperationException)
+        {
+            // Only the focus is lost: the row is as the gesture left it.
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_windows is not null) await _windows.DisposeAsync();
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            // Disposal must not throw.
+        }
+    }
+
+    /// <summary>The id of a line's sentence: the one it had before the row (<see cref="DrawioNoticeLine.LineId"/>), or one of the row's own.</summary>
+    private static string SentenceIdOf(DrawioNoticeLine notice) => notice.LineId ?? $"{notice.Id}-notice-text";
+
+    /// <summary>
+    /// "+N more" closes the second line while the others are hidden, and "Show fewer" the last line
+    /// while they are all shown: on a line that is always on screen, and never on a third one of its own.
+    /// </summary>
+    private bool MoreButtonGoesAfter(int index) =>
+        _shown.Count > VisibleLines && index == (_expanded ? _shown.Count - 1 : VisibleLines - 1);
+
+    private static string ToneClass(DrawioNoticeTone tone) => tone switch
+    {
+        DrawioNoticeTone.Ok => "ok",
+        DrawioNoticeTone.Warn => "warn",
+        _ => "bad",
+    };
+
+    private static string LineClassOf(DrawioNoticeLine notice) =>
+        notice.LineClass is { Length: > 0 } own ? $"drawio-notices-text {own}" : "drawio-notices-text";
+}

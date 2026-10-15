@@ -1,0 +1,61 @@
+@* The plant checks' button and window, in the page's bar (passata grafica, 2026-09-29; until then the
+   one box of the band above the strip). The plant's file was the other box of the band until 27/9,
+   when the owner moved it into the strip of sections (DrawioPlantFile). Rendered once the page has
+   the plant, as the box was: before that there is nothing to check. *@
+@using Wcs.WebEditor.Drawio.Coordination
+@using Wcs.WebEditor.Model
+
+@if (Graph is { } graph)
+{
+    <DrawioChecksDock Graph="graph"
+                      Summary="@ChecksSummary"
+                      Open="Open"
+                      OnToggle="OnToggle"
+                      OnClose="OnClose"
+                      Place="Place"
+                      Targets="CheckTargets"
+                      Outcome="@GoToOutcome"
+                      Reached="GoToReached"
+                      OnCheckedIsolatedDevices="OnCheckedIsolatedDevices"
+                      OnRunningChanged="OnRunningChanged"
+                      OnGoToDevice="OnGoToDevice" />
+}
+
+@code {
+    [Parameter]
+    public PlantGraph? Graph { get; set; }
+
+    [Parameter]
+    public string ChecksSummary { get; set; } = "Plant checks";
+
+    /// <summary>Whether the page has the checks' window open (see DrawioChecksDock).</summary>
+    [Parameter]
+    public bool Open { get; set; }
+
+    [Parameter]
+    public EventCallback OnToggle { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    [Parameter]
+    public DrawioWindowPlace Place { get; set; } = null!;
+
+    [Parameter]
+    public IReadOnlyList<DrawioCheckTarget> CheckTargets { get; set; } = [];
+
+    [Parameter]
+    public DrawioSaid? GoToOutcome { get; set; }
+
+    [Parameter]
+    public bool GoToReached { get; set; }
+
+    [Parameter]
+    public EventCallback<IReadOnlySet<Guid>> OnCheckedIsolatedDevices { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> OnRunningChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid> OnGoToDevice { get; set; }
+}

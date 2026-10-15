@@ -1,0 +1,115 @@
+@using Wcs.Api.Contracts.Dtos
+@using Wcs.WebEditor.Drawio.Coordination
+@using Wcs.WebEditor.Wms
+
+<section id="drawio-cells" class="drawio-cells drawio-linked-storage-cells" aria-label="Linked storage cells">
+    @if (State.WmsCells is { } allCells && State.CellsKind is CellPanelKind.Doors or CellPanelKind.LinkedCell)
+    {
+        var candidateCells = CandidateCells(allCells);
+        <div class="drawio-context-window-tools">
+            <span class="drawio-filter">
+                <DrawioIcon Name="search" />
+                <input type="search" id="drawio-linked-storage-cells-filter" class="drawio-device-list-filter"
+                       aria-label="Filter linked storage cells" placeholder="Filter by cell, warehouse, area or door"
+                       value="@_filter" @oninput="FilterTyped" />
+            </span>
+            <span id="drawio-linked-storage-cells-count" class="drawio-device-list-count">@CountLine(candidateCells)</span>
+        </div>
+    }
+    @if (State.ConfigError is not null)
+    {
+        <p id="drawio-cells-unavailable" class="drawio-property-loading">
+            The warehouse cells cannot be shown until the device configuration can be read.
+        </p>
+    }
+    else if (State.Config is null)
+    {
+        <p id="drawio-cells-loading" class="drawio-property-loading">Reading the device and its warehouse cells from the host...</p>
+    }
+    else
+    {
+        @switch (State.CellsKind)
+        {
+            case CellPanelKind.None:
+                <p id="drawio-cells-none" class="drawio-cells-none">This kind of device has no warehouse cells to connect.</p>
+                break;
+            case CellPanelKind.Doors when State.WmsCells is { } doorCells && State.CellsMappings is { } mappings:
+                <div id="drawio-cells-details" class="drawio-cells-details">
+                    <div id="drawio-cells-summary" class="drawio-cells-summary">Warehouse doors: @DescribeDoorMappings(mappings)</div>
+                    <DoorMappings ItemId="ItemId" CanEdit="true" Cells="doorCells" Filter="@_filter"
+                                  CurrentMappings="mappings" OnSave="OnSaveDoorMappings"
+                                  OnClear="OnClearDoorMappings" />
+                </div>
+                break;
+            case CellPanelKind.LinkedCell when State.WmsCells is { } cells && State.CellsMappings is not null:
+                <div id="drawio-cells-details" class="drawio-cells-details">
+                    <div id="drawio-cells-summary" class="drawio-cells-summary">Warehouse cell: @DescribeLinkedCell()</div>
+                    <LinkedCells ItemId="ItemId" CanEdit="true" Cells="cells" Filter="@_filter"
+                                 CurrentCellId="State.Config.LinkedCellId"
+                                 AutomaticCells="State.AutomaticCells"
+                                 OnLink="OnLinkCell" OnUnlink="OnUnlinkCell" />
+                </div>
+                break;
+            default:
+                @if (State.CellsError is { } cellsError)
+                {
+                    <DrawioFailureLine Id="drawio-cells-error" Class="drawio-property-error" Text="@cellsError" Detail="@State.CellsErrorDetail" />
+                }
+                else
+                {
+                    <p id="drawio-cells-loading" class="drawio-property-loading">Reading the warehouse cells from the host...</p>
+                }
+                break;
+        }
+        @if (State.CellsNotice is { } cellsNotice)
+        {
+            <DrawioFailureLine Id="drawio-cells-notice" Class="drawio-cells-notice" Text="@cellsNotice" Detail="@State.CellsNoticeDetail" />
+        }
+    }
+
+    @if (State.CellsWriteError is { } cellsWriteError)
+    {
+        <DrawioFailureLine Id="drawio-cells-write-error" LineClass="drawio-context-window-outcome" Class="drawio-property-error" Text="@cellsWriteError" Detail="@State.CellsWriteErrorDetail" />
+    }
+    @if (State.CellsWritten is { } cellsWritten)
+    {
+        <p id="drawio-cells-written" class="drawio-context-window-outcome drawio-property-written">@cellsWritten</p>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public Guid ItemId { get; set; }
+    [Parameter, EditorRequired] public DrawioSelectionState State { get; set; } = null!;
+    [Parameter] public EventCallback<IReadOnlyList<DoorMappingDto>> OnSaveDoorMappings { get; set; }
+    [Parameter] public EventCallback OnClearDoorMappings { get; set; }
+    [Parameter] public EventCallback<WmsCell> OnLinkCell { get; set; }
+    [Parameter] public EventCallback OnUnlinkCell { get; set; }
+    private string _filter = "";
+
+    private void FilterTyped(ChangeEventArgs args) => _filter = args.Value?.ToString() ?? "";
+
+    private IReadOnlyList<WmsCell> CandidateCells(IReadOnlyList<WmsCell> cells) => State.CellsKind switch
+    {
+        CellPanelKind.LinkedCell => cells.Where(cell => cell.DoorA is not null).ToList(),
+        CellPanelKind.Doors => cells.Where(cell => cell.DoorA is not null || cell.DoorB is not null).ToList(),
+        _ => [],
+    };
+
+    private string CountLine(IReadOnlyList<WmsCell> cells)
+    {
+        var visible = cells.Count(cell => WmsCellFilter.Matches(cell, _filter));
+        return _filter.Trim().Length == 0 ? $"{cells.Count} cells" : $"{visible} of {cells.Count} cells";
+    }
+
+    private static string DescribeDoorMappings(IReadOnlyList<DoorMappingDto> mappings) => mappings.Count switch
+    {
+        0 => "none mapped yet.",
+        1 => "1 door mapped.",
+        _ => $"{mappings.Count} doors mapped.",
+    };
+
+    private string DescribeLinkedCell() =>
+        State.Config is { LinkedCellId: var cellId } && cellId != 0m
+            ? $"cell {cellId.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)} connected."
+            : "none connected.";
+}

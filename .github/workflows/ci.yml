@@ -1,0 +1,262 @@
+# Continuous integration of the WCS.
+#
+# Every job runs on Windows: Windows is the reference platform of the WCS (Common/Log.Windows writes
+# to the Windows event log, Common/Helper also targets net10.0-windows, the host runs as a Windows
+# service) and Linux has not been verified. The .NET SDK is the one pinned by global.json, and every
+# restore is in locked mode: a project whose packages.lock.json does not match its package
+# references fails the job instead of resolving other versions.
+#
+# Every job ends by checking that the working tree is still clean: a build or a test that rewrites a
+# tracked file (a lock file, a document, a fixture) or leaves a file .gitignore does not cover fails.
+#
+# The browser tests (Playwright) are in browser.yml; releases are in release.yml.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  build:
+    name: Restore, build and pack
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: "**/packages.lock.json"
+      - name: Restore (locked mode)
+        run: dotnet restore Wcs.slnx --locked-mode
+      - name: Build
+        run: dotnet build Wcs.slnx -c Release --no-restore
+      - name: Pack (the packages are not published, only kept as artefacts)
+        run: dotnet pack Wcs.slnx -c Release --no-build -o artifacts/packages
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: packages
+          path: artifacts/packages
+          if-no-files-found: error
+      - name: The working tree stays clean
+        run: |
+          $dirty = git status --porcelain
+          if ($dirty) { $dirty; throw 'The job changed tracked files or left files that .gitignore does not cover.' }
+
+  test:
+    name: Tests (${{ matrix.suite }})
+    runs-on: windows-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: engine
+            projects: WCS/Wcs.Engine/tests/Wcs.Engine.Test/Wcs.Engine.Test.csproj
+          - suite: host
+            projects: WCS/Wcs.Host/tests/Wcs.Host.Test/Wcs.Host.Test.csproj
+          - suite: web-editor-bunit
+            projects: WCS/Wcs.WebEditor/tests/Wcs.WebEditor.Test/Wcs.WebEditor.Test.csproj
+          - suite: clients-and-contracts
+            projects: >-
+              WCS/Wcs.Api.Client/tests/Wcs.Api.Client.Test/Wcs.Api.Client.Test.csproj
+              WCS/Wcs.Wms.Client/tests/Wcs.Wms.Client.Test/Wcs.Wms.Client.Test.csproj
+              WCS/Wcs.Wms.Contracts/tests/Wcs.Wms.Contracts.Test/Wcs.Wms.Contracts.Test.csproj
+          - suite: sample-wms-end-to-end
+            projects: samples/Wcs.SampleWms.Test/Wcs.SampleWms.Test.csproj
+          - suite: tools
+            projects: >-
+              tools/Wcs.LinkCheck/tests/Wcs.LinkCheck.Test/Wcs.LinkCheck.Test.csproj
+              WCS/tools/Wcs.DbTool/tests/Wcs.DbTool.Test/Wcs.DbTool.Test.csproj
+              tools/Wcs.ContractCheck/tests/Wcs.ContractCheck.Test/Wcs.ContractCheck.Test.csproj
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: "**/packages.lock.json"
+      - name: Restore (locked mode)
+        run: dotnet restore Wcs.slnx --locked-mode
+      - name: Test
+        env:
+          SUITE: ${{ matrix.suite }}
+          PROJECTS: ${{ matrix.projects }}
+        run: |
+          $failed = @()
+          foreach ($project in ($env:PROJECTS -split '\s+' | Where-Object { $_ })) {
+            $name = [System.IO.Path]::GetFileNameWithoutExtension($project)
+            dotnet test $project -c Release --no-restore --logger "trx;LogFileName=$name.trx" --results-directory "TestResults/$env:SUITE"
+            if ($LASTEXITCODE -ne 0) { $failed += $name }
+          }
+          if ($failed) { throw "Failed: $($failed -join ', ')" }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: test-results-${{ matrix.suite }}
+          path: TestResults
+          if-no-files-found: ignore
+      - name: The working tree stays clean
+        run: |
+          $dirty = git status --porcelain
+          if ($dirty) { $dirty; throw 'The job changed tracked files or left files that .gitignore does not cover.' }
+
+  vulnerable-packages:
+    name: Vulnerable packages
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: "**/packages.lock.json"
+      - name: Restore (locked mode)
+        run: dotnet restore Wcs.slnx --locked-mode
+      # `dotnet list package --vulnerable` exits with 0 whatever it finds: the JSON report is read
+      # and any vulnerable package, direct or transitive, fails the job.
+      - name: No known vulnerable package, direct or transitive
+        run: |
+          $json = (dotnet list Wcs.slnx package --vulnerable --include-transitive --format json) -join "`n"
+          if ($LASTEXITCODE -ne 0) { throw "dotnet list package failed (exit $LASTEXITCODE)" }
+          $report = $json | ConvertFrom-Json
+          $found = @()
+          foreach ($project in $report.projects) {
+            if (-not ($project.PSObject.Properties.Name -contains 'frameworks')) { continue }
+            foreach ($framework in $project.frameworks) {
+              foreach ($set in 'topLevelPackages', 'transitivePackages') {
+                if (-not ($framework.PSObject.Properties.Name -contains $set)) { continue }
+                foreach ($package in $framework.$set) {
+                  foreach ($vulnerability in @($package.vulnerabilities)) {
+                    if ($vulnerability) {
+                      $found += "$($package.id) $($package.resolvedVersion) [$($vulnerability.severity)] $($vulnerability.advisoryurl) in $([System.IO.Path]::GetFileName($project.path)) ($($framework.framework))"
+                    }
+                  }
+                }
+              }
+            }
+          }
+          $problems = @(if ($report.PSObject.Properties.Name -contains 'problems') { $report.problems })
+          foreach ($problem in $problems) { Write-Host "$($problem.level): $($problem.text)" }
+          if ($found) { $found | Sort-Object -Unique | ForEach-Object { Write-Host $_ }; throw "$(@($found | Sort-Object -Unique).Count) vulnerable package entries" }
+          if ($problems | Where-Object level -eq 'error') { throw 'dotnet list package reported errors: the check is not conclusive' }
+          Write-Host "No vulnerable package in $(@($report.projects).Count) projects."
+      - name: The working tree stays clean
+        run: |
+          $dirty = git status --porcelain
+          if ($dirty) { $dirty; throw 'The job changed tracked files or left files that .gitignore does not cover.' }
+
+  markdown-links:
+    name: Markdown links
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: "**/packages.lock.json"
+      - name: Restore (locked mode)
+        run: dotnet restore tools/Wcs.LinkCheck/src/Wcs.LinkCheck.csproj --locked-mode
+      - name: Check the links of the current documentation
+        run: dotnet run --project tools/Wcs.LinkCheck/src -c Release --no-restore -- .
+      # The checking functions of the release script (CHANGELOG sections, tags, versions in the docs,
+      # placeholders, local paths, secrets, vulnerable-package reports), on in-memory fixtures
+      - name: Self-test of tools/Test-PublicRelease.ps1
+        run: ./tools/Test-PublicRelease.ps1 -SelfTest
+      - name: The working tree stays clean
+        run: |
+          $dirty = git status --porcelain
+          if ($dirty) { $dirty; throw 'The job changed tracked files or left files that .gitignore does not cover.' }
+
+  sbom:
+    name: SBOM
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: "**/packages.lock.json"
+      - name: Restore (locked mode)
+        run: dotnet restore Wcs.slnx --locked-mode
+      # Regenerates the SBOM from the restored packages and the inventory of embedded components,
+      # and compares it with sbom/wcs.cdx.json: a package change without the SBOM fails here.
+      - name: sbom/wcs.cdx.json matches the packages
+        run: ./sbom/Test-WcsSbom.ps1 -Out "$env:RUNNER_TEMP/wcs.cdx.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom
+          path: ${{ runner.temp }}/wcs.cdx.json
+          if-no-files-found: error
+      - name: The working tree stays clean
+        run: |
+          $dirty = git status --porcelain
+          if ($dirty) { $dirty; throw 'The job changed tracked files or left files that .gitignore does not cover.' }
+
+  # The machine-readable contracts in docs/contracts/ (OpenAPI of the host API and of the WMS contract)
+  # are regenerated from the code and must match the committed files, with every example valid. On a
+  # pull request the committed files of the target branch are the baseline: a breaking change fails
+  # unless the contract's major version was raised (docs/contracts/README.md).
+  contracts:
+    name: Machine-readable contracts
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: "**/packages.lock.json"
+      - name: Restore (locked mode)
+        run: dotnet restore Wcs.slnx --locked-mode
+      - name: Baseline from the target branch (pull requests only)
+        if: github.event_name == 'pull_request'
+        run: |
+          New-Item -ItemType Directory -Force baseline | Out-Null
+          foreach ($file in 'wcs-host.openapi.json', 'wms-contract.openapi.json') {
+            git show "origin/$($env:GITHUB_BASE_REF):docs/contracts/$file" | Set-Content -Encoding utf8NoBOM "baseline/$file"
+            if ($LASTEXITCODE -ne 0) { throw "No $file on the target branch" }
+          }
+      - name: Contracts match the code (and compatibility on pull requests)
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
+            dotnet run --project tools/Wcs.ContractCheck/src -c Release --no-restore -- check --baseline baseline
+          } else {
+            dotnet run --project tools/Wcs.ContractCheck/src -c Release --no-restore -- check
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Remove the baseline
+        if: always()
+        run: Remove-Item -Recurse -Force baseline -ErrorAction SilentlyContinue
+      - name: The working tree stays clean
+        run: |
+          $dirty = git status --porcelain
+          if ($dirty) { $dirty; throw 'The job changed tracked files or left files that .gitignore does not cover.' }

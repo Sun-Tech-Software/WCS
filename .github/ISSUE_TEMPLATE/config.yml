@@ -1,0 +1,18 @@
+# Issue forms of the repository. Blank issues are off: every issue starts from bug_report.yml or
+# feature_request.yml, which ask for what a report needs and remind that keys and confidential data
+# never go in an issue.
+#
+# The URLs below assume the repository https://github.com/Sun-Tech-Software/WCS. If it is published
+# under another name, update them together with README.md and Directory.Build.props;
+# tools/Test-PublicRelease.ps1 -RepositoryUrl <url> checks that they agree.
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability (privately)
+    url: https://github.com/Sun-Tech-Software/WCS/security/advisories/new
+    about: Never in a public issue. Use GitHub's private vulnerability reporting, as described in SECURITY.md.
+  - name: Security policy
+    url: https://github.com/Sun-Tech-Software/WCS/blob/main/SECURITY.md
+    about: Supported versions, what is in scope, and what to include in a vulnerability report.
+  - name: Support and commercial questions
+    url: https://github.com/Sun-Tech-Software/WCS/blob/main/SUPPORT.md
+    about: Community support through issues, and how to reach Sun Tech for commercial support, the proprietary PLC driver or project integration.

@@ -1,0 +1,622 @@
+@* Task 1 (parity table rows 50, 55, 56, 57): the "Operations" section of the page, a floating
+   window like DrawioPlantFile's, the section before it.
+   <para>
+   Row 50 (connection mode of the WHOLE plant) is a CONFIGURATION WRITE: it goes through the page's
+   own gate (<see cref="WriteThroughThePage"/>, the same contract as ImportExport) - the edit permit
+   taken at the moment of writing, an outcome line for what was written and what was not. The label
+   shown is ALWAYS read off <see cref="Graph"/>.Items (never a locally remembered value): it changes
+   only after the host has accepted AND <see cref="OnModeWritten"/> has made the caller reread the
+   plant - the page hands down the SAME <c>PlantGraph</c> object, which that reread refills in place,
+   so the very next render already sees the new value without a fresh parameter from here.
+   </para>
+   <para>
+   Rows 55-57 (Test Route, Remove All LU, Set All Ready) are COMMANDS like the device panel's own:
+   no permit, just the operator's confirmation and the outcome followed with the same
+   <see cref="DrawioCommandFollower"/> DrawioDeviceCommands uses - one instance per gesture, because
+   each can be sent independently of the others.
+   </para>
+   <para>
+   <b>Fix round 1, IMPORTANT 2 (row 55's source and destination).</b> The WinForms original does not
+   pick a source and a destination from a searchable list: <c>cmbORDINE</c> on the device's OWN
+   dialog (<c>FrmNAVIGATOR_ITEM.designer.cs:134</c>, applied in
+   <c>DiagramHandler.EditAutomationDevice</c>, lines 546-569) sets the role of the device CURRENTLY
+   SELECTED on the drawing - Source or Destination - and clears the OPPOSITE role if that same
+   device already held it, so a device is never both at once. This section reproduces the same rule
+   from the device selected on the canvas (<see cref="SelectedItemId"/>), through two buttons ("Use
+   selected as source" / "as destination") instead of a dialog's combo box - not a filterable list of
+   every device, which was this section's own first (and wrong) reading of <c>cmbORDINE</c>.
+   </para>
+   <para>
+   <b>Owner's decision (27/9), row 56 (Remove All LU).</b> Enabled only with the engine in Stop or
+   Pause, the same rule the WinForms button already has (<c>DiagramHandler.Private.cs:1117,1120</c> -
+   <c>btnRemoveAllLU.Enabled = value is Stop or Pause</c>), read off the same <see cref="NavigatorStatus"/>
+   parameter Test Route already reads for its own enabling rule. Disabled in every other state (Run,
+   Recover, Dispose, unknown), with the reason shown next to the button; and re-checked again at the
+   moment "Yes" is pressed, because the engine can leave Stop/Pause while the two-step confirmation is
+   still open - see the remarks on <see cref="RunRemoveAllLuAsync"/>.
+   </para> *@
+@using System.Globalization
+@using System.Net
+@using System.Text.Json
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+@using Wcs.Api.Client
+@using Wcs.Api.Contracts.Dtos
+@using Wcs.WebEditor.Drawio.Coordination
+@using Wcs.WebEditor.Live
+@using Wcs.WebEditor.Model
+@using Wcs.WebEditor.Session
+@using static Wcs.Common.Enums
+@implements IDisposable
+@inject EditorSessionState Session
+
+@* Opened and shut by the page, in a window over the canvas that can be open together with the
+   other sections' (DrawioWindow). The body stays in the page while the window is shut: it is small,
+   and its outcomes follow commands whether the window is open or not. *@
+<button type="button" id="drawio-operations-toggle" class="drawio-section-toggle" aria-label="Operations"
+        aria-pressed="@(Open ? "true" : "false")" @onclick="() => OnToggle.InvokeAsync()">
+    <DrawioIcon Name="operations" />
+    <span class="drawio-toggle-label">Operations</span>
+</button>
+<DrawioWindow Id="drawio-operations" Class="drawio-operations" Title="Operations" Icon="operations"
+              Open="Open" OnClose="() => OnClose.InvokeAsync()" Place="Place"
+              Resizable="false" AutoSize="true" PreferredSize="ActiveWindowSize">
+    <div class="drawio-operations-body">
+        <div id="drawio-operations-tabs" class="drawio-operations-tabs" role="tablist" aria-label="Operations">
+            <button @ref="_modeTab" type="button" id="drawio-operations-tab-mode" role="tab"
+                    class="drawio-operations-tab is-info" aria-controls="drawio-mode"
+                    aria-selected="@Selected(OperationTab.Mode)" tabindex="@TabIndex(OperationTab.Mode)"
+                    @onclick="() => SelectTab(OperationTab.Mode)"
+                    @onkeydown="e => OnTabKeyDownAsync(e, OperationTab.Mode)">Connection mode</button>
+            <button @ref="_testRouteTab" type="button" id="drawio-operations-tab-test-route" role="tab"
+                    class="drawio-operations-tab is-info" aria-controls="drawio-test-route"
+                    aria-selected="@Selected(OperationTab.TestRoute)" tabindex="@TabIndex(OperationTab.TestRoute)"
+                    @onclick="() => SelectTab(OperationTab.TestRoute)"
+                    @onkeydown="e => OnTabKeyDownAsync(e, OperationTab.TestRoute)">Test Route</button>
+            <button @ref="_removeAllTab" type="button" id="drawio-operations-tab-remove-all" role="tab"
+                    class="drawio-operations-tab is-danger" aria-controls="drawio-remove-all-lu"
+                    aria-selected="@Selected(OperationTab.RemoveAll)" tabindex="@TabIndex(OperationTab.RemoveAll)"
+                    @onclick="() => SelectTab(OperationTab.RemoveAll)"
+                    @onkeydown="e => OnTabKeyDownAsync(e, OperationTab.RemoveAll)">Remove all LU</button>
+            <button @ref="_setReadyTab" type="button" id="drawio-operations-tab-set-ready" role="tab"
+                    class="drawio-operations-tab is-safe" aria-controls="drawio-set-all-ready"
+                    aria-selected="@Selected(OperationTab.SetReady)" tabindex="@TabIndex(OperationTab.SetReady)"
+                    @onclick="() => SelectTab(OperationTab.SetReady)"
+                    @onkeydown="e => OnTabKeyDownAsync(e, OperationTab.SetReady)">Set all Ready</button>
+        </div>
+        <div class="drawio-operations-grid">
+            @* Row 50 *@
+            <section id="drawio-mode" class="drawio-operational-card is-info" role="tabpanel"
+                     aria-labelledby="drawio-operations-tab-mode" tabindex="0" hidden="@(_activeTab != OperationTab.Mode)">
+                <header class="drawio-operational-card-header">
+                    <span class="drawio-operational-card-marker" aria-hidden="true"></span>
+                    <div>
+                        <h4>Connection mode</h4>
+                        <p>Choose how every device communicates with the plant.</p>
+                    </div>
+                </header>
+                <span id="drawio-mode-state">Mode: @CurrentMode</span>
+                <div class="drawio-operational-card-actions">
+                    @if (_confirmingMode)
+                    {
+                        <span id="drawio-mode-question" class="drawio-operations-question">Switch the whole plant to @OtherMode?</span>
+                        <button type="button" id="drawio-mode-confirm" disabled="@_modeBusy" @onclick="ConfirmModeAsync">Yes</button>
+                        <button type="button" id="drawio-mode-cancel" disabled="@_modeBusy" @onclick="() => _confirmingMode = false">Cancel</button>
+                    }
+                    else
+                    {
+                        <button type="button" id="drawio-mode-toggle" disabled="@(Graph is null || _modeBusy)"
+                                @onclick="() => _confirmingMode = true">Switch to @OtherMode</button>
+                    }
+                </div>
+                @if (_modeOutcome is { } modeOutcome)
+                {
+                    <DrawioFailureLine Id="drawio-mode-outcome" LineClass="drawio-operations-outcome" Text="@modeOutcome.Text" Detail="@modeOutcome.Detail" />
+                }
+            </section>
+
+            @* Row 55 *@
+            <section id="drawio-test-route" class="drawio-operational-card is-info" role="tabpanel"
+                     aria-labelledby="drawio-operations-tab-test-route" tabindex="0" hidden="@(_activeTab != OperationTab.TestRoute)">
+                <header class="drawio-operational-card-header">
+                    <span class="drawio-operational-card-marker" aria-hidden="true"></span>
+                    <div>
+                        <h4>Test Route</h4>
+                        <p>Use the selected devices to verify a route while the engine is running.</p>
+                    </div>
+                </header>
+                <p id="drawio-test-route-selected" class="drawio-test-route-selected">
+                    Selected on the drawing: @(SelectedItemId is null ? "(nothing selected)" : SelectedItemName)
+                </p>
+                <div class="drawio-test-route-endpoints drawio-operational-card-actions">
+                    <button type="button" id="drawio-test-route-use-source" disabled="@(SelectedItemId is null)"
+                            @onclick="UseSelectedAsSource">Use selected as source</button>
+                    <span id="drawio-test-route-source-chosen">Source: @SourceLabel</span>
+                </div>
+                <div class="drawio-test-route-endpoints drawio-operational-card-actions">
+                    <button type="button" id="drawio-test-route-use-destination" disabled="@(SelectedItemId is null)"
+                            @onclick="UseSelectedAsDestination">Use selected as destination</button>
+                    <span id="drawio-test-route-destination-chosen">Destination: @DestinationLabel</span>
+                </div>
+                <div class="drawio-operations-fields">
+                    <label for="drawio-test-route-lu-type">LU Id Type</label>
+                    <input type="number" step="any" id="drawio-test-route-lu-type"
+                           value="@_luIdTypeText" @oninput="e => OnLuIdTypeChanged(AsText(e.Value))" />
+                </div>
+                @if (!_luIdTypeValid)
+                {
+                    <span id="drawio-test-route-lu-type-error" class="drawio-operations-error">Not a valid number.</span>
+                }
+                <div class="drawio-operational-card-actions">
+                    @if (_confirmingTestRoute)
+                    {
+                        <span id="drawio-test-route-question" class="drawio-operations-question">Run the test route from @SourceLabel to @DestinationLabel?</span>
+                        <button type="button" id="drawio-test-route-confirm" @onclick="RunTestRouteAsync">Yes</button>
+                        <button type="button" id="drawio-test-route-cancel" @onclick="() => _confirmingTestRoute = false">Cancel</button>
+                    }
+                    else
+                    {
+                        <button type="button" id="drawio-test-route-run" disabled="@(!CanRunTestRoute)"
+                                @onclick="() => _confirmingTestRoute = true">Run Test Route</button>
+                    }
+                </div>
+                @if (_testRouteFollower.Outcome is { } testRouteOutcome)
+                {
+                    <DrawioFailureLine Id="drawio-test-route-outcome" LineClass="drawio-operations-outcome" Text="@testRouteOutcome.Text" Detail="@testRouteOutcome.Detail" />
+                }
+            </section>
+
+            @* Row 56. Owner's decision (27/9): enabled only with the engine in Stop or Pause, like the
+               WinForms (DiagramHandler.Private.cs:1117,1120 - btnRemoveAllLU.Enabled = value is Stop or
+               Pause). See CanRemoveAllLu/IsEngineStoppedOrPaused and the remarks on RunRemoveAllLuAsync
+               for the re-check at "Yes". Red, the button and its "Yes" (passata grafica): it takes every
+               load unit off the plant, and only one of the two is on screen at a time. *@
+            <section id="drawio-remove-all-lu" class="drawio-operational-card is-danger" role="tabpanel"
+                     aria-labelledby="drawio-operations-tab-remove-all" tabindex="0" hidden="@(_activeTab != OperationTab.RemoveAll)">
+                <header class="drawio-operational-card-header">
+                    <span class="drawio-operational-card-marker" aria-hidden="true"></span>
+                    <div>
+                        <h4>Remove all load units</h4>
+                        <p>Clear every load unit from the plant. This cannot be undone here.</p>
+                    </div>
+                </header>
+                <div class="drawio-operational-card-actions">
+                    @if (_confirmingRemoveAllLu)
+                    {
+                        <span id="drawio-remove-all-lu-question" class="drawio-operations-question">Remove all load units from the plant?</span>
+                        <button type="button" id="drawio-remove-all-lu-confirm" class="drawio-btn-danger" @onclick="RunRemoveAllLuAsync">Yes</button>
+                        <button type="button" id="drawio-remove-all-lu-cancel" @onclick="() => _confirmingRemoveAllLu = false">Cancel</button>
+                    }
+                    else
+                    {
+                        <button type="button" id="drawio-remove-all-lu-button" class="drawio-btn-danger" disabled="@(!CanRemoveAllLu)"
+                                @onclick="() => _confirmingRemoveAllLu = true">Remove All LU</button>
+                        @if (!IsEngineStoppedOrPaused)
+                        {
+                            <span id="drawio-remove-all-lu-reason" class="drawio-operations-reason">Available with the engine stopped or paused (as in the WinForms).</span>
+                        }
+                    }
+                </div>
+                @if (_removeAllLuRefusal is { } removeAllLuRefusal)
+                {
+                    <p id="drawio-remove-all-lu-outcome" class="drawio-operations-outcome">@removeAllLuRefusal</p>
+                }
+                else if (_removeAllLuFollower.Outcome is { } removeAllLuOutcome)
+                {
+                    <DrawioFailureLine Id="drawio-remove-all-lu-outcome" LineClass="drawio-operations-outcome" Text="@removeAllLuOutcome.Text" Detail="@removeAllLuOutcome.Detail" />
+                }
+            </section>
+
+            @* Row 57 *@
+            <section id="drawio-set-all-ready" class="drawio-operational-card is-safe" role="tabpanel"
+                     aria-labelledby="drawio-operations-tab-set-ready" tabindex="0" hidden="@(_activeTab != OperationTab.SetReady)">
+                <header class="drawio-operational-card-header">
+                    <span class="drawio-operational-card-marker" aria-hidden="true"></span>
+                    <div>
+                        <h4>Set all Ready</h4>
+                        <p>Set every device state to Ready in one operation.</p>
+                    </div>
+                </header>
+                <div class="drawio-operational-card-actions">
+                    @if (_confirmingSetAllReady)
+                    {
+                        <span id="drawio-set-all-ready-question" class="drawio-operations-question">Set every device of the plant Ready?</span>
+                        <button type="button" id="drawio-set-all-ready-confirm" @onclick="RunSetAllReadyAsync">Yes</button>
+                        <button type="button" id="drawio-set-all-ready-cancel" @onclick="() => _confirmingSetAllReady = false">Cancel</button>
+                    }
+                    else
+                    {
+                        <button type="button" id="drawio-set-all-ready-button" disabled="@(!HasDevices || _setAllReadyFollower.Sending)"
+                                @onclick="() => _confirmingSetAllReady = true">Set All Ready</button>
+                    }
+                </div>
+                @if (_setAllReadyFollower.Outcome is { } setAllReadyOutcome)
+                {
+                    <DrawioFailureLine Id="drawio-set-all-ready-outcome" LineClass="drawio-operations-outcome" Text="@setAllReadyOutcome.Text" Detail="@setAllReadyOutcome.Detail" />
+                }
+            </section>
+        </div>
+    </div>
+</DrawioWindow>
+
+@code {
+    private enum OperationTab { Mode, TestRoute, RemoveAll, SetReady }
+
+    private static readonly OperationTab[] TabOrder =
+        [OperationTab.Mode, OperationTab.TestRoute, OperationTab.RemoveAll, OperationTab.SetReady];
+
+    private OperationTab _activeTab;
+    private ElementReference _modeTab;
+    private ElementReference _testRouteTab;
+    private ElementReference _removeAllTab;
+    private ElementReference _setReadyTab;
+
+    private DrawioWindowSize ActiveWindowSize => _activeTab switch
+    {
+        OperationTab.Mode => new(560, 320),
+        OperationTab.TestRoute => new(680, 500),
+        OperationTab.RemoveAll => new(600, 360),
+        OperationTab.SetReady => new(560, 320),
+        _ => new(560, 320),
+    };
+
+    private string Selected(OperationTab tab) => (_activeTab == tab).ToString().ToLowerInvariant();
+    private int TabIndex(OperationTab tab) => _activeTab == tab ? 0 : -1;
+    private void SelectTab(OperationTab tab) => _activeTab = tab;
+
+    private async Task OnTabKeyDownAsync(KeyboardEventArgs e, OperationTab from)
+    {
+        var index = Array.IndexOf(TabOrder, from);
+        var target = e.Key switch
+        {
+            "ArrowRight" => TabOrder[(index + 1) % TabOrder.Length],
+            "ArrowLeft" => TabOrder[(index + TabOrder.Length - 1) % TabOrder.Length],
+            "Home" => TabOrder[0],
+            "End" => TabOrder[^1],
+            _ => from,
+        };
+        if (target == from && e.Key is not ("Home" or "End")) return;
+        _activeTab = target;
+        await InvokeAsync(StateHasChanged);
+        try { await ElementFor(target).FocusAsync(); }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            // The tab is selected all the same: only the keyboard's focus stays where it was.
+        }
+    }
+
+    private ElementReference ElementFor(OperationTab tab) => tab switch
+    {
+        OperationTab.Mode => _modeTab,
+        OperationTab.TestRoute => _testRouteTab,
+        OperationTab.RemoveAll => _removeAllTab,
+        OperationTab.SetReady => _setReadyTab,
+        _ => _modeTab,
+    };
+
+    /// <summary>Whether the page has this section's window open.</summary>
+    [Parameter] public bool Open { get; set; }
+
+    /// <summary>
+    /// The button of the strip was pressed: the page opens the window, brings it to the front if it is
+    /// open behind another, or shuts it if it is the one in front - and leaves the other windows as they are.
+    /// </summary>
+    [Parameter] public EventCallback OnToggle { get; set; }
+
+    /// <summary>The window's X was pressed, or Esc in it: the page shuts the window, and does nothing if it is already shut.</summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>Where the window opens when this browser remembers nothing about it (see DrawioWindowPlace).</summary>
+    [Parameter, EditorRequired] public DrawioWindowPlace Place { get; set; } = null!;
+
+    [Parameter] public PlantGraph? Graph { get; set; }
+    [Parameter] public PlantLiveFeed? Feed { get; set; }
+    [Parameter] public NavigatorStatusTypes? NavigatorStatus { get; set; }
+
+    /// <summary>The device currently selected on the drawing (DrawioSelectionState.ConfigItemId) - row 55's source of "the selected device", see the file's own remarks.</summary>
+    [Parameter] public Guid? SelectedItemId { get; set; }
+
+    /// <summary>The selected device's display name (DrawioSelectionState.ConfigSubjectName), shown next to the two "use selected" buttons.</summary>
+    [Parameter] public string? SelectedItemName { get; set; }
+
+    /// <summary>
+    /// How the page lets the connection-mode write (row 50) through: the write gate, the edit
+    /// permit, the same contract as ImportExport.WriteThroughThePage. Rows 55-57 never use this -
+    /// they are plain commands, like DrawioDeviceCommands. Required (final review, M3): without it the
+    /// mode is NOT written and the line says so - unlike ImportExport, whose null still means the old
+    /// /editor page's direct write, this section has no page that writes around the gate.
+    /// </summary>
+    [Parameter, EditorRequired] public Func<Func<Task>, Task<DrawioSaid?>>? WriteThroughThePage { get; set; }
+
+    /// <summary>
+    /// Called after row 50's write is accepted, so the page can reread the plant - see the file's own
+    /// remarks. Fix round 2, IMPORTANT 1: a function, not a plain <c>EventCallback</c> any more - its
+    /// answer says whether a device's own panel was cleared and reread as part of that call, which
+    /// decides whether the outcome line below adds the "anything typed ... is gone" warning; and
+    /// (final review, M2) whether the plant reread itself failed, so that the warning is given on that
+    /// path too (<see cref="DrawioModeReread"/>).
+    /// </summary>
+    [Parameter] public Func<Task<DrawioModeReread>>? OnModeWritten { get; set; }
+
+    private bool _confirmingMode;
+    private bool _modeBusy;
+    private DrawioSaid? _modeOutcome;
+
+    private Guid? _sourceItemId;
+    private Guid? _destinationItemId;
+
+    /// <summary>
+    /// What the operator has typed for LU Id Type, kept as TEXT and not only as the parsed
+    /// <see cref="_luIdType"/> (fix round 1, MINOR 9): a silent fallback to zero on invalid input -
+    /// what this field used to do - hides a typo as a legitimate type id instead of saying it is not
+    /// a number. Initialised to a culture-invariant literal, not <c>_luIdType.ToString()</c>, which
+    /// would use the CURRENT culture and could print a comma this same field would then fail to
+    /// parse back (see <see cref="OnLuIdTypeChanged"/>).
+    /// </summary>
+    private string _luIdTypeText = "0";
+
+    private bool _luIdTypeValid = true;
+    private decimal _luIdType;
+    private bool _confirmingTestRoute;
+
+    private bool _confirmingRemoveAllLu;
+    private bool _confirmingSetAllReady;
+    private string? _removeAllLuRefusal;
+
+    private DrawioCommandFollower _testRouteFollower = null!;
+    private DrawioCommandFollower _removeAllLuFollower = null!;
+    private DrawioCommandFollower _setAllReadyFollower = null!;
+
+    private bool HasDevices => Graph is { Items.Count: > 0 };
+
+    /// <summary>
+    /// Owner's decision (27/9), row 56: Remove All LU follows the same engine-state rule as the
+    /// WinForms button (<c>DiagramHandler.Private.cs:1117,1120</c> -
+    /// <c>btnRemoveAllLU.Enabled = value is Stop or Pause</c>), read off the same
+    /// <see cref="NavigatorStatus"/> parameter Test Route already reads (<see cref="CanRunTestRoute"/>),
+    /// not a locally remembered value - so it reacts to the engine changing state exactly like the
+    /// other Operations controls do.
+    /// </summary>
+    private bool IsEngineStoppedOrPaused => NavigatorStatus is NavigatorStatusTypes.Stop or NavigatorStatusTypes.Pause;
+
+    private bool CanRemoveAllLu => HasDevices && IsEngineStoppedOrPaused && !_removeAllLuFollower.Sending;
+
+    /// <summary>
+    /// The mode as the plant has it NOW: read straight off <see cref="Graph"/>, never from a locally
+    /// remembered value - see the file's own remarks for why. An empty plant, or one whose devices
+    /// disagree (should not happen: row 50 writes them all at once, but a device created independently
+    /// could still differ), shows the first item's own value; an empty plant shows Test.
+    /// </summary>
+    private ConnectionTypes CurrentMode => Graph?.Items.Count > 0 ? Graph.Items[0].ConnectionType : ConnectionTypes.Test;
+
+    private ConnectionTypes OtherMode => CurrentMode == ConnectionTypes.Connected ? ConnectionTypes.Test : ConnectionTypes.Connected;
+
+    /// <summary>
+    /// Fix round 1, IMPORTANT 2: <c>_sourceItemId != _destinationItemId</c> is a defensive check, not
+    /// a reachable state - <see cref="UseSelectedAsSource"/>/<see cref="UseSelectedAsDestination"/>
+    /// already clear the opposite role the same way <c>DiagramHandler.EditAutomationDevice</c> does,
+    /// so the two can never legitimately end up equal. IMPORTANT 3: <c>!_testRouteFollower.Sending</c>
+    /// keeps the button disabled for the whole round trip of a send already in flight, on top of the
+    /// guard <see cref="DrawioCommandFollower.SendAsync"/> now has of its own.
+    /// </summary>
+    private bool CanRunTestRoute => NavigatorStatus == NavigatorStatusTypes.Run
+        && _sourceItemId is not null && _destinationItemId is not null && _sourceItemId != _destinationItemId
+        && _luIdTypeValid && !_testRouteFollower.Sending;
+
+    private string SourceLabel => LabelOf(_sourceItemId);
+    private string DestinationLabel => LabelOf(_destinationItemId);
+
+    protected override void OnInitialized()
+    {
+        _testRouteFollower = new DrawioCommandFollower(() => Session.Client, "the route", InvokeAsync);
+        _testRouteFollower.Changed += StateHasChanged;
+        _removeAllLuFollower = new DrawioCommandFollower(() => Session.Client, "the plant", InvokeAsync);
+        _removeAllLuFollower.Changed += StateHasChanged;
+        _setAllReadyFollower = new DrawioCommandFollower(() => Session.Client, "the plant", InvokeAsync);
+        _setAllReadyFollower.Changed += StateHasChanged;
+    }
+
+    protected override void OnParametersSet()
+    {
+        // _testRouteFollower.Subject is NOT set here any more (fix round 1, IMPORTANT 5): it used to
+        // be recomputed from the pickers on every render, which means it could still be reassigned
+        // AFTER a send had already gone out - a picker changed while a route was being followed would
+        // silently relabel that route's own outcome line to the NEW choice, not the one actually
+        // sent. RunTestRouteAsync freezes it once, right before the send, instead.
+        _testRouteFollower.SetFeed(Feed);
+        _removeAllLuFollower.SetFeed(Feed);
+        _setAllReadyFollower.SetFeed(Feed);
+    }
+
+    /// <summary>
+    /// Fix round 1, IMPORTANT 2: takes the device selected on the drawing as the route's source, and
+    /// clears it as the destination if it already held that role - the same rule
+    /// <c>DiagramHandler.EditAutomationDevice</c> applies from <c>cmbORDINE</c> on the device's own
+    /// dialog (case 1 there), just triggered from this section instead of that dialog.
+    /// </summary>
+    private void UseSelectedAsSource()
+    {
+        if (SelectedItemId is not { } id) return;
+        _sourceItemId = id;
+        if (_destinationItemId == id) _destinationItemId = null;
+    }
+
+    /// <summary>Mirror of <see cref="UseSelectedAsSource"/>, <c>DiagramHandler.EditAutomationDevice</c>'s case 2.</summary>
+    private void UseSelectedAsDestination()
+    {
+        if (SelectedItemId is not { } id) return;
+        _destinationItemId = id;
+        if (_sourceItemId == id) _sourceItemId = null;
+    }
+
+    private string LabelOf(Guid? itemId)
+    {
+        if (itemId is not { } id) return "(none chosen)";
+        var item = Graph?.Items.FirstOrDefault(i => i.ItemId == id);
+        return item is null ? id.ToString() : Label(item);
+    }
+
+    private static string Label(PlantItemDto item) => item.Name is { Length: > 0 } name ? name : item.ItemId.ToString();
+
+    private static string AsText(object? value) => value as string ?? string.Empty;
+
+    /// <summary>
+    /// Fix round 1, MINOR 9: parsed with <see cref="CultureInfo.InvariantCulture"/> - a number input
+    /// always emits a period as its decimal separator, and parsing it against the server's CURRENT
+    /// culture (what <c>decimal.TryParse(text, out _)</c> without a culture does) would fail on any
+    /// locale that expects a comma there, and used to fall back to zero silently instead of saying so.
+    /// </summary>
+    private void OnLuIdTypeChanged(string text)
+    {
+        _luIdTypeText = text;
+        _luIdTypeValid = decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var value);
+        if (_luIdTypeValid) _luIdType = value;
+    }
+
+    /// <summary>
+    /// Row 50: two-step confirm, then the write through the page's own gate.
+    /// </summary>
+    /// <remarks>
+    /// Fix round 1, IMPORTANT 4: three outcomes, told apart - a refusal known BEFORE anything was
+    /// written (the gate itself, or a 409/423 the write throws in the narrow race window after
+    /// <c>EnsureWritableAsync</c> already passed - both mean the host never touched the plant); an
+    /// UNKNOWN outcome (a transport failure or a timeout on the write itself - the request may or may
+    /// not have reached the host, worded like the properties panel's own "whether it went through is
+    /// NOT known"); and a write that DID go through but whose following reread
+    /// (<see cref="OnModeWritten"/>) then failed - reported as written, not as refused, because it
+    /// was. <see cref="JsonException"/> is caught alongside the transport exceptions (it used to
+    /// escape this handler entirely): a garbled response is exactly the same kind of "cannot tell
+    /// what happened" as a dropped connection.
+    /// <para>
+    /// Fix round 2, IMPORTANT 1: when <see cref="OnModeWritten"/> says a device's own panel was
+    /// cleared and reread alongside the plant, the line ALSO carries the same warning
+    /// the cell-linking gestures already give after their own reread
+    /// (<c>DrawioSelectionCoordinator.LinkCellCoreAsync</c>/<c>UnlinkCellCoreAsync</c>): whatever the
+    /// operator had typed into that panel, unconfirmed, is gone - not merely discarded in silence.
+    /// </para>
+    /// </remarks>
+    private async Task ConfirmModeAsync()
+    {
+        _confirmingMode = false;
+        var wanted = OtherMode;
+        _modeBusy = true;
+        _modeOutcome = null;
+        var written = false;
+        try
+        {
+            // Final review, M3: no way through the page's gate and permit, no write - never straight
+            // to the host around them (the parameter is EditorRequired; this is the defence for a
+            // caller that forgot it anyway).
+            if (WriteThroughThePage is not { } through)
+            {
+                _modeOutcome = "Connection mode was NOT written: this section was not given the page's way through its write gate and edit permit, and it does not write around them.";
+                return;
+            }
+
+            if (await through(() => Session.Client.SetConnectionTypeForAllAsync(wanted)) is { } refused)
+            {
+                _modeOutcome = refused;
+                return;
+            }
+
+            written = true;
+            var reread = OnModeWritten is null ? default : await OnModeWritten();
+            // Final review, M2: the panel is cleared on BOTH paths (the page rereads it in a finally),
+            // so what was typed into it is gone on both, and both say so.
+            _modeOutcome = reread.PlantRereadFailure is { } failure
+                ? WrittenButNotReread(wanted, failure,
+                    reread.PanelWasReread ? " The properties below were cleared to be read again from the host, so anything typed into them and not confirmed is gone." : "")
+                : $"Connection mode set to {wanted}."
+                    + (reread.PanelWasReread ? " The properties below have been read again from the host, so anything typed into them and not confirmed is gone." : "");
+        }
+        catch (WcsApiException ex) when (!written && ex.StatusCode is HttpStatusCode.Conflict or HttpStatusCode.Locked)
+        {
+            // A clean refusal FROM THE HOST, before anything was written: 409 is the engine having
+            // left Stop in the race window right after the page's own check (owner's decision of
+            // 27/9, D1: PlantQueries.SetConnectionTypeForAllAsync/RequireStopped), 423 is the edit permit
+            // lost in that same window (EditPermissionFilter) - the ordinary case of either is
+            // refused earlier still, by EnsureWritableAsync itself, without ever reaching here.
+            // Row 37 of the queue, extended to the whole page on 10/10: what the refusal means on the
+            // route in the sentence, the host's own words behind its "?" with the rest of the answer.
+            _modeOutcome = DrawioSaid.Failed(
+                $"Connection mode was NOT written: the host refused it - {DrawioSelectionCoordinator.HostRefusalMeaning(ex)}.", ex);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or WcsApiException or TaskCanceledException or JsonException)
+        {
+            _modeOutcome = written
+                ? WrittenButNotReread(wanted, ex, "")
+                : DrawioSaid.Failed(
+                    $"It is not known whether the connection mode was written, because {DrawioFailureWords.Why(ex)}: check the plant before trying again.", ex);
+        }
+        finally
+        {
+            _modeBusy = false;
+        }
+    }
+
+    private static DrawioSaid WrittenButNotReread(ConnectionTypes wanted, Exception failure, string tail) => DrawioSaid.Failed(
+        $"The connection mode WAS written to {wanted}, but the plant could not be read again afterwards because {DrawioFailureWords.Why(failure)}: reload the page before doing anything else.{tail}",
+        failure);
+
+    /// <summary>Row 55: source, destination and LU type as in the WinForms (txtLUidType) - a command like the device panel's own.</summary>
+    private Task RunTestRouteAsync()
+    {
+        _confirmingTestRoute = false;
+        if (_sourceItemId is not { } source || _destinationItemId is not { } destination || source == destination)
+            return Task.CompletedTask;
+
+        // Frozen NOW (fix round 1, IMPORTANT 5) and passed straight into SendAsync (fix round 2,
+        // MINOR 4 - not assigned to _testRouteFollower.Subject beforehand any more, which would still
+        // mutate the shared property even on a call the follower's own re-entrancy guard refuses):
+        // the queued/outcome lines must keep naming the route this very command was sent for, even if
+        // the pickers are changed afterwards while the outcome is still being followed.
+        var request = new CommandRequest((int)CommandTypes.TestRoute, source, DestinationItemId: destination, LoadUnitTypeId: _luIdType);
+        return _testRouteFollower.SendAsync(request, "Test Route", $"{SourceLabel} -> {DestinationLabel}",
+            command => command.ItemId == source && command.DestinationItemId == destination);
+    }
+
+    /// <summary>
+    /// Row 56: no destination device, the whole plant is the subject.
+    /// </summary>
+    /// <remarks>
+    /// Owner's decision (27/9): re-checks <see cref="IsEngineStoppedOrPaused"/> at the moment "Yes" is
+    /// pressed, not only on the button's own <c>disabled</c> attribute - the confirmation can stay open
+    /// across a render in which the engine leaves Stop/Pause (e.g. it is started from elsewhere, or
+    /// from the WinForms Editor sharing the same host), and a disabled DOM attribute is neither
+    /// re-rendered instantly nor enforced by bUnit's own <c>Click()</c> (see the same point on
+    /// <see cref="DrawioCommandFollower"/>'s own re-entrancy guard). Nothing is sent in that case, and
+    /// <see cref="_removeAllLuRefusal"/> says why - cleared as soon as a send is actually attempted, so
+    /// it does not linger over an outcome that belongs to a later, allowed send.
+    /// </remarks>
+    private Task RunRemoveAllLuAsync()
+    {
+        _confirmingRemoveAllLu = false;
+        if (!IsEngineStoppedOrPaused)
+        {
+            _removeAllLuRefusal = "Remove All LU was NOT sent: the engine is no longer stopped or paused (as in the WinForms).";
+            return Task.CompletedTask;
+        }
+
+        _removeAllLuRefusal = null;
+        var request = new CommandRequest((int)CommandTypes.RemoveAllLu);
+        return _removeAllLuFollower.SendAsync(request, "Remove All LU", "the plant", command => command.CommandType == (int)CommandTypes.RemoveAllLu);
+    }
+
+    /// <summary>Row 57, like row 56.</summary>
+    private Task RunSetAllReadyAsync()
+    {
+        _confirmingSetAllReady = false;
+        var request = new CommandRequest((int)CommandTypes.SetStatusReadyAllItems);
+        return _setAllReadyFollower.SendAsync(request, "Set All Ready", "the plant", command => command.CommandType == (int)CommandTypes.SetStatusReadyAllItems);
+    }
+
+    public void Dispose()
+    {
+        _testRouteFollower.Changed -= StateHasChanged;
+        _testRouteFollower.Dispose();
+        _removeAllLuFollower.Changed -= StateHasChanged;
+        _removeAllLuFollower.Dispose();
+        _setAllReadyFollower.Changed -= StateHasChanged;
+        _setAllReadyFollower.Dispose();
+    }
+}

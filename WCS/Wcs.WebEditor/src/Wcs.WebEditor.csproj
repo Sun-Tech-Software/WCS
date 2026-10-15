@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Wcs.WebEditor</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Sdk.Razor da solo non porta il framework condiviso di ASP.NET Core: senza questa riga
+         WebApplication, IApplicationBuilder e persino Microsoft.AspNetCore.Components non si
+         trovano (CS0234/CS0246) - una premessa del brief risultata falsa alla compilazione. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- La prima dipendenza NuGet di questo progetto (compito della barra Fluent): la barra fatta a
+         mano era "pessima" a giudizio del proprietario, e Fluent UI Blazor porta i controlli veri
+         (pulsante con stato premuto, suggerimento, traboccamento) al posto di trenta <button> nudi
+         tenuti insieme da CSS nostro. Licenza MIT, net10.0 fra i target. La versione sta qui e non
+         in un Directory.Packages.props perche' questo repository non ne ha uno. -->
+    <PackageReference Include="Microsoft.FluentUI.AspNetCore.Components" Version="4.14.4" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- L'Editor web e' un client come gli altri: conosce il contratto e il client, non il motore.
+         Lo tiene chiuso Wcs.WebEditor.Test.BoundaryTest. -->
+    <ProjectReference Include="..\..\Wcs.Api.Client\src\Wcs.Api.Client.csproj" />
+    <ProjectReference Include="..\..\Wcs.Api.Contracts\src\Wcs.Api.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Wcs.WebEditor.Test" />
+  </ItemGroup>
+</Project>

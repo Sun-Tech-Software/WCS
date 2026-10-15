@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "System.Diagnostics.EventLog": {
+        "type": "Transitive",
+        "resolved": "10.0.13",
+        "contentHash": "DkNjtQyPR5Ud/zHnWHdsOuKbFRL9nIC92Q76z0NmHVDoQm40toLtsGFTIWq7toBoVa6fo/DInL3PLxY3Asixyw=="
+      },
+      "helper": {
+        "type": "Project",
+        "dependencies": {
+          "System.Diagnostics.EventLog": "[10.0.13, )"
+        }
+      }
+    },
+    "net10.0-windows10.0.19041": {
+      "System.Diagnostics.EventLog": {
+        "type": "Transitive",
+        "resolved": "10.0.13",
+        "contentHash": "DkNjtQyPR5Ud/zHnWHdsOuKbFRL9nIC92Q76z0NmHVDoQm40toLtsGFTIWq7toBoVa6fo/DInL3PLxY3Asixyw=="
+      },
+      "helper": {
+        "type": "Project",
+        "dependencies": {
+          "System.Diagnostics.EventLog": "[10.0.13, )"
+        }
+      }
+    }
+  }
+}

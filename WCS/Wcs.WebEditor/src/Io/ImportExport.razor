@@ -1,0 +1,1112 @@
+@* Export and import of the plant (task 12). A component of its own, not folded into the @code of
+   the page that shows it: that page and its bUnit suite are already large, and every new parameter
+   would make them more fragile.
+   <para>
+   <b>Where it lives now.</b> It used to be the EIGHTH bar of the old /editor dock (the condemned SVG
+   editor, dismantled in 6f1b8666). Today DrawioPlantFile renders it, as the first section of the
+   draw.io page's strip (since 27/9; before, a closed box in the band above), and nothing else does:
+   /editor is only a redirect to /editor/drawio now (EditorRedirect.razor). Since the passata grafica
+   (29/9) its two buttons wear the draw.io page's buttons instead of the old dock's - a plain
+   <button>, and .drawio-btn on the <label> - and since its final fix round (30/9) the page's icons
+   (DrawioIcon) and their words, as every other command in a window: the dock's icon-only buttons,
+   named only by a title, were the whole content of the Plant file window. The import's Confirm is
+   the page's red button (.drawio-btn-danger): it replaces the whole plant. The markup
+   below carries no ".toolbar"/".toolbar-group" container of its own: the frame around it is the host
+   component's.
+   (The old dock gave this bar the same handle and right-click menu as the other seven.)
+   </para>
+   No render-mode directive of its own here: it inherits interactivity from the ancestor that
+   declares it (DrawioEditor.razor is the only one allowed to, see
+   OnlyAllowlistedComponentsAreInteractiveTest) through DrawioPlantFile -
+   reached only once the key has been given and the graph has been loaded, the same guarantee the
+   old page gave.
+
+   It fires the real write (ReplacePlantGraphAsync) itself - through the page's own gate when the
+   page hands one over (WriteThroughThePage) - instead of handing a change to the canvas: the export
+   reads, the import replaces the whole plant and then reloads the page; it is not a local change of
+   the graph that the canvas would have to know about.
+
+   Cannot be undone (said, not hidden): an import already writes to the host when it is confirmed,
+   and no undo stack (CommandStack, Editing/CommandStack.cs, nor draw.io's own) can take back the
+   replacement of a whole plant - hooking it to one would promise an undo that cannot work, which is
+   worse than no undo at all (see the brief). The remedy, said on screen: a FULL page reload after
+   the confirmation (NavigationManager.NavigateTo with forceLoad), not a targeted refresh of each
+   panel - the device list, the junctions, the door maps, the checks all cache a state that would
+   silently become false, and watching them one by one from in here would be the same family of
+   risk this project has already turned down elsewhere, in favour of a check declared absent rather
+   than one guessed. The accepted cost: the reload closes the Blazor circuit, so the API key has to
+   be given again - and so as not to stay read-only for up to three minutes (Important 5 of the
+   review: the old circuit went on renewing a permit that nobody saw any more),
+   ConfirmImportAsync releases the permit explicitly BEFORE reloading, in every case, success or
+   not.
+
+   ATOMIC since 20/9/2026, and this comment said the opposite until the 21st: PUT /plant/graph
+   replaces the graph inside one SQLite transaction, publishes the in-memory collections only after
+   the commit, and a failure before the commit changes nothing, neither in the database nor in
+   memory. The dozens of separate queued writes, and the "it may be left halfway" the operator used
+   to read before confirming, are gone.
+
+   TWO outcomes remain that are not a success, and they differ from each other:
+
+   - REFUSED, and nothing changed: 409 if the plant has work in progress (missions or extraction
+     queue) or if the engine is not stopped - any file, in any state other than Stop (the owner's
+     decision of 27/9 on Pause, which reverses Task 4c's relaxation) -, 400 if the file is invalid.
+     The previous graph and the operating state stay as they were. These cases do NOT deserve the
+     alarming warning or the reload: they are said and that is all, and the chosen file stays
+     there, ready for a second try.
+   - OUTCOME UNKNOWN: the connection drops, the host times out (30 s, WcsClientOptions.Timeout) or
+     answers 5xx. The replacement may or may not have happened - and in one case it happened in the
+     database but rebuilding the memory failed, and then the engine stops and says so. Only HERE do
+     the blocking warning and the full reload make sense, because the canvas cannot go on painting a
+     plant that may no longer be the one there.
+
+   Work in progress is counted BEFORE the confirmation and holds the button: it is a refusal that
+   can be foreseen, and finding it out after the click would be a wasted round. (So is the other
+   one - any file with the engine in a state known to refuse it, since the owner's decision of
+   27/9 on Pause: see EngineHoldsTheImport.) The count may be a few moments old - the real check is
+   the host's, in the same serialized unit as the replacement - so the 409 is still possible, and
+   it is handled above. *@
+@using System.IO
+@using System.Net
+@using System.Text.Json
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
+@using Wcs.Api.Client
+@using Wcs.Api.Contracts.Dtos
+@using Wcs.WebEditor.Drawio.Components
+@using Wcs.WebEditor.Drawio.Coordination
+@using Wcs.WebEditor.Model
+@using Wcs.WebEditor.Session
+@using static Wcs.Common.Enums
+@implements IAsyncDisposable
+@inject EditorSessionState State
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<div class="drawio-operational-grid drawio-plant-file-modules">
+    <section id="plant-export-module" class="drawio-operational-card is-info">
+        <header class="drawio-operational-card-header">
+            <DrawioIcon Name="export" />
+            <div><h4>Export plant</h4><p>Create a complete portable copy of this plant.</p></div>
+        </header>
+        <div class="drawio-operational-card-actions">
+            <button type="button" id="plant-export-button"
+                    disabled="@(_busy || Graph is null)" @onclick="ExportAsync">
+                <DrawioIcon Name="export" />Export
+            </button>
+        </div>
+    </section>
+    <section id="plant-import-module" class="drawio-operational-card is-warning">
+        <header class="drawio-operational-card-header">
+            <DrawioIcon Name="import" />
+            <div><h4>Import plant</h4><p>Review a file before replacing the current plant.</p></div>
+        </header>
+        <div class="drawio-operational-card-actions">
+            <label class="drawio-btn plant-import-picker" id="plant-import-button" for="plant-import-input"
+                   aria-disabled="@((!CanEdit || _busy || _pendingImport is not null) ? "true" : "false")">
+                <DrawioIcon Name="import" />Choose file
+            </label>
+            <InputFile id="plant-import-input" class="plant-import-input" accept=".json,.edd,.xml"
+                       disabled="@(!CanEdit || _busy || _pendingImport is not null)" OnChange="OnFileSelectedAsync" />
+        </div>
+        @if (ImportStatusText is { } importStatus)
+        {
+            <p id="drawio-plant-file-status" class="drawio-operational-status"
+               role="status" aria-live="polite">@importStatus</p>
+        }
+    </section>
+</div>
+
+@if ((_error ?? _compareError) is { } error)
+{
+    <span class="plant-io-error" id="plant-io-error">@error.Text</span>
+    @* Row 37 of the queue, extended to the whole page by the owner's answer of 10/10: every failure
+       this window says - the export, the plant or the old drawing the host could not read, a file that
+       is not a plant, the refusal of the replacement, the permit that could not be asked for - is one
+       sentence, and what came back is behind a "?" next to it, as in every other window of the page. *@
+    @if (error.Detail is { } errorDetail)
+    {
+        <DrawioHelp Id="plant-io-error-help" Label="Technical detail of the failure">
+            <p id="plant-io-error-detail" class="drawio-failure-detail">@errorDetail</p>
+        </DrawioHelp>
+    }
+}
+
+@if (_pendingImport is { } pending)
+{
+    <div class="plant-import-dialog-overlay" @onclick="CancelImport"></div>
+    <div class="plant-import-dialog" id="plant-import-confirm" @onclick:stopPropagation="true">
+        <h2 class="plant-import-title">Import "@pending.FileName"?</h2>
+
+        @if (pending.PlantChanged)
+        {
+            <p class="plant-import-blocked" id="plant-import-plant-changed">
+                <strong>The plant changed</strong> since this file was compared with it - on this page or
+                elsewhere - so it has been compared again with the plant as it is now: what follows is the new
+                comparison. Nothing was written. Read it, then confirm again.
+            </p>
+        }
+
+        @if (pending.LegacyReport is { } legacy)
+        {
+            <section class="plant-import-legacy-report" id="plant-import-legacy-report">
+                <p>Read from the old drawing: <strong>@legacy.Geometries.Count</strong> @Plural(legacy.Geometries.Count, "device", "devices") placed
+                    (<strong>@legacy.PartiallyPlaced</strong> of them with a box read only in part).</p>
+                <p>Not recognized in the drawing: <strong>@legacy.ElementsWithoutGuid</strong> @Plural(legacy.ElementsWithoutGuid, "node", "nodes") without a
+                    readable Guid, <strong>@legacy.GuidsWithoutGeometry</strong> @Plural(legacy.GuidsWithoutGeometry, "Guid", "Guids") without a readable box
+                    in any of @Plural(legacy.GuidsWithoutGeometry, "its", "their") occurrences.</p>
+                @if (pending.UnknownGuids > 0)
+                {
+                    <p><strong>@pending.UnknownGuids</strong> @Plural(pending.UnknownGuids, "Guid of the drawing matches", "Guids of the drawing match") no device of this
+                        plant: @Plural(pending.UnknownGuids, "it is ignored, and its position goes nowhere.", "they are ignored, and their position goes nowhere.")
+                    </p>
+                }
+                <p id="plant-import-items-not-mentioned"><strong>@pending.ItemsNotMentioned</strong> @Plural(pending.ItemsNotMentioned, "device", "devices")
+                    of this plant that the drawing does not name at all:
+                    @Plural(pending.ItemsNotMentioned, "it keeps the position it already had - the drawing simply says nothing about it.", "they keep the position they already had - the drawing simply says nothing about them.")</p>
+                <p class="plant-import-caveat">
+                    These numbers are counted <strong>after</strong> the filter on the node's type (only the
+                    nodes the drawing declares as devices, &quot;OrchestraType&quot;/&quot;DiagramType&quot;=ITEM):
+                    a zero says that nothing the reader looks at was missing, not that the drawing held
+                    nothing else (the numbers are not a partition).
+                </p>
+            </section>
+        }
+
+        <section class="plant-import-diff" id="plant-import-diff">
+            <p>This import replaces the whole plant. Compared with the plant as it is now, these are lost:</p>
+            <ul>
+                <li id="plant-import-lost-items">@pending.Diff.LostItems @Plural(pending.Diff.LostItems, "device", "devices")</li>
+                <li id="plant-import-lost-junctions">@pending.Diff.LostJunctions @Plural(pending.Diff.LostJunctions, "junction", "junctions")</li>
+                <li id="plant-import-lost-mappings">@pending.Diff.LostMappings @Plural(pending.Diff.LostMappings, "door map", "door maps")</li>
+                <li id="plant-import-lost-geometries">@pending.Diff.LostGeometries @Plural(pending.Diff.LostGeometries, "position", "positions") on the drawing</li>
+            </ul>
+            @if (pending.CarriesPlcConnections)
+            {
+                <p id="plant-import-plc-summary">PLC connections:
+                    <strong>@pending.Diff.AddedPlcConnections</strong> added,
+                    <strong>@pending.Diff.RemovedPlcConnections</strong> removed,
+                    <strong>@pending.Diff.ModifiedPlcConnections</strong> changed.
+                </p>
+            }
+            else
+            {
+                <p class="plant-import-caveat" id="plant-import-plc-preserved">This file <strong>says nothing</strong>
+                    about the PLC connections: the ones configured now <strong>stay unchanged</strong>.</p>
+            }
+            @* Owner's decision of 27/9 on Pause (reversing Task 4c's relaxation): the host imports a plant
+               only with the engine stopped, whatever the file carries (PlantQueries.ReplaceGraphCoreAsync,
+               RequireStopped) - an import rebuilds every device without its connection, and resuming from
+               Pause does not open them again. Said before the confirmation, with the button held, and gone
+               as soon as the page shows a state that allows it; the page's gate checks again at the write. *@
+            @if (EngineHoldsTheImport)
+            {
+                <p class="plant-import-blocked" id="plant-import-engine">
+                    <strong>Cannot be imported now</strong>@($", and nothing will be touched: {EngineRefusal()} {WhatToDoNow()}")
+                </p>
+            }
+            else if (EngineStatus is null)
+            {
+                <p class="plant-import-caveat" id="plant-import-engine">
+                    @("The host imports a plant only with the engine stopped (Stop). This page does not know the engine's state right now: if it is not stopped, the host refuses the import and nothing is touched.")
+                </p>
+            }
+        </section>
+
+        @* WORK IN PROGRESS IS NO LONGER LOST: the host refuses the replacement while there is any.
+           These two lines used to sit in the list of what is lost, and that was true while
+           ReplaceGraphAsync went through RemoveAllItemsAsync, which takes Missions and
+           ExtractionQueue away too. Now it would be the promise of a destruction that does not
+           happen, followed by a refusal the operator did not expect: it is said first, and the
+           button cannot be pressed. *@
+        @if (pending.DoubledJunctionInThePlant is { } doubled)
+        {
+            <p class="plant-import-blocked" id="plant-import-doubled-junction">
+                <strong>Cannot be imported now</strong>, and nothing will be touched. @doubled
+            </p>
+        }
+
+        @if (pending.LostMissions > 0 || pending.LostExtractionQueueItems > 0)
+        {
+            <p class="plant-import-blocked" id="plant-import-blocked">
+                <strong>Cannot be imported now</strong>, and nothing will be touched: the plant has
+                <span id="plant-import-lost-missions">@pending.LostMissions @Plural(pending.LostMissions, "mission", "missions")</span>
+                and <span id="plant-import-lost-extraction-queue">@pending.LostExtractionQueueItems @Plural(pending.LostExtractionQueueItems, "row", "rows") of the extraction queue</span>.
+                Let them finish or cancel them, then try again: the file you chose stays here.
+            </p>
+        }
+
+        @* WHAT THE FILE SAYS ABOUT THE FREE DRAWING, said BEFORE the confirmation and never left
+           out: the two cases do opposite things to something the operator may have spent hours on,
+           and they cannot be told apart by looking at the file's name. A file that carries the
+           field restores the drawing it holds - emptying it if that is what it holds, which is a
+           restore too; a file that does not carry it (every export made before 2026-09-19) leaves
+           the drawing alone. Silence here would let somebody import a file from yesterday and find
+           his drawing either wiped or kept, with no way to have known which. *@
+        <p class="plant-import-caveat" id="plant-import-decoration">
+            @if (pending.CarriesTheDrawing)
+            {
+                <text>This file carries the free drawing (labels and boxes added by hand): the current drawing
+                    is <strong>replaced</strong> with the one in the file. If the file carries an empty one, the
+                    current drawing is removed - that is a restore, not a mistake.</text>
+            }
+            else
+            {
+                <text>This file <strong>says nothing</strong> about the free drawing (it is an export made before
+                    the drawing travelled in the file, or an old .edd/.xml): the labels and boxes added by hand
+                    <strong>stay as they are now</strong>, neither replaced nor deleted.</text>
+            }
+        </p>
+
+        <p class="plant-import-caveat" id="plant-import-atomic-caveat">
+            All or nothing: the replacement happens in a single transaction, and an error before the
+            commit leaves the plant exactly as it is. If instead the connection drops or the host does
+            not answer in time, the outcome is unknown: reload and check before you go on.
+            Export the current plant before you confirm, if you have not done it already.
+        </p>
+        <p class="plant-import-caveat">Cannot be undone: after the confirmation the page reloads, and the API key has to be given again.</p>
+
+        <div class="plant-import-dialog-buttons">
+            <button type="button" id="plant-import-cancel-button" @onclick="CancelImport" disabled="@_busy">Cancel</button>
+            <button type="button" id="plant-import-confirm-button" class="drawio-btn-danger" @onclick="ConfirmImportAsync"
+                    disabled="@(_busy || pending.LostMissions > 0 || pending.LostExtractionQueueItems > 0 || EngineHoldsTheImport || pending.DoubledJunctionInThePlant is not null)">Confirm</button>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>The graph the page has loaded: only to know whether there is anything to export yet (the button is disabled otherwise) - the real export always reads again from scratch, see <see cref="ExportAsync"/>.</summary>
+    [Parameter]
+    public PlantGraph? Graph { get; set; }
+
+    [Parameter]
+    public bool CanEdit { get; set; }
+
+    /// <summary>
+    /// The engine's state as the host page shows it, or <b>null</b> when it is not known. Only for
+    /// what an import is told before its confirmation (<see cref="EngineHoldsTheImport"/>): the host
+    /// decides again under its own gate, and its 409 is still read as a refusal.
+    /// </summary>
+    [Parameter]
+    public NavigatorStatusTypes? EngineStatus { get; set; }
+
+    /// <summary>
+    /// An engine state KNOWN to be refused for an import: any state but Stop, for any file (owner's
+    /// decision of 27/9 on Pause). The confirmation is held. An unknown state does not hold it - it is
+    /// said, and the host decides.
+    /// </summary>
+    private bool EngineHoldsTheImport => EngineStatus is { } status && status != NavigatorStatusTypes.Stop;
+
+    /// <summary>
+    /// What the operator does next about a held file, for the state the engine is in (final review,
+    /// M4): in Run and Pause the operator stops it; in Recover it stops by itself once the plant is
+    /// recovered (Navigator.LoadNavigatorData ends in Stop); in Dispose it is shutting down.
+    /// </summary>
+    private string WhatToDoNow() => EngineStatus switch
+    {
+        NavigatorStatusTypes.Recover => "The engine stops by itself once it has recovered the plant: confirm then - the file you chose stays here.",
+        NavigatorStatusTypes.Dispose => "The engine is shutting down: confirm once it is stopped again - the file you chose stays here.",
+        _ => "Stop the engine, then confirm: the file you chose stays here.",
+    };
+
+    /// <summary>Why <see cref="EngineHoldsTheImport"/> holds the file: the engine's state, and in Pause what an import would leave behind.</summary>
+    private string EngineRefusal() => EngineStatus == NavigatorStatusTypes.Pause
+        ? "the host imports a plant only with the engine stopped (Stop) - the engine is in Pause, and an import rebuilds every device without its connection, which resuming from Pause does not open again."
+        : $"the host imports a plant only with the engine stopped (Stop) - the engine is in {EngineStatus}.";
+
+    /// <summary>
+    /// How the host page lets this component's one write through, or <b>null</b> to write straight
+    /// to the host - which is what <c>/editor</c> does and has always done.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>It exists because the two pages hold the edit permit by different rules, and this
+    /// component asks for it on neither of them.</b> Measured on a real host on 2026-09-20: with
+    /// <c>/editor/drawio</c> just opened, nobody holds the permit, and <c>PUT /plant/graph</c>
+    /// without one comes back <b>423</b> ("Nessuno tiene il permesso di modifica"). On
+    /// <c>/editor</c> that never showed because the page took the permit as it opened and kept it
+    /// for the whole session; on <c>/editor/drawio</c> the permit is asked for at each write, so an
+    /// import fired right after opening would have been refused by the host - and
+    /// <see cref="ConfirmImportAsync"/> would have told the operator his plant "may have been left
+    /// halfway", about a write the host never let start.
+    /// </para>
+    /// <para>
+    /// <b>It wraps the write instead of just asking for the permit</b>, because the permit is only
+    /// half of what the draw.io page has to do here: that page also keeps its four writing gestures
+    /// from interleaving (<c>DrawioEditor._plantWriter</c>), and the order in which the gate is
+    /// raised and the permit is asked for is itself a repair there. Handing the write over lets
+    /// that page keep both in one place; handing out only "ask for the permit" would have left the
+    /// gate to be raised by this component, which knows nothing about it.
+    /// </para>
+    /// <para>
+    /// The delegate returns <b>null</b> when the write went through, or the reason it was refused
+    /// BEFORE anything was written - which is the distinction that matters: a refusal is shown as a
+    /// plain error with the dialog still open and nothing touched, not as the "it may be halfway"
+    /// warning that a failure during the write earns.
+    /// </para>
+    /// </remarks>
+    [Parameter]
+    public Func<Func<Task>, Task<DrawioSaid?>>? WriteThroughThePage { get; set; }
+
+    /// <summary>
+    /// The address the full page reload after a confirmed import goes to. Defaults to
+    /// <c>/editor</c>, which is what this component has always done; <c>/editor/drawio</c> passes
+    /// its own, so that the reload lands on the page the operator was on instead of bouncing
+    /// through <c>EditorRedirect</c>.
+    /// </summary>
+    [Parameter]
+    public string ReloadUrl { get; set; } = "/editor";
+
+    private const string DownloadModulePath = "./_content/Wcs.WebEditor/plant-graph-download.js";
+
+    /// <summary>
+    /// The read ceiling of <c>IBrowserFile.OpenReadStream</c>: 64 MB, comfortably above the 29 MB
+    /// of the test plant's drawing and below the ceiling on the body of the host's requests
+    /// (256 MB, <c>MaxRequestBodyMegabytes</c>). Without this explicit parameter Blazor's default
+    /// limit is 500 KB: any real file would go past it, and <c>OpenReadStream</c> would throw while
+    /// reading it.
+    /// </summary>
+    private const long MaxImportBytes = 64L * 1024 * 1024;
+
+    private bool _busy;
+    private bool _writing;
+    private DrawioSaid? _error;
+
+    /// <summary>
+    /// Why the last comparison made again WITHOUT "Confirm" could not read the plant, or null: its
+    /// own state, not <see cref="_error"/> - nothing was attempted, so nothing was "not written" - and
+    /// cleared by the next comparison that reads the plant, whatever it finds.
+    /// </summary>
+    private DrawioSaid? _compareError;
+    private PendingImport? _pendingImport;
+    private IJSObjectReference? _downloadModule;
+
+    private string? ImportStatusText => _pendingImport is not { } pending ? null
+        : _writing ? $"Importing {pending.FileName}…"
+        : pending.PlantChanged ? $"{pending.FileName} was compared again because the plant changed."
+        : _error is not null ? $"{pending.FileName} was not imported."
+        : _compareError is not null ? $"{pending.FileName} could not be compared again."
+        : $"{pending.FileName} is waiting for confirmation.";
+
+    /// <summary>What a loaded file has become, waiting for the explicit confirmation (task 12, point 5) - not written anywhere yet.</summary>
+    /// <param name="LostMissions">
+    /// The missions on the plant now, whatever the imported format (native or legacy); no exported
+    /// file carries them. Critical 2 of the review counted them when <c>RemoveAllItemsAsync</c> still
+    /// deleted them: since the replacement is atomic the host refuses it while there are any.
+    /// </param>
+    /// <param name="LostExtractionQueueItems">As <see cref="LostMissions"/>, for the extraction queue.</param>
+    /// <param name="File">The native file as read, or null for an old drawing: with <see cref="LegacyReport"/>, what the proposal is worked out FROM, again, when the plant changes.</param>
+    /// <param name="PlantRead">The plant this comparison was made against, in a form that does not depend on the order the host lists it in (<see cref="Fingerprint"/>).</param>
+    /// <param name="PlantChanged">The plant was found changed since the comparison the operator saw last: the dialog says so.</param>
+    private sealed record PendingImport(string FileName, PlantGraphDto Proposed, PlantGraphDiff Diff,
+        LegacyGeometryImportDto? LegacyReport, int UnknownGuids, int ItemsNotMentioned,
+        int LostMissions, int LostExtractionQueueItems, PlantGraphDto? File, string PlantRead, bool PlantChanged = false)
+    {
+        /// <summary>
+        /// Whether this file speaks about the free drawing at all: see
+        /// <c>PlantGraphDto.Decoration</c>. It is read off the proposal rather than stored, so it
+        /// cannot drift from what will actually be sent.
+        /// </summary>
+        public bool CarriesTheDrawing => Proposed.Decoration is not null;
+
+        /// <summary>As for the drawing, null means that an old file says nothing about the PLC connections.</summary>
+        public bool CarriesPlcConnections => Proposed.PlcConnections is not null;
+
+        /// <summary>
+        /// For an old drawing, what to say when the plant it merges onto already joins two devices
+        /// twice the same way round (queue item 17, fix round): the host refuses such a plant, so the
+        /// import is held. Null otherwise.
+        /// </summary>
+        public string? DoubledJunctionInThePlant { get; init; }
+    }
+
+    /// <summary>Singular/plural for the counts of the confirmation dialog (minor fix M10 of the review: the plural used to be fixed, "1 devices").</summary>
+    private static string Plural(int count, string singular, string plural) => count == 1 ? singular : plural;
+
+    /// <summary>
+    /// Reads the plant from the host again and downloads it as JSON (task 12, point 1: <c>GET
+    /// /plant/graph</c>). It does not use <see cref="Graph"/> - that is the canvas's "light" graph
+    /// (<c>PlantItemDto</c>, without the door maps or the whole configuration): the export wants
+    /// everything an import will have to be able to put back, so it reads again from scratch, with
+    /// the same route the import compares against.
+    /// </summary>
+    private async Task ExportAsync()
+    {
+        _error = null;
+        _busy = true;
+        try
+        {
+            var graph = await State.Client.GetPlantGraphAsync();
+            var json = JsonSerializer.SerializeToUtf8Bytes(graph);
+            await using var stream = new MemoryStream(json);
+            using var streamRef = new DotNetStreamReference(stream);
+
+            // Null outside a real browser (bUnit, Loose mode): the same fallback the old dock's
+            // Toolbar.OnAfterRenderAsync used, see the comment in PlantCanvasBunitContext.
+            _downloadModule ??= await JS.InvokeAsync<IJSObjectReference?>("import", DownloadModulePath);
+            if (_downloadModule is not null)
+                await _downloadModule.InvokeVoidAsync("downloadFileFromStream", FileName(), streamRef);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or WcsApiException or JSException)
+        {
+            // JSException added (minor fix M13 of the review): importing the JS module or
+            // InvokeVoidAsync can throw it (script not reachable, circuit dropping right there), and
+            // without it the exception would leave the event handler and take down the whole Blazor
+            // Server circuit, instead of staying an error shown in this component.
+            _error = DrawioSaid.Failed($"Export failed because {Why(ex)}.", ex);
+        }
+        finally
+        {
+            _busy = false;
+        }
+        await RecompareIfAskedAsync();
+    }
+
+    private static string FileName() => $"plant-{DateTime.Now:yyyyMMdd-HHmmss}.json";
+
+    /// <summary>
+    /// Why something failed, in the page's words, for every line of this component that reports a
+    /// failure (row 37 of the queue, extended to the whole page by the owner's answer of 10/10): the
+    /// host's answer, no answer, an answer that cannot be read (<see cref="DrawioFailureWords.Why"/>),
+    /// or the browser's script (<see cref="DrawioFailureWords.WhyTheScriptDidNotAnswer"/>). What came
+    /// back - the host's answer as it came, with the problem document's title and detail and its trace
+    /// id, or the failure's own type and message - goes behind the line's "?" (<see cref="DrawioSaid.Failed"/>),
+    /// where the line used to quote the host's title and detail ("the host said: ...") or the
+    /// exception's message. Nothing is parsed any more, so a body that is not a problem document can no
+    /// longer throw inside the catch of a refusal.
+    /// </summary>
+    private static string Why(Exception ex) => ex is JSException
+        ? DrawioFailureWords.WhyTheScriptDidNotAnswer(ex)
+        : DrawioFailureWords.Why(ex);
+
+    /// <summary>
+    /// What a refusal of the plant's replacement means on its route, before anything was touched: 400
+    /// a plant the host does not take, 409 the plant's state (work pending, the engine not stopped),
+    /// 423 the edit permit (<see cref="DrawioSelectionCoordinator.HostRefusalMeaning"/>).
+    /// </summary>
+    private static string RefusalMeaning(WcsApiException refused) => refused.StatusCode == HttpStatusCode.BadRequest
+        ? "the plant in the file is not valid for the host"
+        : DrawioSelectionCoordinator.HostRefusalMeaning(refused);
+
+    /// <summary>A failure met while asking the host something: the host's answer, or no answer at all.</summary>
+    private static bool IsHostFailure(Exception ex) =>
+        ex is HttpRequestException or TaskCanceledException or WcsApiException or JsonException;
+
+    /// <summary>
+    /// Prepares the import (task 12, points 2-3): reads the plant as it is now, then reads the
+    /// loaded file - as native JSON (the output of <see cref="ExportAsync"/>) or as an old
+    /// <c>.edd</c>/<c>.xml</c> drawing (<c>DiagramGeometryReader</c> on the host, through
+    /// <see cref="LegacyGeometryMerge"/>) - and computes the comparison. It writes nothing yet:
+    /// <see cref="ConfirmImportAsync"/> does, only after the explicit confirmation on screen.
+    /// </summary>
+    private async Task OnFileSelectedAsync(InputFileChangeEventArgs e)
+    {
+        _error = null;
+        var file = e.File;
+        var extension = Path.GetExtension(file.Name).ToLowerInvariant();
+        if (extension is not (".json" or ".edd" or ".xml"))
+        {
+            _error = $"Format not recognized ({file.Name}): the files accepted are .json (this Editor's export) or the old .edd/.xml.";
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            // The plant, its missions and its extraction queue (ReadThePlantNowAsync). A failure here
+            // is the host's, not the file's: the file has not been opened yet.
+            PlantNow now;
+            try
+            {
+                now = await ReadThePlantNowAsync();
+            }
+            catch (Exception ex) when (IsHostFailure(ex))
+            {
+                _error = DrawioSaid.Failed($"The plant as it is now could not be read from the host because {Why(ex)}, so the file was not compared with it.", ex);
+                return;
+            }
+
+            if (extension == ".json")
+            {
+                await using var stream = file.OpenReadStream(MaxImportBytes);
+                PlantGraphDto? proposed;
+                try
+                {
+                    proposed = await JsonSerializer.DeserializeAsync<PlantGraphDto>(stream);
+                }
+                catch (JsonException ex)
+                {
+                    _error = DrawioSaid.Failed(NotAPlantFile, ex);
+                    return;
+                }
+                if (proposed is null || !HasEveryList(proposed))
+                {
+                    _error = NotAPlantFile;
+                    return;
+                }
+                if ((ValidateGeometries(proposed) ?? ValidateJunctions(proposed) ?? ValidatePlcConnections(proposed)) is { } validationError)
+                {
+                    _error = validationError;
+                    return;
+                }
+                await SetPendingAsync(Compare(file.Name, proposed, null, now));
+            }
+            else
+            {
+                await using var stream = file.OpenReadStream(MaxImportBytes);
+                LegacyGeometryImportDto legacy;
+                try
+                {
+                    // The host reads the old drawing (DiagramGeometryReader); it writes nothing, and
+                    // since 27/9 it asks for no edit permit either.
+                    legacy = await State.Client.ReadLegacyGeometryAsync(stream);
+                }
+                catch (Exception ex) when (IsHostFailure(ex))
+                {
+                    _error = DrawioSaid.Failed($"The host could not read the old drawing, because {Why(ex)}.", ex);
+                    return;
+                }
+                await SetPendingAsync(Compare(file.Name, null, legacy, now));
+            }
+        }
+        catch (IOException ex)
+        {
+            // Reading the chosen file itself: too large for MaxImportBytes, or the browser could not
+            // hand it over. Every answer of the host is caught above, where it is named as the host's.
+            _error = DrawioSaid.Failed(
+                $"The file could not be read: it is larger than the {MaxImportBytes / (1024 * 1024)} MB this page takes, or the browser did not hand it over.", ex);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private Task CancelImport()
+    {
+        if (_busy) return Task.CompletedTask;
+        return SetPendingAsync(null);
+    }
+
+    private const string NotAPlantFile = "The file is not a plant file: a .json file has to be an export of this Editor.";
+
+    /// <summary>
+    /// Whether a .json file that is valid JSON is shaped like a plant: the four lists present and no
+    /// null inside any list. The serializer lets both through - <c>null</c> comes back as a null
+    /// graph, <c>{}</c> as a graph with null lists, <c>[null]</c> as a list holding a null - and
+    /// every one of them used to throw further on (in <see cref="PlantGraphDiff.Compare"/> or in
+    /// the PLC checks), outside the handler's catch: on Blazor Server that ends the circuit.
+    /// </summary>
+    private static bool HasEveryList(PlantGraphDto graph) =>
+        graph is { Items: not null, Geometries: not null, Junctions: not null, DoorMappings: not null }
+        && !graph.Items.Any(item => item is null)
+        && !graph.Geometries.Any(geometry => geometry is null)
+        && !graph.Junctions.Any(junction => junction is null)
+        && !graph.DoorMappings.Any(mapping => mapping is null)
+        && (graph.PlcConnections is not { } connections || !connections.Any(connection => connection is null));
+
+    /// <summary>
+    /// One position per device: <see cref="PlantGraphDiff.Compare"/> indexes the positions by
+    /// device, and a device named twice would throw there, outside the handler's catch.
+    /// </summary>
+    private static string? ValidateGeometries(PlantGraphDto graph) =>
+        graph.Geometries.GroupBy(geometry => geometry.ItemId).FirstOrDefault(group => group.Count() > 1) is { } repeated
+            ? $"Device {repeated.Key} has more than one position in the file."
+            : null;
+
+    /// <summary>
+    /// One junction per pair of devices and per direction (queue item 17, owner's decision of 28/9):
+    /// the engine knows a junction by its source and destination, so a second one between the same
+    /// two, the same way round, means nothing - and the host refuses the file for it. Said here,
+    /// before the confirmation, with the two devices by name; A to B and B to A are two junctions.
+    /// </summary>
+    private static string? ValidateJunctions(PlantGraphDto graph) =>
+        TheFirstDoubledJunction(graph) is { } doubled
+            ? $"The file joins {doubled.From} to {doubled.To} twice, the same way round:" +
+              " two devices are joined by one junction in each direction at most. Remove one of the two from the file."
+            : null;
+
+    /// <summary>
+    /// The first pair of devices this graph joins twice the same way round, each device named by its
+    /// name and identifier (or the identifier alone), or null when there is none. One rule for the two
+    /// roads that ask it: a native file, where the double is in the file, and an old drawing, where it
+    /// is in the plant the proposal takes its junctions from.
+    /// </summary>
+    private static DoubledJunction? TheFirstDoubledJunction(PlantGraphDto graph)
+    {
+        var joined = new Dictionary<(Guid, Guid), JunctionDto>();
+        foreach (var junction in graph.Junctions)
+            if (!joined.TryAdd((junction.SourceItemId, junction.DestinationItemId), junction))
+                return new DoubledJunction(joined[(junction.SourceItemId, junction.DestinationItemId)], junction,
+                    Named(graph, junction.SourceItemId), Named(graph, junction.DestinationItemId));
+        return null;
+    }
+
+    /// <summary>A device of this graph as a line names it: its name and identifier, or the identifier alone.</summary>
+    private static string Named(PlantGraphDto graph, Guid itemId) =>
+        graph.Items.FirstOrDefault(item => item.ItemId == itemId) is { Name: { Length: > 0 } name } ? $"{name} ({itemId})" : itemId.ToString();
+
+    /// <summary>Two junctions joining the same two devices the same way round, and the two devices by name.</summary>
+    private sealed record DoubledJunction(JunctionDto First, JunctionDto Second, string From, string To);
+
+    /// <summary>
+    /// What to say about a double the PLANT holds, under an old drawing (last fix round of queue item
+    /// 17). "Delete one of the two arrows" is a remedy only while the arrows are on the drawing, and
+    /// an arrow is drawn only when both its devices are (<c>DrawioDocument.WhyNotDrawn</c>: a box, and
+    /// a type the registry declares) - a plant with undrawn devices is exactly the one that takes its
+    /// positions from an old drawing. No gesture of this page deletes a junction that is not drawn:
+    /// the junction list is read-only, and the save deletes only what the drawing stops carrying. So
+    /// the line names the two junctions and says it plainly.
+    /// </summary>
+    /// <remarks>
+    /// "Drawn" is asked of <c>DrawioDocument.WhatKeepsItOffTheDrawing</c>, the one rule the drawing
+    /// itself is built with, with the page's type registry - not a second copy of it here.
+    /// </remarks>
+    /// <param name="typesByDeviceType">The page's type registry (<see cref="PlantGraph.TypesByDeviceType"/>): the types the drawing can draw.</param>
+    private static string WhatToDoAboutADoubleInThePlant(DoubledJunction doubled, PlantGraphDto plant,
+        IReadOnlyDictionary<DeviceTypes, DeviceTypeDto> typesByDeviceType)
+    {
+        var undrawn = new[] { doubled.First.SourceItemId, doubled.First.DestinationItemId }
+            .Where(end => !Drawn(end))
+            .Select(end => Named(plant, end))
+            .ToList();
+        if (undrawn.Count == 0)
+            return $"The plant already holds two junctions from {doubled.From} to {doubled.To} (drawn one on top of the other): delete one of the two arrows, save, then import again.";
+
+        return $"The plant already holds two junctions from {doubled.From} to {doubled.To}, {doubled.First.JunctionId} and {doubled.Second.JunctionId},"
+            + $" and their arrows are not on the drawing, because {string.Join(" and ", undrawn)} {(undrawn.Count == 1 ? "is" : "are")} not drawn."
+            + " No gesture of this page deletes a junction that is not drawn: removing one of the two takes the host's API"
+            + " (DELETE /plant/junctions/{id}) or a support action. Then import again.";
+
+        bool Drawn(Guid itemId) =>
+            plant.Items.FirstOrDefault(item => item.ItemId == itemId) is { } item
+            && Wcs.WebEditor.Drawio.DrawioDocument.WhatKeepsItOffTheDrawing(
+                    plant.Geometries.FirstOrDefault(geometry => geometry.ItemId == itemId)?.Width,
+                    (DeviceTypes)item.DeviceType, typesByDeviceType)
+                is (false, false);
+    }
+
+    /// <summary>
+    /// Brings forward to the file picker the PLC invariants the host defends too. Above all it keeps
+    /// a repeated Id from reaching the dictionary the comparison uses, which would leave the circuit
+    /// without an outcome the operator can read.
+    /// </summary>
+    private static string? ValidatePlcConnections(PlantGraphDto graph)
+    {
+        if (graph.PlcConnections is not { } connections) return null;
+
+        // The same checks as the grid of the connections (row 62): one copy only, in
+        // PlcConnectionRules. Here the first problem is named, in the WinForms' order.
+        if (PlcConnectionRules.Problems(connections) is [var first, ..])
+            return first.Kind == PlcConnectionProblemKind.IdNotPositive
+                ? "The Ids of the PLC connections must be greater than zero."
+                : $"PLC connection {first.Id} appears more than once in the file.";
+
+        var ids = connections.Select(connection => connection.Id).ToHashSet();
+        foreach (var item in graph.Items)
+        {
+            if (!PlcConnectionRules.TryReadReference(item.DeviceConnectionId, out var connectionId))
+                return $"Device {item.ItemId} has a PLC connection that is not valid.";
+            if (connectionId > 0 && !ids.Contains(connectionId))
+                return $"Device {item.ItemId} refers to PLC connection {connectionId}, " +
+                       "which is not in the file.";
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Really writes (task 12, point 2: <c>PUT /plant/graph</c>), only after the explicit
+    /// confirmation. It cannot be undone, but it is <b>atomic</b>: see the comment at the top of the
+    /// file, and the three outcomes this method tells apart - success, refused with nothing changed,
+    /// outcome unknown.
+    /// </summary>
+    private async Task ConfirmImportAsync()
+    {
+        // _busy also covers a comparison being made again (RecompareAsync): its answer may replace
+        // the very proposal this click would send.
+        if (_busy || _pendingImport is not { } pending) return;
+
+        // Pressed again after "the plant changed": the notice has done its job, and whatever this
+        // click ends in - a refusal, a write, or another change - is what the dialog and the
+        // host component say from now on (second fix round of 27/9, B). Confirm reads the plant
+        // itself, so a background comparison's failure is no longer the news either.
+        if (pending.PlantChanged)
+            _pendingImport = pending = pending with { PlantChanged = false };
+        _compareError = null;
+
+        // The button is held in this case; a click that raced a state the page has just shown is
+        // refused the same way, before anything is sent.
+        if (EngineHoldsTheImport)
+        {
+            _error = $"Nothing was sent: {EngineRefusal()}";
+            await NotifyAsync();
+            return;
+        }
+
+        _busy = true;
+        _writing = true;
+        _error = null;
+        await NotifyAsync();
+        try
+        {
+            // The page's own way through, when it has one: it takes the edit permit and keeps this
+            // write from crossing the others it runs. A refusal here means NOTHING was written -
+            // the host was never asked - so the dialog stays open, the proposal stays in hand, and
+            // the page is NOT reloaded: there is nothing to go and check, and reloading would throw
+            // away a file the operator has already chosen.
+            if (WriteThroughThePage is { } through)
+            {
+                if (await through(() => WriteUnlessThePlantChangedAsync(pending)) is { } refused)
+                {
+                    // _busy back down, and it is not a detail: every other way out of this method
+                    // ends in a full page reload, so the field's only reader dies with the page.
+                    // This one does not - leaving it raised would grey out "Confirm", "Cancel"
+                    // and both buttons of the bar for the rest of the session, on a refusal whose
+                    // remedy is to press Confirm again in a moment.
+                    _busy = false;
+                    _writing = false;
+                    _error = refused;
+                    await NotifyAsync();
+                    await RecompareIfAskedAsync();
+                    return;
+                }
+            }
+            else
+            {
+                await WriteUnlessThePlantChangedAsync(pending);
+            }
+        }
+        // NOTHING WAS SENT, because the plant is not the one the confirmation was showing - or could
+        // not be read to find out (IMPORTANT 1 of the review of 27/9). Thrown from inside the write,
+        // past the page's gate and its permit, and of a type that neither the gate
+        // (DrawioEditor.ImportThroughTheGateAsync) nor the catches below recognize: nothing forgets
+        // the canvas's unsaved work and nothing reloads, because nothing was attempted.
+        catch (ImportNotSent notSent)
+        {
+            _busy = false;
+            _writing = false;
+            if (notSent.Renewed is { } renewed)
+            {
+                await SetPendingAsync(renewed with { PlantChanged = true });
+            }
+            else
+            {
+                _error = notSent.Reason;
+                await NotifyAsync();
+            }
+            await RecompareIfAskedAsync();
+            return;
+        }
+        // REFUSED AND NOTHING CHANGED, which is a different outcome from "I do not know how it
+        // ended", and until 21/9/2026 it ended up in the same place: a 409 - work in progress,
+        // engine in Run - or a 400 on an invalid file got the blocking "it may have been left
+        // halfway" warning, the release of the permit and the full reload. That is, on the safest
+        // outcome this route can give, the most alarming message this page can say. Here the
+        // plant is untouched by construction (the replacement is a single transaction, and these
+        // two refusals come before the commit): the reason the host sends is said, the chosen
+        // file stays where it is for a second try, and nothing is reloaded.
+        // Fix round 1: 423 (Locked) added to the same branch. RequiresEditPermission runs
+        // EditPermissionFilter BEFORE the body of the route (H/Security/EditPermissionFilter.cs): a
+        // permit that expired, or was taken by another circuit, between EnsureWritableAsync's check
+        // and the PUT actually arriving answers 423 with exactly the same meaning - refused before
+        // anything was touched - and it deserves the same treatment, not the alarming warning of
+        // the unknown outcomes below.
+        catch (WcsApiException refused) when (refused.StatusCode is HttpStatusCode.Conflict or HttpStatusCode.BadRequest or HttpStatusCode.Locked)
+        {
+            _busy = false;
+            _writing = false;
+            _error = DrawioSaid.Failed($"Import refused, and the plant was not touched: the host refused it - {RefusalMeaning(refused)}.", refused);
+            await NotifyAsync();
+            await RecompareIfAskedAsync();
+            return;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or WcsApiException)
+        {
+            // Fix of Critical 1 of the review, still true since the replacement became atomic:
+            // "Import failed" would be false whenever the outcome is not known - a dropped
+            // connection, a client timeout or a 5xx can come after the commit, and in one case
+            // after a commit the engine could not read back (see the comment at the top of the
+            // file). A blocking alert, not _error, because the full reload that follows (here too,
+            // not only on success - the canvas cannot go on painting a plant that may no longer
+            // exist) would at once wipe out a message left only in the _error field of a component
+            // about to be destroyed.
+            await TryReleaseEditLockAsync();
+            try
+            {
+                await JS.InvokeVoidAsync("alert",
+                    $"The outcome of the import is not known: the plant may or may not have been replaced, and in one case it may have been replaced in the database without the engine managing to read it back. Reload and check before you go on. Detail: {DrawioFailureWords.Detail(ex)}");
+            }
+            catch (Exception jsEx) when (jsEx is JSException or TaskCanceledException)
+            {
+                // The circuit may already have dropped: the reload below stays the warning that counts.
+            }
+            Navigation.NavigateTo(ReloadUrl, forceLoad: true);
+            return;
+        }
+
+        await TryReleaseEditLockAsync();
+        Navigation.NavigateTo(ReloadUrl, forceLoad: true);
+    }
+
+    /// <summary>
+    /// Fix of Important 5 of the review: without this explicit release BEFORE the reload, the old
+    /// circuit stays alive for up to about three minutes (the default retention of a disconnected
+    /// Blazor Server circuit) and goes on renewing a permit the new circuit does not see - the
+    /// Editor comes back read-only, with the band saying that "another editor is editing" (it is
+    /// itself, from the dead circuit), until it is reloaded again. The same exception filter as the
+    /// page's own release (<c>DrawioEditor.razor</c>, DisposeAsync): an unreachable host must not
+    /// stop the reload, and the permit expires by itself anyway.
+    /// </summary>
+    private async Task TryReleaseEditLockAsync()
+    {
+        try
+        {
+            await State.Client.ReleaseEditLockAsync(State.Holder);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or WcsApiException)
+        {
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_downloadModule is not null)
+        {
+            try
+            {
+                await _downloadModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // The circuit has already dropped (the full reload after a successful import, or a
+                // tab being closed): there is no module left to free on the other side, and trying
+                // would only throw for the attempt - the same fallback the old dock's
+                // Toolbar.DisposeAsync used.
+            }
+        }
+    }
+
+    /// <summary>
+    /// Told whenever the file waiting for "Confirm" changes state (<see cref="PlantImportStatus"/>),
+    /// or <b>null</b> once none is waiting. Only for the host component to SAY so (DrawioPlantFile's
+    /// summary line, which the operator still sees when the section holding this dialog is shut) -
+    /// it changes nothing of what happens here. A confirmed import does not report its end: the page
+    /// is reloaded instead.
+    /// </summary>
+    [Parameter]
+    public EventCallback<PlantImportStatus?> OnPendingImportChanged { get; set; }
+
+    /// <summary>
+    /// Whether the host shows this component now - false while the draw.io page's "Plant file"
+    /// section is shut. A confirmation that waited while it was not shown is compared with the plant
+    /// again as soon as it is shown again (IMPORTANT 1 of the review of 27/9). True by default: a
+    /// host that never hides it has nothing to say here.
+    /// </summary>
+    [Parameter]
+    public bool Shown { get; set; } = true;
+
+    private bool _wasShown = true;
+    private int? _revisionSeen;
+    private bool _recompareAgain;
+    private PlantImportStatus? _told;
+
+    /// <summary>
+    /// IMPORTANT 1 of the review of 27/9. A confirmation can wait - hidden in its shut section -
+    /// while the plant changes: what it shows was worked out when the file was chosen, and for an
+    /// old drawing so was the whole proposal (the plant of that moment with the drawing's positions
+    /// on it). It is compared again when the host shows it again, and when the plant the page holds
+    /// moves (<see cref="PlantGraph.Revision"/>: a write of this page, or a reread); and in any case
+    /// "Confirm" compares again just before writing (<see cref="WriteUnlessThePlantChangedAsync"/>),
+    /// which is the check that counts - these two only make a change seen sooner.
+    /// </summary>
+    protected override async Task OnParametersSetAsync()
+    {
+        var reopened = Shown && !_wasShown;
+        _wasShown = Shown;
+        var moved = Graph is { } graph && _revisionSeen is { } seen && graph.Revision != seen;
+        _revisionSeen = Graph?.Revision;
+        if (_pendingImport is not null && (reopened || moved))
+            await RecompareAsync();
+    }
+
+    /// <summary>
+    /// Compares the waiting file with the plant as it is now; a different answer replaces the
+    /// dialog's, said as such. It never writes and never throws: a plant that cannot be read leaves
+    /// the dialog as it was, with a line that says so - "Confirm" reads it again anyway.
+    /// </summary>
+    private async Task RecompareAsync()
+    {
+        // Held back, not dropped (second fix round of 27/9, D): whoever holds _busy - a Confirm, an
+        // export, a comparison already running - runs it when it ends (RecompareIfAskedAsync).
+        if (_busy)
+        {
+            _recompareAgain = true;
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            do
+            {
+                _recompareAgain = false;
+                if (_pendingImport is not { } shown) return;
+                PendingImport now;
+                try
+                {
+                    now = Compare(shown.FileName, shown.File, shown.LegacyReport, await ReadThePlantNowAsync());
+                }
+                catch (Exception ex) when (IsHostFailure(ex))
+                {
+                    _compareError = DrawioSaid.Failed(
+                        $"The plant could not be read again to check this file against it because {Why(ex)}: the comparison below may be old. \"Confirm\" reads it again before writing anything.", ex);
+                    await NotifyAsync();
+                    return;
+                }
+                if (!ReferenceEquals(_pendingImport, shown)) return;
+                _compareError = null;
+                if (!SameAsShown(shown, now))
+                {
+                    _error = null;
+                    await SetPendingAsync(now with { PlantChanged = true });
+                }
+                else
+                {
+                    await NotifyAsync();
+                }
+            }
+            while (_recompareAgain);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>A comparison asked for while something else held <see cref="_busy"/>, run now that it has ended.</summary>
+    private async Task RecompareIfAskedAsync()
+    {
+        if (_recompareAgain && !_busy) await RecompareAsync();
+    }
+
+    /// <summary>
+    /// The write of "Confirm", with the comparison made once more right before it - inside the
+    /// page's gate and under its edit permit when there is one, so that no other writer of this page,
+    /// and no other editor, can change the plant between this check and the PUT (the engine's
+    /// missions still can: the host refuses those itself). A plant that is not the one the dialog was
+    /// showing is not written: <see cref="ImportNotSent"/> carries the new comparison back to it.
+    /// </summary>
+    private async Task WriteUnlessThePlantChangedAsync(PendingImport shown)
+    {
+        PendingImport now;
+        try
+        {
+            now = Compare(shown.FileName, shown.File, shown.LegacyReport, await ReadThePlantNowAsync());
+        }
+        catch (Exception ex) when (IsHostFailure(ex))
+        {
+            throw new ImportNotSent(
+                DrawioSaid.Failed(
+                    $"Nothing was written: the plant could not be read again just before writing, to check that it is still the one this confirmation compares the file with, because {Why(ex)}. Confirm again in a moment.",
+                    ex),
+                null);
+        }
+        if (!SameAsShown(shown, now))
+            throw new ImportNotSent(null, now);
+        await State.Client.ReplacePlantGraphAsync(shown.Proposed);
+    }
+
+    /// <summary>Nothing was sent: the plant changed (<see cref="Renewed"/>, the new comparison), or it could not be read (<see cref="Reason"/>).</summary>
+    private sealed class ImportNotSent(DrawioSaid? reason, PendingImport? renewed)
+        : Exception(reason?.Text ?? "The plant changed under the confirmation.")
+    {
+        public DrawioSaid? Reason { get; } = reason;
+        public PendingImport? Renewed { get; } = renewed;
+    }
+
+    /// <summary>The three reads a comparison is made of, taken together.</summary>
+    private sealed record PlantNow(PlantGraphDto Plant, int Missions, int ExtractionQueueItems);
+
+    /// <summary>
+    /// Missions and extraction queue always, native or legacy (Critical 2 of the review): they are
+    /// not in the PlantGraphDto (PlantGraphDiff does not see them), so they are counted here, apart,
+    /// before the operator confirms - the host refuses while there are any.
+    /// </summary>
+    private async Task<PlantNow> ReadThePlantNowAsync()
+    {
+        var currentTask = State.Client.GetPlantGraphAsync();
+        var missionsTask = State.Client.GetMissionsAsync();
+        var extractionQueueTask = State.Client.GetExtractionQueueAsync(take: 1000);
+        await Task.WhenAll(currentTask, missionsTask, extractionQueueTask);
+        return new PlantNow(await currentTask, (await missionsTask).Count, (await extractionQueueTask).Count);
+    }
+
+    /// <summary>
+    /// What a chosen file becomes against the plant <paramref name="now"/>: a native file is the
+    /// proposal itself; an old drawing (<paramref name="legacy"/>) is merged onto the plant as it is
+    /// now, so its proposal is worked out again whenever the plant changes.
+    /// </summary>
+    private PendingImport Compare(string fileName, PlantGraphDto? file, LegacyGeometryImportDto? legacy, PlantNow now)
+    {
+        var (proposed, unknownGuids, itemsNotMentioned) = legacy is not null
+            ? LegacyGeometryMerge.Apply(now.Plant, legacy)
+            : (file!, 0, 0);
+        // An old drawing carries only positions: its junctions are the plant's (LegacyGeometryMerge),
+        // so a double here is in the PLANT, and the host would refuse the import after "Confirm"
+        // (queue item 17, fix round). A native file with a double never gets this far (ValidateJunctions).
+        // Whether its arrows are on the drawing is asked of the plant as it is NOW, which is what
+        // the drawing shows - not of the proposal, which carries the old drawing's positions.
+        var doubledInThePlant = legacy is not null && TheFirstDoubledJunction(proposed) is { } doubled
+            ? WhatToDoAboutADoubleInThePlant(doubled, now.Plant, (Graph ?? new PlantGraph()).TypesByDeviceType)
+            : null;
+        return new PendingImport(fileName, proposed, PlantGraphDiff.Compare(now.Plant, proposed), legacy,
+            unknownGuids, itemsNotMentioned, now.Missions, now.ExtractionQueueItems, file, Fingerprint(now.Plant))
+        {
+            DoubledJunctionInThePlant = doubledInThePlant,
+        };
+    }
+
+    /// <summary>The same plant and the same work in progress as the comparison on screen: nothing the dialog says, or would send, has moved.</summary>
+    private static bool SameAsShown(PendingImport shown, PendingImport now) =>
+        shown.PlantRead == now.PlantRead
+        && shown.LostMissions == now.LostMissions
+        && shown.LostExtractionQueueItems == now.LostExtractionQueueItems;
+
+    /// <summary>
+    /// The plant as a string that two reads of the same plant always give alike: each list's rows
+    /// written out one by one and sorted, so that the order the host happens to list them in (items
+    /// by ASI and name, the others as the database gives them) cannot pass for a change.
+    /// </summary>
+    private static string Fingerprint(PlantGraphDto plant)
+    {
+        static string Rows<T>(IEnumerable<T>? rows) => rows is null
+            ? "(absent)"
+            : string.Join('\u001e', rows.Select(row => JsonSerializer.Serialize(row)).Order(StringComparer.Ordinal));
+        return string.Join('\u001d', Rows(plant.Items), Rows(plant.Geometries), Rows(plant.Junctions),
+            Rows(plant.DoorMappings), Rows(plant.PlcConnections), plant.Decoration ?? "(absent)");
+    }
+
+    /// <summary>The only way <see cref="_pendingImport"/> changes, so that the host component is told every time.</summary>
+    private Task SetPendingAsync(PendingImport? pending)
+    {
+        _pendingImport = pending;
+        return NotifyAsync();
+    }
+
+    /// <summary>Tells the host where the waiting file stands, when that changed since it was last told.</summary>
+    private Task NotifyAsync()
+    {
+        PlantImportStatus? status = _pendingImport is not { } pending
+            ? null
+            : new PlantImportStatus(pending.FileName,
+                _writing ? PlantImportPhase.Writing
+                : pending.PlantChanged ? PlantImportPhase.PlantChanged
+                : _error is not null ? PlantImportPhase.NotWritten
+                : _compareError is not null ? PlantImportPhase.NotCompared
+                : PlantImportPhase.Waiting);
+        if (status == _told) return Task.CompletedTask;
+        _told = status;
+        return OnPendingImportChanged.InvokeAsync(status);
+    }
+}

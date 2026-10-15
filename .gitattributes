@@ -1,0 +1,3 @@
+# Line endings: LF in the repository, the platform's own in the working copy.
+# Files git detects as binary from their content (.png, .ico, .ttf, binary .resx) are left alone.
+* text=auto

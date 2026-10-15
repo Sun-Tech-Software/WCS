@@ -1,0 +1,315 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!-- 
+    Microsoft ResX Schema 
+    
+    Version 2.0
+    
+    The primary goals of this format is to allow a simple XML format 
+    that is mostly human readable. The generation and parsing of the 
+    various data types are done through the TypeConverter classes 
+    associated with the data types.
+    
+    Example:
+    
+    ... ado.net/XML headers & schema ...
+    <resheader name="resmimetype">text/microsoft-resx</resheader>
+    <resheader name="version">2.0</resheader>
+    <resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
+    <resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
+    <data name="Name1"><value>this is my long string</value><comment>this is a comment</comment></data>
+    <data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
+    <data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
+        <value>[base64 mime encoded serialized .NET Framework object]</value>
+    </data>
+    <data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+        <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
+        <comment>This is a comment</comment>
+    </data>
+                
+    There are any number of "resheader" rows that contain simple 
+    name/value pairs.
+    
+    Each data row contains a name, and value. The row also contains a 
+    type or mimetype. Type corresponds to a .NET class that support 
+    text/value conversion through the TypeConverter architecture. 
+    Classes that don't support this are serialized and stored with the 
+    mimetype set.
+    
+    The mimetype is used for serialized objects, and tells the 
+    ResXResourceReader how to depersist the object. This is currently not 
+    extensible. For a given mimetype the value must be set accordingly:
+    
+    Note - application/x-microsoft.net.object.binary.base64 is the format 
+    that the ResXResourceWriter will generate, however the reader can 
+    read any of the formats listed below.
+    
+    mimetype: application/x-microsoft.net.object.binary.base64
+    value   : The object must be serialized with 
+            : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
+            : and then encoded with base64 encoding.
+    
+    mimetype: application/x-microsoft.net.object.soap.base64
+    value   : The object must be serialized with 
+            : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.bytearray.base64
+    value   : The object must be serialized into a byte array 
+            : using a System.ComponentModel.TypeConverter
+            : and then encoded with base64 encoding.
+    -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="strChangeStorageLocation" xml:space="preserve">
+    <value>Change LUs store location from Cell {0} to {1}</value>
+  </data>
+  <data name="strDeleteLuExtractionQueue" xml:space="preserve">
+    <value>to delete the LU {0} from the extraction queue</value>
+  </data>
+  <data name="strErrLuExtractionQueueProcessed" xml:space="preserve">
+    <value>The LU {0} can not be deleted because it has already been processed</value>
+  </data>
+  <data name="strErrLuNotPresentExtractionQueue" xml:space="preserve">
+    <value>The LU {0} is not present in extraction queue</value>
+  </data>
+  <data name="strErrMoveLuDataEmpty" xml:space="preserve">
+    <value>Move LU Error: Source door code, destination door code or workstation id is empty</value>
+  </data>
+  <data name="strErrMoveLuDestNoLink" xml:space="preserve">
+    <value>Move LU Error: No item linked to destination door code {0}</value>
+  </data>
+  <data name="strErrMoveLuDestNotExsits" xml:space="preserve">
+    <value>Move LU Error: Destination door code {0} doesn't exist</value>
+  </data>
+  <data name="strErrMoveLuExceedMaxWeight" xml:space="preserve">
+    <value>Move LU Error: the destination item {0} has the max loadable weight at {1} kg, and the requested LU is {2} kg. The system can't unload the LU to this destination</value>
+  </data>
+  <data name="strErrMoveLuInExtractQueue" xml:space="preserve">
+    <value>Move LU Error: The requested LU {0} is still in the extraction queue</value>
+  </data>
+  <data name="strErrMoveLuItemError" xml:space="preserve">
+    <value>Move LU Error: Source or Destination door code doesn't exist</value>
+  </data>
+  <data name="strErrMoveLuItemHoldLUNotReady" xml:space="preserve">
+    <value>Move LU Error: The Item holding the requested Mission is not ready</value>
+  </data>
+  <data name="strErrMoveLuLoadLuItemNotReady" xml:space="preserve">
+    <value>Move LU Error: Can not load LU on Item because it is not ready</value>
+  </data>
+  <data name="strErrMoveLuLockedByNote" xml:space="preserve">
+    <value>Move LU Error: The requested LU {0} is locked by an extraction note</value>
+  </data>
+  <data name="strErrMoveLuLuNotExist" xml:space="preserve">
+    <value>Move LU Error: The requested LU does not exist</value>
+  </data>
+  <data name="strErrMoveLuMissionNotExist" xml:space="preserve">
+    <value>Move LU Error: The Mission requested does not exist</value>
+  </data>
+  <data name="strErrMoveLuMissionPositionNotExist" xml:space="preserve">
+    <value>Move LU Error: The Mission position does not exist</value>
+  </data>
+  <data name="strErrMoveLuNavNotRunMode" xml:space="preserve">
+    <value>Move LU Error: Can not load LU on Item because Navigator is not in run mode</value>
+  </data>
+  <data name="strErrMoveLuNoPickingZoneLu" xml:space="preserve">
+    <value>Move LU Error: Picking zones are not set for this Buffer Area, I can't extract LU {0}</value>
+  </data>
+  <data name="strErrMoveLuNoPickingZoneReference" xml:space="preserve">
+    <value>Move LU Error: Picking zones are not set for this Buffer Area, I can't extract Reference {0}</value>
+  </data>
+  <data name="strErrMoveLuNoRelocationItem" xml:space="preserve">
+    <value>Move LU Error: The RelocateLUAutomationItem has not set</value>
+  </data>
+  <data name="strErrMoveLuNoStoreLocation" xml:space="preserve">
+    <value>Move LU Error: The requested LU is not in a store item location or cell is locked</value>
+  </data>
+  <data name="strErrMoveLuNotFound" xml:space="preserve">
+    <value>Move LU Error: LU {0} not found, can not move it to {1}</value>
+  </data>
+  <data name="strErrMoveLuNotFoundOrLocked" xml:space="preserve">
+    <value>Move LU Error: LU {0} not found or storing cell is locked or LU is locked, can not move LU to {1}</value>
+  </data>
+  <data name="strErrMoveLuRejectLuItemNoLu" xml:space="preserve">
+    <value>Move LU Error: Can not search a storage location from Item because it has no LU loaded</value>
+  </data>
+  <data name="strErrMoveLuRejectLuItemNotReady" xml:space="preserve">
+    <value>Move LU Error: Can not search for a storage location from the Item because it was not ready</value>
+  </data>
+  <data name="strErrMoveLuRejectLuItemTrasfering" xml:space="preserve">
+    <value>Move LU Error: Can not reject LU from Item because it is transferring the LU</value>
+  </data>
+  <data name="strErrMoveLuSearchLuItemLuNoCode" xml:space="preserve">
+    <value>Move LU Error: Can not search a storage location from Item because the LU haven't code</value>
+  </data>
+  <data name="strErrMoveLuSearchLuItemNoLu" xml:space="preserve">
+    <value>Move LU Error: Can not search a storage location from Item because it has no LU loaded</value>
+  </data>
+  <data name="strErrMoveLuSearchLuItemNotReady" xml:space="preserve">
+    <value>Move LU Error: Can not search for a storage location from the Item because it was not ready</value>
+  </data>
+  <data name="strErrMoveLuSourceNoLink" xml:space="preserve">
+    <value>Move LU Error: No item linked to source door code {0}</value>
+  </data>
+  <data name="strErrMoveLuSourceNotExsits" xml:space="preserve">
+    <value>Move LU Error: Source door code {0} doesn't exist</value>
+  </data>
+  <data name="strErrMoveLuStoreNoPickup" xml:space="preserve">
+    <value>Move LU Error: The Store Item has not pickup LU item</value>
+  </data>
+  <data name="strErrMoveLuUnloadDisabled" xml:space="preserve">
+    <value>Move LU Error: Can not Unload LU from Item because the function has been disabled</value>
+  </data>
+  <data name="strErrMoveLuUnloadLuItemNoLu" xml:space="preserve">
+    <value>Move LU Error: Can not  unload LU from Item because it has no LU loaded</value>
+  </data>
+  <data name="strErrMoveLuUnloadLuItemNotReady" xml:space="preserve">
+    <value>Move LU Error: Can not unload LU from the Item because it was not ready</value>
+  </data>
+  <data name="strErrNavigatorStop" xml:space="preserve">
+    <value>Navigator was in STOP MODE</value>
+  </data>
+  <data name="strErrReloadDiagram" xml:space="preserve">
+    <value>Navigator was in RUN MODE, yod have to stop navigator to reload diagram</value>
+  </data>
+  <data name="strErrSearchStorageLu" xml:space="preserve">
+    <value>The navigator can not search a storage location from Automation Item because the LU has no code</value>
+  </data>
+  <data name="strErrToShortExecuteSteps" xml:space="preserve">
+    <value>Execute Steps, but the command will not be executed because it is too near to the last Execute Steps request</value>
+  </data>
+  <data name="strExecuteStep" xml:space="preserve">
+    <value>Execute Step on Item {0}.{1}.{2}</value>
+  </data>
+  <data name="strExecuteSteps" xml:space="preserve">
+    <value>Execute Steps</value>
+  </data>
+  <data name="strInfoLog" xml:space="preserve">
+    <value>Workstation {0} requested:</value>
+  </data>
+  <data name="strLoadLuNoCode" xml:space="preserve">
+    <value>Load Lu on Item {0}.{1}.{2}</value>
+  </data>
+  <data name="strLoadLuWithCode" xml:space="preserve">
+    <value>Unload Lu {3} on Item {0}.{1}.{2}</value>
+  </data>
+  <data name="strMoveLuManual" xml:space="preserve">
+    <value>Move LU {3} Manually on Item {0}.{1}.{2}</value>
+  </data>
+  <data name="strNavDefragDisabled" xml:space="preserve">
+    <value>Navigator Defragmentation Disabled</value>
+  </data>
+  <data name="strNavDefragEnabled" xml:space="preserve">
+    <value>Navigator Defragmentation Enabled</value>
+  </data>
+  <data name="strNavErrNavRunMode" xml:space="preserve">
+    <value>Navigator was in RUN MODE</value>
+  </data>
+  <data name="strNavigatorRun" xml:space="preserve">
+    <value>Navigator Run</value>
+  </data>
+  <data name="strNavigatorStop" xml:space="preserve">
+    <value>Navigator Stop</value>
+  </data>
+  <data name="strPhysicallyEmptyCell" xml:space="preserve">
+    <value>Physically empty the Cell {0}</value>
+  </data>
+  <data name="strRejectLuNoCode" xml:space="preserve">
+    <value>Reject Lu on Item {0}.{1}.{2}</value>
+  </data>
+  <data name="strRejectLuWithCode" xml:space="preserve">
+    <value>Reject Lu {3} on Item {0}.{1}.{2}</value>
+  </data>
+  <data name="strReloadDiagram" xml:space="preserve">
+    <value>Reload Diagram</value>
+  </data>
+  <data name="strRemoveAllLUs" xml:space="preserve">
+    <value>Remove All LUs</value>
+  </data>
+  <data name="strSearchStorageLuNoCode" xml:space="preserve">
+    <value>Search a storage location for LU on Item {0}.{1}.{2}</value>
+  </data>
+  <data name="strSearchStorageLuWithCode" xml:space="preserve">
+    <value>Search a storage location for LU {3} on Item {0}.{1}.{2}</value>
+  </data>
+  <data name="strSerReadyAllItems" xml:space="preserve">
+    <value>Set Status Ready All Items</value>
+  </data>
+  <data name="strSetOffLine" xml:space="preserve">
+    <value>Set off-line Item {0}.{1}.{2}</value>
+  </data>
+  <data name="strSetOnLine" xml:space="preserve">
+    <value>Set on line Item {0}.{1}.{2}</value>
+  </data>
+  <data name="strStepDone" xml:space="preserve">
+    <value>Step Done on Item {0}.{1}.{2}</value>
+  </data>
+  <data name="strUnloadLuNoCode" xml:space="preserve">
+    <value>Unload Lu on Item {0}.{1}.{2}</value>
+  </data>
+  <data name="strUnloadLuWithCode" xml:space="preserve">
+    <value>Unload Lu {3} on Item {0}.{1}.{2}</value>
+  </data>
+  <data name="strPositionItem_cannot_be_null" xml:space="preserve">
+    <value>PositionItem cannot be null.</value>
+  </data>
+  <data name="strTipoRicerca_cannot_be_null" xml:space="preserve">
+    <value>TipoRicerca cannot be null.</value>
+  </data>
+</root>

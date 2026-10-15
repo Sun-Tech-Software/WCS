@@ -1,0 +1,180 @@
+@* La mappa porte di un dispositivo Storage (compito 11): FrmSTORAGE_ITEM_LINK dell'Editor WinForms
+   reso qui, con la stessa idea - due tabelle di celle del gestionale, una per porta A e una per porta
+   B, perche' un dispositivo Storage puo' avere piu' righe di mappatura (a differenza di un dispositivo
+   Automation/Buffer, che ne ha una sola: si veda LinkedCells.razor). Muto come PropertyPanel: possiede
+   solo la selezione di lavoro, non il permesso ne' la pila dell'annulla - quelli restano a PlantCanvas,
+   che decide se scrivere con una PUT o una DELETE (ReplaceDoorMappingsCommand/ClearDoorMappingsCommand,
+   si veda DoorMappingWrites) e come mostrare un fallimento (409/423). *@
+
+<div class="wms-cells-panel">
+    @if (Cells.Count == 0)
+    {
+        <p class="wms-cells-empty">No cell of the warehouse system is available.</p>
+    }
+    else
+    {
+        @if (CellsWithDoorA.Count == 0 && CellsWithDoorB.Count == 0)
+        {
+            @* With no filter nothing was filtered out: no cell of the warehouse system has a door to map. *@
+            @if (Filter.Trim().Length == 0)
+            {
+                <p id="drawio-cells-no-door" class="wms-cells-empty">No cell of the warehouse system has a door to map.</p>
+            }
+            else
+            {
+                <p id="drawio-cells-no-match" class="wms-cells-empty">No warehouse cell matches this filter.</p>
+            }
+        }
+        else
+        {
+            <div class="wms-cells-columns">
+                <fieldset class="wms-cells-column" data-side="A">
+                    <legend>Door A</legend>
+                    <div class="wms-cells-table-scroll">
+                        <table class="wms-cells-table">
+                            <thead>
+                                <tr><th></th><th>Cell</th><th>Warehouse</th><th>Area</th><th>Column</th><th>Floor</th><th>Door</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var cell in CellsWithDoorA)
+                                {
+                                    <tr data-cell-id="@cell.CellId">
+                                        <td>
+                                            <input type="checkbox" id="@($"door-a-{cell.CellId}")" checked="@_selectedA.Contains(cell.CellId)"
+                                                   disabled="@(!CanEdit)" @onchange="e => ToggleSelection(_selectedA, cell.CellId, e)" />
+                                        </td>
+                                        <td>@cell.CellId</td>
+                                        <td>@cell.Warehouse</td>
+                                        <td>@cell.Area</td>
+                                        <td>@cell.Column</td>
+                                        <td>@cell.Floor</td>
+                                        <td>@cell.DoorA</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </fieldset>
+                <fieldset class="wms-cells-column" data-side="B">
+                    <legend>Door B</legend>
+                    <div class="wms-cells-table-scroll">
+                        <table class="wms-cells-table">
+                            <thead>
+                                <tr><th></th><th>Cell</th><th>Warehouse</th><th>Area</th><th>Column</th><th>Floor</th><th>Door</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var cell in CellsWithDoorB)
+                                {
+                                    <tr data-cell-id="@cell.CellId">
+                                        <td>
+                                            <input type="checkbox" id="@($"door-b-{cell.CellId}")" checked="@_selectedB.Contains(cell.CellId)"
+                                                   disabled="@(!CanEdit)" @onchange="e => ToggleSelection(_selectedB, cell.CellId, e)" />
+                                        </td>
+                                        <td>@cell.CellId</td>
+                                        <td>@cell.Warehouse</td>
+                                        <td>@cell.Area</td>
+                                        <td>@cell.Column</td>
+                                        <td>@cell.Floor</td>
+                                        <td>@cell.DoorB</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </fieldset>
+            </div>
+        }
+        <div class="wms-cells-actions">
+            <button type="button" id="door-mappings-save-button" disabled="@(!CanEdit)" @onclick="SaveAsync">Save</button>
+            <button type="button" id="door-mappings-clear-button" disabled="@(!CanEdit || !HasAnySelection)" @onclick="() => OnClear.InvokeAsync()">Clear</button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public Guid ItemId { get; set; }
+
+    [Parameter]
+    public bool CanEdit { get; set; }
+
+    /// <summary>Le celle del gestionale candidate, gia' lette da PlantCanvas (GET /wms/cells senza filtro d'area, come FrmSTORAGE_ITEM_LINK) - questo componente non parla con l'host.</summary>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<WmsCell> Cells { get; set; } = [];
+
+    /// <summary>Le mappature gia' scritte per <see cref="ItemId"/> - una fotografia, non aggiornata da questo componente: precompila la selezione di lavoro, poi resta ferma finche' PlantCanvas non ne passa una nuova (per esempio dopo un salvataggio riuscito).</summary>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<DoorMappingDto> CurrentMappings { get; set; } = [];
+
+    [Parameter]
+    public string Filter { get; set; } = "";
+
+    /// <summary>Invocato con l'insieme finale desiderato al clic su "Save" - PlantCanvas decide come scriverlo (PUT o DELETE, permesso, pila dell'annulla).</summary>
+    [Parameter]
+    public EventCallback<IReadOnlyList<DoorMappingDto>> OnSave { get; set; }
+
+    /// <summary>Scioglie tutte le mappature del dispositivo con una DELETE diretta (compito 11): un gesto distinto da "Save" con nessuna riga selezionata, si veda il remarks di ClearDoorMappingsCommand.</summary>
+    [Parameter]
+    public EventCallback OnClear { get; set; }
+
+    /// <summary>L'ultimo <see cref="CurrentMappings"/> gia' copiato nella selezione di lavoro: per riferimento, come <c>PropertyPanel._syncedConfig</c> - un nuovo elenco arriva solo quando PlantCanvas ricarica le mappature, mai lo stesso riferimento due volte.</summary>
+    private IReadOnlyList<DoorMappingDto>? _syncedMappings;
+
+    private readonly HashSet<decimal> _selectedA = [];
+    private readonly HashSet<decimal> _selectedB = [];
+
+    private bool HasAnySelection => _selectedA.Count > 0 || _selectedB.Count > 0;
+
+    private IReadOnlyList<WmsCell> CellsWithDoorA =>
+        Cells.Where(cell => cell.DoorA is not null && WmsCellFilter.Matches(cell, Filter)).ToList();
+
+    private IReadOnlyList<WmsCell> CellsWithDoorB =>
+        Cells.Where(cell => cell.DoorB is not null && WmsCellFilter.Matches(cell, Filter)).ToList();
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(CurrentMappings, _syncedMappings)) return;
+        _syncedMappings = CurrentMappings;
+
+        // Come SelectDoorCode dell'Editor WinForms (FrmSTORAGE_ITEM_LINK): il confronto e' sul codice
+        // porta, non sul lato registrato in DoorMappingDto.Side - un codice porta identifica gia' da
+        // solo il lato fisico, e questo e' lo stesso criterio che l'Editor di oggi usa gia'.
+        var doorCodes = CurrentMappings.Select(m => m.DoorCode).Where(c => c is not null).ToHashSet();
+        _selectedA.Clear();
+        _selectedB.Clear();
+        foreach (var cell in Cells)
+        {
+            if (cell.DoorA is not null && doorCodes.Contains(cell.DoorA)) _selectedA.Add(cell.CellId);
+            if (cell.DoorB is not null && doorCodes.Contains(cell.DoorB)) _selectedB.Add(cell.CellId);
+        }
+    }
+
+    private static void ToggleSelection(HashSet<decimal> selection, decimal cellId, ChangeEventArgs e)
+    {
+        if (e.Value is bool isChecked && isChecked) selection.Add(cellId);
+        else selection.Remove(cellId);
+    }
+
+    /// <summary>
+    /// Ricostruisce l'intero insieme desiderato dalle due tabelle (compito 11, come OpenStorageCellAsync
+    /// dell'Editor WinForms ricostruisce l'intera DataTable prima di salvarla): OperationActive e
+    /// StoringLocked partono da zero/falso qui - l'host li preserva da soli per le righe che
+    /// corrispondono gia' a una mappatura esistente (stesso DoorCode e CellId,
+    /// DoorMappingStore.ReplaceForItemAsync), non li inventa questo componente.
+    /// </summary>
+    private Task SaveAsync()
+    {
+        if (!CanEdit) return Task.CompletedTask;
+
+        var mappings = new List<DoorMappingDto>();
+        foreach (var cell in Cells)
+        {
+            if (cell.DoorA is not null && _selectedA.Contains(cell.CellId))
+                mappings.Add(new DoorMappingDto(0, ItemId, cell.DoorA, cell.CellId, "A", 0, false));
+            if (cell.DoorB is not null && _selectedB.Contains(cell.CellId))
+                mappings.Add(new DoorMappingDto(0, ItemId, cell.DoorB, cell.CellId, "B", 0, false));
+        }
+
+        return OnSave.InvokeAsync(mappings);
+    }
+}

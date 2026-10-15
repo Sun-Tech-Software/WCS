@@ -1,0 +1,21 @@
+@using Wcs.WebEditor.Drawio.Coordination
+
+@* What is left of the band above the bar. The engine's read-only banner and the plant checks became
+   controls of the bar, and the drawing out of reach, the decoration's warning, the devices the drawing
+   does not show and the reports of the save and of the creation went to the row of outcomes under it
+   (passata grafica, 2026-09-29: DrawioEditor.razor, DrawioNotices); "Loading the plant..." is a quiet
+   line of its own under the bar (DrawioEditor.razor); the selection line is the heading of the
+   properties panel (DrawioPropertyDock). The three hidden counters the browser's tests wait on stay
+   here, where they always were: nothing of this is seen. *@
+<span id="drawio-creation-state" class="visually-hidden">
+    @(Creating ? "creating" : "idle")
+</span>
+<span id="drawio-save-round" hidden>@SaveRound</span>
+<span id="drawio-reassociate-round" hidden>@Selection.ReassociateRound</span>
+
+@code {
+    /// <summary>A drop is being turned into devices (<c>DrawioCreationReportState.Creating</c>).</summary>
+    [Parameter] public bool Creating { get; set; }
+    [Parameter, EditorRequired] public DrawioSelectionState Selection { get; set; } = null!;
+    [Parameter] public long SaveRound { get; set; }
+}

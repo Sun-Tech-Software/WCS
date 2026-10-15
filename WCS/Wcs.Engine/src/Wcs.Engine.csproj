@@ -1,0 +1,78 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Le primitive di concorrenza del dispositivo sono internal: il progetto di test le
+         raggiunge senza doverle rendere pubbliche. -->
+    <InternalsVisibleTo Include="Wcs.Engine.Test" />
+    <!-- Navigator.Warehouse e' internal e lo assegna chi ospita il motore: l'host lo costruisce e
+         glielo mette prima dell'avvio. Il confine resta chiuso a tutti gli altri (Editor, Client). -->
+    <InternalsVisibleTo Include="Wcs.Host" />
+    <InternalsVisibleTo Include="Wcs.Host.Test" />
+    <InternalsVisibleTo Include="Wcs.Api.Client.Test" />
+    <!-- I test della sessione del Client muovono lo stato del motore (NavStatus ha il setter
+         internal) per vedere l'evento arrivare fino alla sessione. -->
+    <InternalsVisibleTo Include="Kazam.Wcs.Test" />
+    <!-- Lo stesso bisogno, dal lato del gestionale: due prove di WMS.Services scrivono mappature
+         porte sull'host di prova, e dal merge dell'Editor web le mappature si scrivono solo a motore
+         fermo (409 in Run). L'host di prova parte in Run e il comando di Stop viene solo accodato,
+         quindi la prova ferma il motore come fa gia' Kazam.Wcs.Test. -->
+    <InternalsVisibleTo Include="WMS.Services.Test" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Remove="Old\**" />
+    <None Remove="Old\**" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Helper e' la conversione tipizzata dei DataRow (Helper.Converters.GetValueOrThrow), non
+         accesso dati: arrivava di rimbalzo da MsSqlHelper, e con MsSqlHelper fuori si dichiara. -->
+    <ProjectReference Include="..\..\..\Common\Helper\Helper.csproj" />
+    <ProjectReference Include="..\..\..\Common\Log.Interface\Log.Interface.csproj" />
+    <ProjectReference Include="..\..\Wcs.Connection.Interface\src\Wcs.Connection.Interface.csproj" />
+    <ProjectReference Include="..\..\Wcs.Connection.Test\src\Wcs.Connection.Test.csproj" />
+    <!-- Niente MsSqlHelper e niente WMS.Services.Interface: il motore non apre piu' SQL Server del
+         gestionale. Quello che gli serve dal gestionale lo chiede a Wcs.Wms.Contracts (IWarehouse,
+         oltre il confine HTTP); quello che e' suo sta nei propri database SQLite. La porta la
+         tiene chiusa EngineDependenciesTest. -->
+    <ProjectReference Include="..\..\Wcs.Common\src\Wcs.Common.csproj" />
+    <ProjectReference Include="..\..\Wcs.Wms.Contracts\src\Wcs.Wms.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="CommandMessages.Designer.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>CommandMessages.resx</DependentUpon>
+    </Compile>
+    <Compile Update="Properties\Resources.Designer.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Update="CommandMessages.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>CommandMessages.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
+    <EmbeddedResource Update="Properties\Resources.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
+  </ItemGroup>
+
+
+</Project>

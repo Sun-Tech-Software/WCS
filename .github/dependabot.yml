@@ -1,0 +1,39 @@
+# Dependency updates (CONTRIBUTING.md, "Dependencies"): one grouped pull request a week per group,
+# for the NuGet packages of every project and for the GitHub Actions of the workflows. A pull
+# request of Dependabot is reviewed like any other: CI restores in locked mode, so it must carry the
+# updated packages.lock.json files, and the SBOM job fails until sbom/wcs.cdx.json is regenerated.
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # First match wins: the test tooling before the Microsoft.* group, which would take
+      # Microsoft.NET.Test.Sdk and Microsoft.Playwright too.
+      test-tooling:
+        patterns:
+          - "xunit*"
+          - "Microsoft.NET.Test.Sdk"
+          - "Microsoft.AspNetCore.Mvc.Testing"
+          - "Microsoft.Playwright"
+          - "bunit*"
+      microsoft:
+        patterns:
+          - "Microsoft.*"
+          - "System.*"
+      other:
+        patterns:
+          - "*"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      github-actions:
+        patterns:
+          - "*"

@@ -1,0 +1,47 @@
+@* A line of the properties panel that may say a failure (row 37 of the queue, the rule of row 29 for
+   the whole panel): one plain sentence, and what came back - the problem document with its status,
+   title, detail and trace id, or the failure's own type and message - behind a "?" at its right
+   (DrawioHelp, the panel's own way of keeping text off screen and at hand: its heading and its mission
+   steps have one). The row under the bar's "Details" opens a window from a line of that row, and this
+   sentence is not one; a note beside it keeps the answer next to what it explains. Shut, it is hidden,
+   not removed, so it can still be read by its id: the "?" is {Id}-help and the answer {Id}-detail.
+   A line with nothing behind it is the paragraph it always was, without the row around it; with
+   something behind it, the line's own place in the dock (LineClass: an outcome's rule above it, its
+   room at the foot) goes to the row, so that the rule runs over the "?" too. The panel's lines that
+   come from code other windows share - the edit permit that could not be asked for, a command's
+   outcome, the label the drawing did not take - are said so in those windows too (the owner's answer
+   of 9/10): the save, the creation, the engine's band, the device list, Operations, PLC connections.
+   Since the owner's answer of 10/10 every failure line of the page is: the checks' configuration
+   check and "go to", the missions, the junction list's "go to" too. *@
+@if (Detail is null)
+{
+    <p id="@Id" class="@Joined(LineClass, Class)">@Text</p>
+}
+else
+{
+    <div class="@Joined("drawio-failure-line", LineClass)">
+        <p id="@Id" class="@Class">@Text</p>
+        <DrawioHelp Id="@($"{Id}-help")" Label="Technical detail of the failure">
+            <p id="@($"{Id}-detail")" class="drawio-failure-detail">@Detail</p>
+        </DrawioHelp>
+    </div>
+}
+
+@code {
+    /// <summary>The sentence's id; the "?" is <c>{Id}-help</c>, what came back <c>{Id}-detail</c>.</summary>
+    [Parameter, EditorRequired] public string Id { get; set; } = "";
+
+    /// <summary>The sentence's classes - the panel's error red, an outcome's place at the foot of the dock.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Where the line sits in the dock (<c>drawio-property-outcome</c>): on the row when there is a "?", on the sentence when there is not.</summary>
+    [Parameter] public string? LineClass { get; set; }
+
+    [Parameter, EditorRequired] public string Text { get; set; } = "";
+
+    /// <summary>What came back, behind the "?"; null for a line that says no failed request.</summary>
+    [Parameter] public string? Detail { get; set; }
+
+    private static string Joined(string? first, string? second) =>
+        string.Join(' ', new[] { first, second }.Where(part => !string.IsNullOrEmpty(part)));
+}

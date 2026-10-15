@@ -1,0 +1,368 @@
+@* Il pannello delle sessanta proprieta' di configurazione di un dispositivo (compito 9): quello che
+   l'Editor WinForms mostra con una griglia delle proprieta' (System.ComponentModel), qui reso da
+   PropertyModel - la stessa fonte, riflessione sul contratto, non un elenco scritto a mano. Come
+   Palette, e' un componente "muto": possiede solo la copia di lavoro che l'utente sta modificando,
+   non il permesso ne' la pila dell'annulla - quelli restano a PlantCanvas, che decide quando salvare
+   davvero e come mostrare un fallimento (409/423), esattamente come per ogni altro gesto della tela. *@
+@using System.Globalization
+@using Wcs.Api.Contracts.Dtos
+@using Wcs.WebEditor.Properties
+
+<div class="property-panel">
+    @if (_working is null)
+    {
+        @* Nessuna configurazione caricata: niente da mostrare, e non uno zero che finga un campo
+           vuoto - "il pannello non inventa valori" vale anche per il caso "non ancora letto". *@
+        <p class="property-panel-empty">No configuration loaded.</p>
+    }
+    else
+    {
+        var working = _working;
+        @foreach (var group in Groups)
+        {
+            <fieldset class="property-panel-group" data-category="@group.Category">
+                <legend>@group.Category</legend>
+                @foreach (var field in group.Fields)
+                {
+                    <div class="property-panel-field" data-property="@field.PropertyName"
+                         @onclick="() => ActivateFieldAsync(field)"
+                         @onfocusin="() => ActivateFieldAsync(field)">
+                        <label title="@field.Help">@((MarkupString)WordBreaks(field.Label))</label>
+
+                        @if (field.IsReadOnly)
+                        {
+                            @* ItemId (compito 9, l'unica proprieta' con [ReadOnly(true)]): un testo,
+                               non una casella - riscriverlo qui non avrebbe senso, la rotta di
+                               salvataggio confronta l'ItemId del corpo con quello dell'URL e
+                               risponde 400 se non coincidono (PlantEndpoints), non lo ignora a
+                               favore di quello dell'URL. *@
+                            <span class="property-panel-readonly-value" tabindex="0">@field.Descriptor.Converter.ConvertToString(field.GetValue(working))</span>
+                        }
+                        else if (field.IsItemReference)
+                        {
+                            @* Le quattro proprieta' che nell'Editor WinForms sono elenchi di
+                               dispositivi (si veda il remarks di PlantItemConfigDto): un Guid scritto
+                               a mano in una casella di testo e' un modo di sbagliare senza
+                               accorgersene, qui un elenco dei dispositivi dell'impianto con una scelta
+                               vuota per "nessuno" - null, non Guid.Empty (PlantStore.NullIfEmpty
+                               normalizza gia' Guid.Empty a null su questa proprieta' quando legge dal
+                               motore: e' quello il significato di "nessuno" a questo livello oggi). *@
+                            <select value="@ItemReferenceValue(field, working)" disabled="@(!CanEdit)"
+                                    @onchange="e => SetItemReference(field, working, e)">
+                                <option value="">(none)</option>
+                                @if (OrphanItemReference(field, working) is { } orphanId)
+                                {
+                                    @* Un Guid che il modello porta ma che non e' (piu') fra i
+                                       dispositivi dell'impianto - per esempio il dispositivo puntato
+                                       e' stato cancellato dopo che questa configurazione era stata
+                                       scritta. Senza questa opzione il valore assegnato alla <select>
+                                       non troverebbe corrispondenza fra le option renderizzate: il
+                                       valore vero non si vedrebbe. Mostrato nudo, come fa
+                                       DeviceIdConverter.ConvertTo nell'Editor WinForms quando il
+                                       dispositivo non si trova nell'impianto - ma con
+                                       "(not in the plant)" accanto: un dispositivo legittimo senza
+                                       nome mostra anch'esso il proprio Guid nudo qui sotto
+                                       (item.Name ?? item.ItemId.ToString()), e le due voci sarebbero
+                                       altrimenti indistinguibili. *@
+                                    <option value="@orphanId">@orphanId (not in the plant)</option>
+                                }
+                                @* Etichettato con Name, non con l'AsiInfo ("ASI.SUBITEM.PARTITION")
+                                   che usa DeviceIdConverter nell'Editor WinForms: scelta dichiarata
+                                   qui, non un'omissione - la tela di questo Editor etichetta gia' i
+                                   nodi con Name (si veda PlantCanvas), e questo elenco resta coerente
+                                   con quello che l'utente vede accanto sul disegno. Chi passa
+                                   dall'uno all'altro strumento non riconosce lo stesso dispositivo
+                                   dalla stessa etichetta. *@
+                                @foreach (var item in SortedItems)
+                                {
+                                    <option value="@item.ItemId">@(item.Name ?? item.ItemId.ToString())</option>
+                                }
+                            </select>
+                        }
+                        else if (field.IsEnumCoded)
+                        {
+                            @* Le cinque proprieta' con EnumCodeConverter<> (DeviceType, ConnectionType,
+                               MotionType, LookWhereAllocateLoadUnit, RecordStorageLength): un elenco a
+                               scelta con il testo del convertitore, non la cifra nuda - la stessa
+                               ragione per cui il convertitore esiste sul contratto (si veda il suo
+                               commento). *@
+                            <select value="@EnumCodeValue(field, working)" disabled="@(!CanEdit)"
+                                    @onchange="e => SetEnumCode(field, working, e)">
+                                @if (OrphanEnumCode(field, working) is { } orphanCode)
+                                {
+                                    @* Un codice che l'enum non porta: EnumCodeConverter lo ammette
+                                       apposta (il DTO puo' arrivare da una versione piu' recente
+                                       dell'host, si veda il suo commento) e lo rende come cifra nuda.
+                                       Senza questa opzione il browser selezionerebbe la prima voce
+                                       dell'elenco - un valore diverso da quello vero, mostrato come se
+                                       lo fosse. *@
+                                    <option value="@orphanCode">@field.Descriptor.Converter.ConvertToString(field.GetValue(working))</option>
+                                }
+                                @foreach (var candidate in field.Descriptor.Converter.GetStandardValues()!.Cast<object>())
+                                {
+                                    <option value="@Convert.ToInt16(candidate, CultureInfo.InvariantCulture)">@field.Descriptor.Converter.ConvertToString(candidate)</option>
+                                }
+                            </select>
+                        }
+                        else if (field.Descriptor.PropertyType == typeof(bool))
+                        {
+                            <input type="checkbox" checked="@((bool)(field.GetValue(working) ?? false))"
+                                   disabled="@(!CanEdit)" @onchange="e => SetBool(field, working, e)" />
+                        }
+                        else
+                        {
+                            @* Ogni altra proprieta' (string, int, decimal, Guid?): il convertitore
+                               gia' risolto da TypeDescriptor per quel tipo (StringConverter,
+                               Int32Converter, DecimalConverter, il NullableConverter di Guid?) fa la
+                               stessa conversione testo/valore che farebbe la griglia dell'Editor
+                               WinForms - un solo ramo di markup per una trentina di proprieta' diverse,
+                               non una casella scritta a mano per tipo. I campi int e decimal usano
+                               type="number" invece di type="text": come #junction-priority-input,
+                               scarica sul browser il rifiuto di una lettera prima ancora che arrivi
+                               al convertitore. Non basta pero' a coprire ogni immissione respinta: una
+                               casella svuotata (o "1e", "--", ".", che il browser sanifica a video)
+                               consegna comunque una stringa vuota a SetTextValue sotto, che la
+                               scarta - li' la generazione forzata (si veda il commento del metodo)
+                               fa sparire dallo schermo l'immissione respinta, tornando al valore vero.
+                               Con type="text" (le proprieta' Guid?/string di questo stesso ramo) un
+                               valore respinto resta invece a video cosi' com'e' stato digitato, per
+                               design: nessuna generazione forzata li'. Il valore di un input
+                               type="number" e' sempre in formato invariante (punto decimale),
+                               indipendente dalla lingua del sistema: TextValue/SetTextValue sotto
+                               passano CultureInfo.InvariantCulture esplicita per la stessa ragione,
+                               non piu' la cultura corrente del thread. *@
+                            <input type="@(IsNumeric(field) ? "number" : "text")" value="@TextValue(field, working)" disabled="@(!CanEdit)"
+                                   step="@NumericStep(field)"
+                                   @key="@NumericInputGeneration(field)"
+                                   @onchange="e => SetTextValue(field, working, e)" />
+                        }
+                    </div>
+                }
+            </fieldset>
+        }
+        <button type="button" id="property-panel-save-button" class="drawio-btn-primary" disabled="@(!CanEdit)" @onclick="SaveAsync">Save</button>
+    }
+</div>
+
+@code {
+    /// <summary>La configurazione appena letta dall'host, o nulla se non ancora caricata (nessun dispositivo scelto, o la lettura non e' ancora tornata) - il pannello non inventa una configurazione vuota per mostrare qualcosa.</summary>
+    [Parameter, EditorRequired]
+    public PlantItemConfigDto? Config { get; set; }
+
+    /// <summary>I dispositivi dell'impianto: la fonte delle quattro caselle a elenco (compito 9, decisione fuori brief - si veda il remarks di PlantItemConfigDto).</summary>
+    [Parameter]
+    public IReadOnlyList<PlantItemDto> Items { get; set; } = [];
+
+    /// <summary>Il permesso di modifica: senza di lui ogni campo resta consultabile (come il campo della priorita' di una giunzione, compito 8) ma il pulsante che scrive e' spento.</summary>
+    [Parameter]
+    public bool CanEdit { get; set; }
+
+    /// <summary>Invocato con la copia di lavoro al clic su "Save": PlantCanvas decide se e come scriverla (permesso, pila dell'annulla, messaggio di errore) - questo componente non parla con l'host.</summary>
+    [Parameter]
+    public EventCallback<PlantItemConfigDto> OnSave { get; set; }
+
+    /// <summary>
+    /// Invoked when the pointer or keyboard reaches a property. The draw.io dock uses the field's
+    /// own metadata to explain it at the bottom of the column; the shared panel does not copy or
+    /// translate descriptions that already belong to the contract.
+    /// </summary>
+    [Parameter]
+    public EventCallback<PropertyField> OnFieldActivated { get; set; }
+
+    /// <summary>I gruppi sono sempre gli stessi per ogni istanza del pannello (dipendono solo dal contratto, non dal dispositivo scelto): calcolati una volta sola, non a ogni resa.</summary>
+    private static readonly IReadOnlyList<PropertyGroup> Groups = PropertyModel.BuildGroups();
+
+    /// <summary>
+    /// A property's name, encoded, with a place to break the line (<c>&lt;wbr&gt;</c>) between the words
+    /// of its camel case - "AcceptLUIfDestinationIsAvailable" breaks before "LU", "If", "Destination",
+    /// "Is" and "Available" - and after an underscore. The draw.io page's column puts the names in a
+    /// column of 9rem, and a name like that is twice as long: without these places it broke at whatever
+    /// letter met the edge (passata grafica, final fix round). Nothing is added to the text.
+    /// </summary>
+    internal static string WordBreaks(string name)
+    {
+        var parts = new List<string>();
+        var start = 0;
+        for (var i = 1; i < name.Length; i++)
+        {
+            var before = name[i - 1];
+            var here = name[i];
+            var wordStarts = char.IsUpper(here)
+                && (char.IsLower(before) || char.IsDigit(before) || (char.IsUpper(before) && i + 1 < name.Length && char.IsLower(name[i + 1])));
+            if (wordStarts || before == '_')
+            {
+                parts.Add(name[start..i]);
+                start = i;
+            }
+        }
+
+        parts.Add(name[start..]);
+        return string.Join("<wbr>", parts.Select(part => System.Net.WebUtility.HtmlEncode(part)));
+    }
+
+    /// <summary>
+    /// L'ultimo <see cref="Config"/> gia' copiato in <see cref="_working"/>: per riferimento, non per
+    /// valore (<see cref="PlantItemConfigDto"/> non e' un record) - un nuovo oggetto arriva ogni volta
+    /// che PlantCanvas ricarica la configurazione (apertura del pannello, o dopo un salvataggio
+    /// riuscito), mai lo stesso riferimento due volte, quindi il confronto per riferimento basta a
+    /// distinguere "e' arrivata una configurazione diversa da risincronizzare" da "e' solo una resa in
+    /// piu' dello stesso parametro" - senza questo controllo ogni resa perderebbe le modifiche
+    /// dell'utente non ancora salvate, sovrascrivendo <see cref="_working"/> con una copia fresca di
+    /// <see cref="Config"/> a ogni giro.
+    /// </summary>
+    private PlantItemConfigDto? _syncedConfig;
+
+    /// <summary>La copia di lavoro che l'utente sta modificando: separata da <see cref="Config"/>, cosi' un annulla del gesto (chiudere il pannello senza salvare) non tocca mai quello che l'host ha davvero.</summary>
+    private PlantItemConfigDto? _working;
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(Config, _syncedConfig)) return;
+        _syncedConfig = Config;
+        _working = Config is null ? null : PropertyModel.Copy(Config);
+        if (_working is not null) NormalizeDecimals(_working);
+    }
+
+    private static void NormalizeDecimals(PlantItemConfigDto working)
+    {
+        foreach (var field in Groups.SelectMany(group => group.Fields)
+                     .Where(field => field.Descriptor.PropertyType == typeof(decimal)))
+        {
+            if (field.GetValue(working) is decimal value)
+                field.SetValue(working, decimal.Truncate(value));
+        }
+    }
+
+    private Task SaveAsync() => !CanEdit || _working is null ? Task.CompletedTask : OnSave.InvokeAsync(PropertyModel.Copy(_working));
+
+    private Task ActivateFieldAsync(PropertyField field) => OnFieldActivated.InvokeAsync(field);
+
+    /// <summary>I dispositivi dell'impianto, in un ordine stabile per le quattro caselle a elenco: per nome, poi per identificativo a parita' di nome (o nessun nome) - la stessa idea di ordine arbitrario ma stabile di PropertyModel.BuildGroups.</summary>
+    private IEnumerable<PlantItemDto> SortedItems =>
+        Items.OrderBy(i => i.Name, StringComparer.Ordinal).ThenBy(i => i.ItemId);
+
+    private static string ItemReferenceValue(PropertyField field, PlantItemConfigDto working) =>
+        (field.GetValue(working) as Guid?)?.ToString() ?? "";
+
+    /// <summary>
+    /// Il Guid del campo, quando il modello ne porta uno che non e' fra i dispositivi dell'impianto
+    /// (e non e' "nessuno"): il caso che il ripiego nel markup mostra nudo invece di farlo sparire
+    /// dietro la prima opzione dell'elenco o "(none)" - un dato che c'e' ancora nel modello non
+    /// deve sparire a video.
+    /// </summary>
+    private Guid? OrphanItemReference(PropertyField field, PlantItemConfigDto working) =>
+        field.GetValue(working) is Guid guid && guid != Guid.Empty && Items.All(i => i.ItemId != guid) ? guid : null;
+
+    private static void SetItemReference(PropertyField field, PlantItemConfigDto working, ChangeEventArgs e)
+    {
+        var text = e.Value as string;
+        field.SetValue(working, string.IsNullOrEmpty(text) ? null : Guid.Parse(text));
+    }
+
+    private static string EnumCodeValue(PropertyField field, PlantItemConfigDto working) =>
+        Convert.ToInt16(field.GetValue(working), CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Il codice del campo, quando non e' fra i valori standard del convertitore: <c>EnumCodeConverter</c>
+    /// ammette dichiaratamente un codice fuori dall'enum (il DTO puo' arrivare da una versione piu'
+    /// recente dell'host), quindi il ripiego nel markup lo mostra invece di far scomparire il valore
+    /// vero dietro la prima opzione dell'elenco.
+    /// </summary>
+    private static short? OrphanEnumCode(PropertyField field, PlantItemConfigDto working)
+    {
+        var code = Convert.ToInt16(field.GetValue(working), CultureInfo.InvariantCulture);
+        var isStandard = field.Descriptor.Converter.GetStandardValues()!.Cast<object>()
+            .Any(candidate => Convert.ToInt16(candidate, CultureInfo.InvariantCulture) == code);
+        return isStandard ? null : code;
+    }
+
+    private static void SetEnumCode(PropertyField field, PlantItemConfigDto working, ChangeEventArgs e)
+    {
+        if (e.Value is not string text || !short.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var code)) return;
+        field.SetValue(working, code);
+    }
+
+    private static void SetBool(PropertyField field, PlantItemConfigDto working, ChangeEventArgs e) =>
+        field.SetValue(working, e.Value is bool b && b);
+
+    /// <summary>Le sole proprieta' che passano da type="number" nel markup: si veda il commento li' accanto.</summary>
+    private static bool IsNumeric(PropertyField field) =>
+        field.Descriptor.PropertyType == typeof(int) || field.Descriptor.PropertyType == typeof(decimal);
+
+    /// <summary>
+    /// The decimals keep the contract's type but are shown and edited as integers: the arrows
+    /// step by one unit. The ints already have the same implicit step.
+    /// </summary>
+    private static string? NumericStep(PropertyField field) =>
+        field.Descriptor.PropertyType == typeof(decimal) ? "1" : null;
+
+    /// <summary>
+    /// Una generazione per proprieta' (compito 9, importante 1 della seconda passata): incrementata
+    /// da <see cref="SetTextValue"/> ogni volta che un campo <see cref="IsNumeric"/> respinge
+    /// un'immissione o un decimal viene normalizzato, e passata come <c>@key</c> dell'<c>&lt;input&gt;</c> nel markup. Il valore in
+    /// se' non porta nessun significato - serve solo a cambiare, cosi' che la resa successiva chieda
+    /// a Blazor un elemento <c>&lt;input&gt;</c> diverso da quello di prima invece di aggiornare
+    /// quello che c'e' gia'. Senza questo, un'immissione respinta che riporta lo stesso testo della
+    /// resa precedente (il modello non e' cambiato) non produce nessuna differenza da applicare al
+    /// DOM, e la casella - gia' svuotata dal browser prima ancora che l'evento arrivasse qui - resta
+    /// vuota a video mentre il modello tiene ancora il valore vero: l'utente non ha modo di saperlo
+    /// senza controllare "Save".
+    /// </summary>
+    private readonly Dictionary<string, int> _numericInputGeneration = [];
+
+    private int NumericInputGeneration(PropertyField field) => _numericInputGeneration.GetValueOrDefault(field.PropertyName);
+
+    /// <summary>
+    /// Cultura invariante esplicita, non quella corrente del thread: prima di questa correzione era
+    /// l'eccezione, non la regola - <c>EnumCodeValue</c>/<c>SetEnumCode</c> qui sopra, <c>PlantCanvas.Fmt</c>
+    /// e <c>ViewBox.ToAttribute</c> la passavano gia'.
+    /// </summary>
+    private static string TextValue(PropertyField field, PlantItemConfigDto working) =>
+        field.Descriptor.Converter.ConvertToString(null, CultureInfo.InvariantCulture, field.GetValue(working)) ?? "";
+
+    /// <summary>
+    /// Un'immissione che il convertitore del campo non sa interpretare (per esempio testo non
+    /// numerico su una proprieta' <c>int</c>) non scrive niente - la copia di lavoro resta quella di
+    /// prima, non uno zero che fingerebbe un valore mai immesso davvero. Con type="text" (le
+    /// proprieta' Guid?/string di questo ramo) il campo a video resta il testo appena digitato finche'
+    /// non arriva una configurazione diversa: il diff del renderer non trova nessuna differenza
+    /// sull'attributo <c>value</c> fra la resa scartata e quella precedente, quindi non aggiorna il
+    /// DOM - per design, l'utente vede quello che ha scritto, non quello che aveva prima. Per i campi
+    /// int/decimal (type="number") le lettere non arrivano fin qui, ma una casella svuotata o
+    /// malformata ("1e", "--", ".") si': il browser la sanifica a video PRIMA di consegnare l'evento,
+    /// quindi <paramref name="e"/>.Value e' gia' una stringa vuota. Senza il rimedio sotto sarebbe lo
+    /// stesso buco del ramo type="text" ma silenzioso invece che visibile: la casella resterebbe
+    /// vuota, con nessuna differenza da mostrare rispetto alla resa scartata (il modello non e'
+    /// cambiato), e l'utente non avrebbe modo di accorgersene senza controllare "Save".
+    /// </summary>
+    private void SetTextValue(PropertyField field, PlantItemConfigDto working, ChangeEventArgs e)
+    {
+        var text = e.Value as string ?? "";
+        try
+        {
+            var converted = field.Descriptor.Converter.ConvertFromString(null, CultureInfo.InvariantCulture, text);
+            field.SetValue(working, converted is decimal value ? decimal.Truncate(value) : converted);
+            // Recreate only a decimal whose text needs normalizing (a fraction or decimal zeros).
+            // A whole-number increment keeps the element, and with it the keyboard's focus.
+            if (converted is decimal && !string.Equals(text, TextValue(field, working), StringComparison.Ordinal))
+                _numericInputGeneration[field.PropertyName] = NumericInputGeneration(field) + 1;
+        }
+        catch (Exception ex) when (ex is FormatException or OverflowException or ArgumentException or NotSupportedException)
+        {
+            // Immissione non convertibile per questo tipo: si veda il commento del metodo. I
+            // convertitori standard (Int32Converter, DecimalConverter, GuidConverter e il
+            // NullableConverter che li avvolge per le proprieta' nullable) non dichiarano tutti lo
+            // stesso tipo di eccezione per un testo malformato - il filtro copre le quattro forme
+            // viste nei test di questo compito, non una sola scelta a caso.
+            //
+            // Solo per i campi numerici: la
+            // generazione cambia, il markup la passa come @key dell'<input>, e la resa successiva
+            // ricrea l'elemento invece di limitarsi a confrontarlo con quello scartato - cosi' il
+            // valore vero torna visibile invece di restare nascosto dietro una casella vuota. Non
+            // serve per type="text": li' il testo respinto resta a video, ed e' il comportamento
+            // voluto, non un buco da chiudere.
+            if (IsNumeric(field))
+                _numericInputGeneration[field.PropertyName] = NumericInputGeneration(field) + 1;
+        }
+    }
+}

@@ -1,0 +1,2715 @@
+@page "/editor/drawio"
+@rendermode RenderMode.InteractiveServer
+@implements IAsyncDisposable
+@using System.Net
+@using System.Net.Http
+@using System.Xml
+@using Microsoft.JSInterop
+@using Wcs.Api.Client
+@using Wcs.Api.Contracts.Dtos
+@using Wcs.WebEditor.Checks
+@using Wcs.WebEditor.Drawing
+@using Wcs.WebEditor.Drawio
+@using Wcs.WebEditor.Drawio.Components
+@using Wcs.WebEditor.Drawio.Coordination
+@using Wcs.WebEditor.Editing
+@using Wcs.WebEditor.Io
+@using Wcs.WebEditor.Live
+@using Wcs.WebEditor.Properties
+@using Wcs.WebEditor.Wms
+@using static Wcs.Common.Enums
+@inject EditorSessionState State
+@inject IJSRuntime JS
+@inject Microsoft.Extensions.Logging.ILogger<PlantLiveFeed> FeedLogger
+
+@if (!State.HasKey)
+{
+    <Key OnKeyAccepted="OnKeyAcceptedAsync" />
+}
+else
+{
+    <div class="drawio-shell">
+        <DrawioEditorStatus Creating="CreationReportState.Creating"
+                            Selection="SelectionState"
+                            SaveRound="_saveRound" />
+        @* THE BAR (passata grafica, 2026-09-29, the owner's direction A): one line holds what used to be
+           stacked above and below the strip of sections - in this order, the title, the engine, the
+           live link, "Read only" while the engine runs or its state is not known (ReadOnlyReason), the
+           plant checks, the Rulers switch, and after a separator the plant's file (rows 43-44, here
+           since 27/9), Operations, the lists (compito 2, rows 58 and 59; compito 3, row 60) and the PLC
+           connections (compito 4, row 62).
+           It is still .drawio-sections: the checks and the six sections are ONE button each, and each
+           opens in a floating window over the canvas (DrawioWindow, spec 2026-09-29), any number of
+           them at a time (_openSections). The bar stays one line whatever is open - on a narrow window
+           the buttons lose their words before it wraps - and a window takes no height from the
+           drawing: measured, two strips of their own made draw.io's canvas short enough for its own
+           windows to cover its Save button, and a section that opened INSIDE the strip shrank the
+           drawing by its own height - the only reason for the old "one open at a time" rule. The
+           windows are rendered inside the bar, as its direct children (drawio-windows.js finds its
+           strip from them), but are position:fixed to the viewport, and nothing from here up to
+           <body> is a containing block or a stacking context for them (no transform, filter, contain
+           or z-index on .drawio-shell or .drawio-sections): keep it so, or their place and their order
+           in front of each other go wrong. The row of outcomes under the bar holds the windows of its
+           reports in the same way (DrawioNotices). No window ever goes above the top of .drawio-body,
+           so none ever covers the bar or the lines under it (the engine's refusal, the row of
+           outcomes), however much the bar grows or the row gets lines (the owner's decision of 29/9):
+           drawio-windows.js watches the elements of this column for that.
+           The title is a fixed "WCS Editor" (the owner's decision of 29/9): neither the host nor the
+           API's contract has a name for the plant. *@
+        <div class="drawio-sections">
+            <span id="drawio-plant-name" class="drawio-plant-name">WCS Editor</span>
+            <DrawioEngineSwitch Status="DisplayedNavStatus" State="_engine.State"
+                                OnStart="() => _engine.StartAsync()" OnStop="() => _engine.StopAsync()" />
+            <DrawioLiveStatus Connection="_live?.Connection" DrawFailed="_liveDrawFailed" DrawFailedReason="@_liveDrawReason" Unavailable="@_liveUnavailable"
+                              Trouble="@((_hoverFailure ?? _liveFailure)?.Text)" TroubleDetail="@((_hoverFailure ?? _liveFailure)?.Detail)" />
+            @* The orange banner of the engine until 29/9, in the same two cases (a running engine, a
+               status not known) and with the same sentences, now behind the pill's tip - and the pill's
+               description for a screen reader (aria-describedby): hidden, the tip is out of the
+               accessibility tree, and the pill would say "Read only" and never why. *@
+            @if (_graph is not null && ReadOnlyReason is { } readOnly)
+            {
+                <span id="drawio-engine-banner" class="drawio-pill drawio-pill-warn drawio-has-tip" tabindex="0" aria-describedby="drawio-engine-banner-tip"><DrawioIcon Name="lock" />Read only<span id="drawio-engine-banner-tip" class="drawio-tip" role="tooltip">@readOnly</span></span>
+            }
+            <DrawioToolbar Graph="_graph"
+                           ChecksSummary="@ChecksSummaryLine"
+                           Open="IsOpen(DrawioSection.Checks)" OnToggle="() => PressSectionButtonAsync(DrawioSection.Checks)" OnClose="() => CloseSectionAsync(DrawioSection.Checks)" Place="WindowPlaces[DrawioSection.Checks]"
+                           CheckTargets="CheckTargets"
+                           GoToOutcome="@_goToOutcome"
+                           GoToReached="_goToReached"
+                           OnCheckedIsolatedDevices="OnCheckedIsolatedDevices"
+                           OnRunningChanged="OnConfigCheckRunningChanged"
+                           OnGoToDevice="GoToDeviceAsync" />
+            <DrawioRulerSwitch Enabled="_rulersOn" OnToggle="OnRulerToggleAsync" />
+            <span class="drawio-bar-separator" aria-hidden="true"></span>
+            <DrawioPlantFile Open="IsOpen(DrawioSection.PlantFile)" OnToggle="() => PressSectionButtonAsync(DrawioSection.PlantFile)" OnClose="() => CloseSectionAsync(DrawioSection.PlantFile)" Place="WindowPlaces[DrawioSection.PlantFile]"
+                             Graph="_graph" EngineStatus="DisplayedNavStatus" WriteThroughThePage="ImportThroughTheGateAsync" />
+            <DrawioOperations Open="IsOpen(DrawioSection.Operations)" OnToggle="() => PressSectionButtonAsync(DrawioSection.Operations)" OnClose="() => CloseSectionAsync(DrawioSection.Operations)" Place="WindowPlaces[DrawioSection.Operations]"
+                              Graph="_graph" Feed="_live" NavigatorStatus="DisplayedNavStatus"
+                              SelectedItemId="SelectionState.ConfigItemId" SelectedItemName="@SelectionState.ConfigSubjectName"
+                              WriteThroughThePage="ModeThroughTheGateAsync" OnModeWritten="ReloadPlantItemsAsync" />
+            <DrawioDeviceList Open="IsOpen(DrawioSection.Devices)" OnToggle="() => PressSectionButtonAsync(DrawioSection.Devices)" OnClose="() => CloseSectionAsync(DrawioSection.Devices)" Place="WindowPlaces[DrawioSection.Devices]"
+                              Graph="_graph" Feed="_live" SelectedItemId="SelectionState.ConfigItemId"
+                              GoToOutcome="@_deviceListGoTo?.Outcome" OnSelect="GoToFromDeviceListAsync"
+                              Write="WriteFromDeviceListAsync" />
+            <DrawioJunctionList Open="IsOpen(DrawioSection.Junctions)" OnToggle="() => PressSectionButtonAsync(DrawioSection.Junctions)" OnClose="() => CloseSectionAsync(DrawioSection.Junctions)" Place="WindowPlaces[DrawioSection.Junctions]"
+                                Graph="_graph" SelectedJunctionId="SelectedJunctionId"
+                                GoToOutcome="@_junctionListGoTo?.Outcome" OnSelect="GoToJunctionAsync" />
+            <DrawioMissionList Open="IsOpen(DrawioSection.Missions)" OnToggle="() => PressSectionButtonAsync(DrawioSection.Missions)" OnClose="() => CloseSectionAsync(DrawioSection.Missions)" Place="WindowPlaces[DrawioSection.Missions]"
+                               Graph="_graph" Feed="_live" SelectedItemId="SelectionState.ConfigItemId"
+                               SelectedItemName="@SelectionState.ConfigSubjectName"
+                               GoToOutcome="@_missionListGoTo?.Outcome" OnSelect="GoToFromMissionListAsync" />
+            <DrawioPlcConnections Open="IsOpen(DrawioSection.PlcConnections)" OnToggle="() => PressSectionButtonAsync(DrawioSection.PlcConnections)" OnClose="() => CloseSectionAsync(DrawioSection.PlcConnections)" Place="WindowPlaces[DrawioSection.PlcConnections]"
+                                  Graph="_graph" WriteThroughThePage="PlcConnectionsThroughTheGateAsync" />
+            @if (SelectionState.ConfigItemId is { } contextualItemId)
+            {
+                @* These two windows have no permanent toolbar button: they belong to the device's
+                   context menu and close when that device stops being the sole selection. They still
+                   use DrawioWindow, so moving, resizing, Esc and stacking behave like every other
+                   window of the Editor. *@
+                <DrawioWindow @key="@($"mission-steps-{contextualItemId}")"
+                              Id="drawio-mission-steps-window" Class="drawio-context-window drawio-mission-steps-window"
+                              Title="@($"Mission steps: {SelectionState.ConfigSubjectName}")" Icon="missions"
+                              Open="@(_missionStepsWindowItemId == contextualItemId)" OnClose="CloseMissionStepsWindow"
+                              Place="MissionStepsWindowPlace">
+                    <Help>
+                        <p>The steps of the active missions that touch this device — running on it, leaving from it or arriving at it — as the host has them. Read-only.</p>
+                    </Help>
+                    <ChildContent>
+                        <DrawioMissionSteps ItemId="contextualItemId" Items="_graph?.Items ?? []" Feed="_live" />
+                    </ChildContent>
+                </DrawioWindow>
+                <DrawioWindow @key="@($"linked-storage-cells-{contextualItemId}")"
+                              Id="drawio-linked-storage-cells-window" Class="drawio-context-window drawio-linked-storage-cells-window"
+                              Title="@($"Linked storage cells: {SelectionState.ConfigSubjectName}")" Icon="linked-cells"
+                              Open="@(_linkedCellsWindowItemId == contextualItemId)" OnClose="CloseLinkedCellsWindow"
+                              Place="LinkedCellsWindowPlace">
+                    <Help>
+                        <p>The warehouse cells connected to this device. Linking and unlinking use the same edit rules as the device configuration.</p>
+                    </Help>
+                    <ChildContent>
+                        <DrawioLinkedStorageCells ItemId="contextualItemId" State="SelectionState"
+                                                  OnSaveDoorMappings="SaveDoorMappingsAsync"
+                                                  OnClearDoorMappings="ClearDoorMappingsAsync"
+                                                  OnLinkCell="LinkCellAsync" OnUnlinkCell="UnlinkCellAsync" />
+                    </ChildContent>
+                </DrawioWindow>
+            }
+        </div>
+        @* The engine's refusal, whole, on a line of its own right under the bar and its engine. Most
+           refusals say what counts at their end ("... so the engine was NOT started. Save first, then
+           start it."): cut short on the bar's one line, with the rest behind a tip, that part was off
+           the screen (review of 29/9; the owner's decision 2 of the spec: a rule that blocks is seen
+           next to the command, as the refusal always was). It stays until the engine's next gesture,
+           as it always has - and it is not in the row of outcomes below, which the spec gives to the
+           outcomes of the drawing (the reports, a refused cut, the drawing out of reach): a band of
+           its own in the danger's tint, as tall as a line of that row. *@
+        @if (_engine.State.Error is { } engineRefusal)
+        {
+            <DrawioFailureLine Id="drawio-engine-error" LineClass="drawio-engine-error" Text="@engineRefusal" Detail="@_engine.State.ErrorDetail" />
+        }
+        @* Until the plant is there, a quiet line under the bar says so - not when the drawing is out of
+           reach: that is said in the row, and the plant would never come. *@
+        @if (!_bridgeUnavailable && _graph is null)
+        {
+            <p class="editor-loading">Loading the plant...</p>
+        }
+        <DrawioNotices Notices="Notices" />
+        <div class="drawio-body">
+
+            <iframe id="drawio-frame" @ref="_iframeElement" title="Plant drawing"></iframe>
+
+            <DrawioPropertyDock State="SelectionState"
+                                Items="_graph?.Items ?? []"
+                                LoadUnit="@SelectedLoadUnit"
+                                Commands="DeviceCommands"
+                                Duplicate="DuplicateAction"
+                                DuplicateReport="_duplication.Report"
+                                MenuNotice="@_menuNotice?.Text"
+                                MenuNoticeDetail="@_menuNotice?.Detail"
+                                OnSaveConfig="SaveSelectedConfigAsync"
+                                OnReassociateTypedChanged="value => _selection.SetReassociateTyped(value)"
+                                OnReassociate="ReassociateAsync" />
+        </div>
+        @* Row 35: the pointer's position in PLANT units. Written directly by drawio-bridge.js on
+           every mouse move over the canvas (watchPointer/unwatchPointer) - never through Blazor,
+           which this element's markup never binds any content to, so nothing here ever overwrites
+           what the bridge just wrote. Empty here and empty again whenever the pointer is not on the
+           canvas: the bridge owns making it appear, this page only reserves the stable id. *@
+        <div class="drawio-status-bar">
+            <span id="drawio-pointer-position" class="drawio-pointer-position"></span>
+        </div>
+    </div>
+}
+
+@code {
+    private const string FrameUrl =
+        "_content/Wcs.WebEditor/drawio/index.html" +
+        "?embed=1&proto=json&spin=1&libraries=0&noSaveBtn=1&noExitBtn=1&lang=en&ui=min&configure=1" +
+        "&libs=" + DrawioLibrary.SectionId + "%3Bgeneral%3Buml%3Ber%3Bbpmn%3Bflowchart%3Bbasic%3Barrows2";
+
+    private const string BridgeModulePath = "./_content/Wcs.WebEditor/drawio-bridge.js";
+
+    private const string LiveModulePath = "./_content/Wcs.WebEditor/drawio-live.js";
+
+    private const string BridgeNotLoadedMessage =
+        "The bridge to draw.io did not load: the plant cannot be shown. Reload the page.";
+
+    private const string BridgeNotRespondingMessage =
+        "The bridge to draw.io loaded but did not answer: the plant cannot be shown. Reload the page.";
+
+    private const string BridgeTimedOutMessage =
+        "The bridge to draw.io did not answer in time: the plant cannot be shown. Reload the page.";
+
+    private const string DocumentNotSentMessage =
+        "The plant drawing never reached draw.io: the canvas you see is NOT the plant, and a save from here will write nothing. Reload the page.";
+
+    private const string LibraryNotSentMessage =
+        "The configuration never reached draw.io: the drawing cannot start. Reload the page.";
+
+    private PlantGraph? _graph;
+
+    private string? _decorationXml;
+
+    private bool _decorationLoaded;
+
+    /// <summary>Why the decoration could not be read at opening: the save's refusal says it, with what came back behind its "?".</summary>
+    private Exception? _decorationFailure;
+
+    private DrawioSaid? _decorationNotice;
+
+    private readonly Dictionary<string, Guid> _plantJunctionByDrawnEdge = [];
+
+    private readonly Dictionary<string, Guid> _plantItemByDrawnCell = [];
+
+    private EditLockDto? _lockDenied;
+
+    private NavigatorStatusTypes? _navStatus;
+
+    private bool _lockEverGranted;
+
+    /// <summary>
+    /// The page writes with the permit held and the engine stopped or paused - not in Run, and since
+    /// the owner's decision of 27/9 (D2) not in Recover (the plant being loaded) or Dispose either, as
+    /// the host refuses them (PlantQueries.RequireNotRunning).
+    /// </summary>
+    private bool CanEdit => _lockDenied is null && _navStatus is NavigatorStatusTypes.Stop or NavigatorStatusTypes.Pause;
+
+    /// <summary>
+    /// The engine's status as the page SHOWS it (the banner): the last known one, from
+    /// whichever of the two sources spoke last - the live feed, or this page's own GET /status.
+    /// <see cref="_navStatus"/> stays the page's own read, the one the write decision is taken on
+    /// (<see cref="EnsureWritableAsync"/>). See <see cref="ShowNavStatusAsync"/> for which read
+    /// counts as newer.
+    /// </summary>
+    private NavigatorStatusTypes? DisplayedNavStatus => _shownNavStatus;
+
+    private NavigatorStatusTypes? _shownNavStatus;
+
+    /// <summary>Bumped at every status the page shows: a GET that started before the last bump is older than what is shown.</summary>
+    private long _navSequence;
+
+    private DrawioCreationCoordinator _creation = null!;
+    private DrawioSelectionCoordinator _selection = null!;
+    private DrawioGeometryCoordinator _geometry = null!;
+    private DrawioSaveCoordinator _save = null!;
+    private DrawioEngineCoordinator _engine = null!;
+
+    private DrawioCreationReportState CreationReportState => _creation.State;
+
+    private DrawioSaveReportState SaveReportState => _save.State;
+    private long _saveRound => _save.Round;
+
+    /// <summary>
+    /// The row of outcomes under the bar (passata grafica, 2026-09-29; DrawioNotices says how it shows
+    /// them): everything this page has to say about the drawing, and the one trouble of the live link
+    /// that asks the operator to act, one line each, in this order of precedence for the ones that
+    /// arrive together - the drawing out of reach, the live channel that could not be built, the
+    /// decoration that could not be read, the devices the drawing does not show, the drops that can no
+    /// longer become devices, the last drop's report, the cells of a gesture too many to follow (queue
+    /// item 15), a save lost in a drop of the circuit's connection and the drop itself (queue item 14),
+    /// the last save's, a refused cut. Until then each was a band of its own above the bar
+    /// (DrawioEditorStatus, the live link) or under it (the cut).
+    /// </summary>
+    private IReadOnlyList<DrawioNoticeLine> Notices
+    {
+        get
+        {
+            List<DrawioNoticeLine> notices = [];
+            if (_bridgeUnavailable)
+                notices.Add(new DrawioNoticeLine("drawio-bridge", DrawioNoticeTone.Bad, _bridgeUnavailableMessage, Dismissable: false, null)
+                {
+                    LineClass = "drawio-bridge-error",
+                });
+            if (DrawioLiveStatus.UnavailableNoticeOf(_liveUnavailable) is { } liveOff) notices.Add(liveOff);
+            // The decoration's warning whole, as the drawing out of reach is: its last sentence -
+            // reload now, before drawing - is the only one that says what to do, and a line cut
+            // before it would leave that behind "Details". The sentence keeps its id.
+            if (_decorationNotice is { } decoration)
+                notices.Add(new DrawioNoticeLine("drawio-decoration", DrawioNoticeTone.Warn, decoration.Text, Dismissable: false, null)
+                {
+                    LineId = "drawio-decoration-banner",
+                    LineDetail = decoration.Detail,
+                });
+            if (DrawioUndrawnReport.NoticeOf(_graph) is { } undrawn) notices.Add(undrawn);
+            if (DrawioCreationReport.UnavailableNoticeOf(CreationReportState) is { } deaf) notices.Add(deaf);
+            if (DrawioCreationReport.NoticeOf(CreationReportState, _creation.Report) is { } creation) notices.Add(creation);
+            // Queue item 15: the cells a gesture brought that this page could not be told of.
+            if (_tooManyCellsAdded is { } tooMany)
+                notices.Add(new DrawioNoticeLine("drawio-too-many-added", DrawioNoticeTone.Warn, tooMany, Dismissable: true, null)
+                {
+                    LineRole = "status",
+                    Occurrence = _tooManyCellsAddedTimes,
+                });
+            // Queue item 14: what a drop of the circuit's connection may have taken - the save first,
+            // when one was lost in it or may have been written across it (task 12), then the line every
+            // drop gets.
+            if (_saveLostInADrop)
+                notices.Add(new DrawioNoticeLine("drawio-save-lost", DrawioNoticeTone.Bad, SaveLostInADropMessage, Dismissable: true, null)
+                {
+                    LineRole = "status",
+                    Occurrence = _savesLostInADrop,
+                });
+            if (_saveMayHaveBeenWritten)
+                notices.Add(new DrawioNoticeLine("drawio-save-unknown", DrawioNoticeTone.Warn, SaveMayHaveBeenWrittenMessage, Dismissable: true, null)
+                {
+                    LineRole = "status",
+                    Occurrence = _savesMayHaveBeenWritten,
+                });
+            if (_connectionDrops > 0)
+                notices.Add(new DrawioNoticeLine("drawio-reconnected", DrawioNoticeTone.Warn, ConnectionCameBackMessage, Dismissable: true, null)
+                {
+                    LineRole = "status",
+                    Occurrence = _connectionDrops,
+                });
+            if (DrawioSaveReport.NoticeOf(SaveReportState, _saveRound) is { } save) notices.Add(save);
+            if (_cutRefused is { } cutRefused)
+                notices.Add(new DrawioNoticeLine("drawio-cut", DrawioNoticeTone.Bad, cutRefused, Dismissable: true, null)
+                {
+                    LineId = "drawio-cut-refused",
+                    LineRole = "status",
+                    Occurrence = _cutRefusals,
+                });
+            return notices;
+        }
+    }
+
+    private ElementReference _iframeElement;
+    private IJSObjectReference? _bridgeModule;
+    private DotNetObjectReference<DrawioEditor>? _bridgeCallbackRef;
+    private bool _bridgeAttachAttempted;
+
+    /// <summary>
+    /// Attach went through. Until then nothing else may be called on the bridge module - not even
+    /// from a render that lands while the attach is still being awaited, which OnAfterRenderAsync
+    /// would otherwise let through (<c>AttachIsTheFirstCallEverMadeOnTheBridgeModule</c>).
+    /// </summary>
+    private bool _bridgeAttached;
+    private bool _bridgeUnavailable;
+    private string _bridgeUnavailableMessage = "";
+
+    private bool _drawioReady;
+
+    private bool _documentSent;
+
+    /// <summary>
+    /// Row 33: what the ruler switch shows and what is applied to draw.io once it is ready. Read
+    /// from the browser's memory right after <c>attach</c> (<see cref="LoadRulerPreferenceAsync"/>,
+    /// called from the same method that awaits <c>attach</c> - fix round 2 moved this read from
+    /// before attach to after it, see the comment there), independent of draw.io itself - the switch
+    /// must show the remembered choice even before the canvas exists. Default false (rulers off),
+    /// same as the parity inventory's own default and the same value a bUnit render gets from a loose
+    /// "loadRulerPreference" that nobody configured.
+    /// </summary>
+    private bool _rulersOn;
+
+    private bool _librarySent;
+
+    private DrawioSelectionState SelectionState => _selection.State;
+
+    /// <summary>
+    /// The selected device, its live status and the load unit it holds as of the last render triggered
+    /// from <see cref="RefreshLiveAsync"/>: a frame that leaves all three the same does not deserve a
+    /// render. The load unit since the passata grafica: the panel's heading shows it.
+    /// </summary>
+    private (Guid ItemId, DeviceStatusTypes? Status, string? LoadUnit)? _lastRenderedDeviceStatus;
+
+    /// <summary>
+    /// The load unit the selected device holds as the live channel says it - in the words of the device
+    /// list's "Load unit" column - for the heading of the properties panel; null when it holds none.
+    /// </summary>
+    private string? SelectedLoadUnit =>
+        SelectionState.ConfigItemId is { } itemId && _live?.StatusOf(itemId) is { } status
+            ? PlantLiveState.ViewOf(status).LoadUnit
+            : null;
+
+    /// <summary>
+    /// The commands of the selected device: only with the engine running, as in the WinForms (row 54).
+    /// Gated on <see cref="DisplayedNavStatus"/>, the status the page SHOWS - not <see cref="_navStatus"/>,
+    /// which is this page's own GET used only for the write decision (<see cref="EnsureWritableAsync"/>).
+    /// </summary>
+    private RenderFragment? DeviceCommands =>
+        DisplayedNavStatus == NavigatorStatusTypes.Run && SelectionState.ConfigItemId is { } itemId
+            ? builder =>
+            {
+                builder.OpenComponent<DrawioDeviceCommands>(0);
+                // Keyed on the device: another selection is another component, and the outcome of the
+                // last command does not carry over to a device it was not sent to.
+                builder.SetKey(itemId);
+                builder.AddComponentParameter(1, nameof(DrawioDeviceCommands.ItemId), itemId);
+                builder.AddComponentParameter(2, nameof(DrawioDeviceCommands.DeviceName), SelectionState.ConfigSubjectName);
+                builder.AddComponentParameter(3, nameof(DrawioDeviceCommands.Status), _live?.StatusOf(itemId)?.Status);
+                builder.AddComponentParameter(4, nameof(DrawioDeviceCommands.Feed), _live);
+                // Row 63: a command chosen from draw.io's right-click menu, sent by THIS component
+                // as its own button would send it - see OnDrawioMenuEntry.
+                builder.AddComponentParameter(5, nameof(DrawioDeviceCommands.MenuRequest), _menuCommand);
+                builder.CloseComponent();
+            }
+            : null;
+
+    /// <summary>
+    /// Row 63 (compito 5 fix round 2): the panel's "Duplicate device" for the selected device - the
+    /// button, and the question with its two answers once it is asked (<see cref="_duplicateQuestion"/>).
+    /// Keyed on the device like the commands: another selection is another question.
+    /// </summary>
+    private RenderFragment? DuplicateAction =>
+        SelectionState.ConfigItemId is { } itemId
+            ? builder =>
+            {
+                builder.OpenComponent<DrawioDuplicateDevice>(0);
+                builder.SetKey(itemId);
+                builder.AddComponentParameter(1, nameof(DrawioDuplicateDevice.SourceName), SelectionState.ConfigSubjectName);
+                // The name the question OFFERED, kept from the moment it was asked: the one the write uses.
+                builder.AddComponentParameter(2, nameof(DrawioDuplicateDevice.NewName), _duplicateQuestion is { } asked && asked.ItemId == itemId
+                    ? asked.Name : _duplication.NameForTheDuplicateOf(itemId));
+                builder.AddComponentParameter(3, nameof(DrawioDuplicateDevice.Armed), _duplicateQuestion?.ItemId == itemId);
+                builder.AddComponentParameter(4, nameof(DrawioDuplicateDevice.Busy), _duplication.Duplicating);
+                builder.AddComponentParameter(5, nameof(DrawioDuplicateDevice.OnAsk), EventCallback.Factory.Create(this, () => AskToDuplicate(itemId)));
+                builder.AddComponentParameter(6, nameof(DrawioDuplicateDevice.OnConfirm), EventCallback.Factory.Create(this, () => DuplicateAsync(itemId)));
+                builder.AddComponentParameter(7, nameof(DrawioDuplicateDevice.OnCancel), EventCallback.Factory.Create(this, () => _duplicateQuestion = null));
+                builder.AddComponentParameter(8, nameof(DrawioDuplicateDevice.NotNow), DuplicateNotNow);
+                builder.CloseComponent();
+            }
+            : null;
+
+    /// <summary>
+    /// The duplication question on screen, if any - the first of the two steps, asked by the panel's
+    /// button or by the right-click menu's entry: the device, and the name it offered for the new one
+    /// (fix round 3: carried to the write, not computed again there).
+    /// </summary>
+    private (Guid ItemId, string? Name)? _duplicateQuestion;
+
+    private DrawioDuplicationCoordinator _duplication = null!;
+
+    private void AskToDuplicate(Guid itemId) => _duplicateQuestion = (itemId, _duplication.NameForTheDuplicateOf(itemId));
+
+    /// <summary>The second step: the answer. The question goes whatever the outcome - the report at the foot of the dock says it.</summary>
+    private async Task DuplicateAsync(Guid itemId)
+    {
+        if (_duplicateQuestion is not { } asked || asked.ItemId != itemId) return;
+        _duplicateQuestion = null;
+        await _duplication.DuplicateAsync(itemId, asked.Name);
+    }
+
+    /// <summary>
+    /// Draws the device the duplication has just created, with the very cell the next opening would
+    /// draw for it (<see cref="DrawioDocument.DeviceCellXml"/>), selects it and brings it into view in
+    /// the part of the canvas the page's windows leave free, as "go to" does (drawio-bridge.js,
+    /// drawDeviceCell, queue item 24): drawn and selected, drawn only, not drawn, or not known - see
+    /// DrawioDrawState. Not brought into view is still "drawn and selected": the bridge says so only to
+    /// the browser console.
+    /// </summary>
+    private async Task<DrawioDrawOutcome> DrawTheDuplicateAsync(PlantItemDto item)
+    {
+        if (_bridgeModule is null || !_bridgeAttached) return new(DrawioDrawState.NotDrawn, "the bridge to draw.io is not attached");
+        if (_graph is not { } graph || !graph.TypesByDeviceType.TryGetValue(item.DeviceType, out var type))
+            return new(DrawioDrawState.NotDrawn, "its type is not in the registry this page holds");
+
+        string? answer;
+        try
+        {
+            answer = await _bridgeModule.InvokeAsync<string?>("drawDeviceCell", DrawioDocument.DeviceCellXml(type, item), item.ItemId.ToString());
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            // The answer is lost, not the cell: draw.io may have added it before the interop gave up
+            // (fix round 4). The drawing is asked whether a cell with that identifier is there now.
+            return await WasTheDuplicateDrawnAsync(item.ItemId, DrawioFailureWords.Detail(ex));
+        }
+
+        return answer switch
+        {
+            "ok" => new(DrawioDrawState.Drawn),
+            "ok-not-selected" => new(DrawioDrawState.DrawnNotSelected, "draw.io could not select it - the browser console says why"),
+            "exists" => new(DrawioDrawState.DrawnNotSelected, "a cell with its identifier was already on the drawing"),
+            "no-graph" => new(DrawioDrawState.NotDrawn, "this page cannot reach the drawing's model"),
+            "failed" => new(DrawioDrawState.NotDrawn, "draw.io refused the cell - the browser console says why"),
+            _ => new(DrawioDrawState.NotDrawn, $"the drawing answered {answer ?? "nothing at all"}"),
+        };
+    }
+
+    /// <summary>After an answer that never came: is the duplicate's cell on the drawing? Asked with the bridge's markedCells, the same read the reassociation rests on.</summary>
+    /// <remarks>Row 37 of the queue: how the answer was lost is behind the report line's "?", not in its words.</remarks>
+    private async Task<DrawioDrawOutcome> WasTheDuplicateDrawnAsync(Guid itemId, string lostAnswer)
+    {
+        if (await ReadMarkedCellsAsync() is not { } marked)
+            return new(DrawioDrawState.Unknown, "its answer was lost, and the drawing could not be asked afterwards", lostAnswer);
+        return marked.Any(cell => cell.Id == itemId.ToString())
+            ? new(DrawioDrawState.DrawnNotSelected, "the page did not hear draw.io's answer, but the cell is on the drawing", lostAnswer)
+            : new(DrawioDrawState.NotDrawn, "its answer was lost, and the drawing holds no cell for it", lostAnswer);
+    }
+
+    /// <summary>
+    /// Where a device's cell is drawn NOW (drawio-bridge.js, cellBox) - the duplicate goes next to it,
+    /// as the WinForms put it next to the live node. The reason instead when the drawing cannot say.
+    /// </summary>
+    private async Task<(DrawioCellBox? Box, string? Why, string? Detail)> SourceOnTheCanvasAsync(Guid itemId)
+    {
+        if (_bridgeModule is null || !_bridgeAttached) return (null, "the bridge to draw.io is not attached", null);
+        DrawioCellBoxAnswer? answer;
+        try
+        {
+            answer = await _bridgeModule.InvokeAsync<DrawioCellBoxAnswer?>("cellBox", DrawnCellOf(itemId));
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            // Row 37 of the queue: what the interop said is behind the report line's "?". Final review,
+            // M8: the why is the failure's own - a script that threw did answer, with an error.
+            return (null, DrawioFailureWords.WhyTheScriptDidNotAnswer(ex), DrawioFailureWords.Detail(ex));
+        }
+
+        return answer?.Answer switch
+        {
+            "ok" => (new DrawioCellBox(answer.X, answer.Y, answer.Width, answer.Height, answer.Rotation), null, null),
+            "no-cell" => (null, "it has no cell on the drawing", null),
+            "grouped" => (null, "its cell is inside a group, where the drawing's position is relative to the group", null),
+            "no-graph" => (null, "this page cannot reach the drawing's model", null),
+            "failed" => (null, "draw.io could not read its cell - the browser console says why", null),
+            _ => (null, $"the drawing answered {answer?.Answer ?? "nothing at all"}", null),
+        };
+    }
+
+    /// <summary>The bridge's answer to cellBox, as it comes over the interop.</summary>
+    internal sealed record DrawioCellBoxAnswer(string Answer, double X, double Y, double Width, double Height, double Rotation);
+
+    private readonly DrawioPlantWriteGate _writeGate = new();
+    private bool _disposed;
+
+    /// <summary>Cancelled when the page goes: what the engine switch still has on its way stops there.</summary>
+    private readonly CancellationTokenSource _gone = new();
+
+    private PlantLiveFeed? _live;
+    private IJSObjectReference? _liveModule;
+    private LiveRouteReader _routes = null!;
+    private bool _liveDrawFailed;
+
+    /// <summary>
+    /// What was thrown when the live status is not drawn, when the browser console does not say it: a
+    /// failure on this side - its type and message, kept apart from the sentence (row 37 of the queue,
+    /// extended to the whole page on 10/10).
+    /// </summary>
+    private string? _liveDrawReason;
+
+    /// <summary>What was thrown when the live channel could not even be built (its type and message); null while it could.</summary>
+    private string? _liveUnavailable;
+
+    /// <summary>The hover toggle that did not go through, said on the page until one does.</summary>
+    private DrawioSaid? _hoverFailure;
+
+    /// <summary>A failure elsewhere on the live path, and which piece of it failed: cleared when that same piece next succeeds.</summary>
+    private DrawioSaid? _liveFailure;
+
+    private Func<Task>? _liveFailedIn;
+
+    /// <summary>The live module took the hover (it is only ever switched on); false until a send goes through.</summary>
+    private bool _hoverSent;
+
+    private bool _hoverSending;
+
+    private Task ReassociateAsync() => _selection.ReassociateAsync();
+    private Task SaveSelectedConfigAsync(PlantItemConfigDto edited) => _selection.SaveConfigAsync(edited);
+    private Task SaveDoorMappingsAsync(IReadOnlyList<DoorMappingDto> wanted) => _selection.SaveDoorMappingsAsync(wanted);
+    private Task ClearDoorMappingsAsync() => _selection.ClearDoorMappingsAsync();
+    private Task LinkCellAsync(WmsCell cell) => _selection.LinkCellAsync(cell);
+    private Task UnlinkCellAsync() => _selection.UnlinkCellAsync();
+    private string DrawnCellOf(Guid itemId) => _selection.DrawnCellOf(itemId);
+
+    private IReadOnlySet<Guid> _checkIsolatedItemIds = new HashSet<Guid>();
+
+    private bool _configCheckRunning;
+
+    private DrawioSaid? _goToOutcome;
+
+    private bool _goToReached;
+
+    private string ChecksSummaryLine =>
+        _configCheckRunning ? "Plant checks - the configuration check is running..." : "Plant checks";
+
+    /// <summary>
+    /// Why the page's saves write nothing, when that is because of the engine: said in the bar's
+    /// "Read only" pill. A running engine, or a status not known yet - the two cases the banner above
+    /// the drawing said until 29/9, in its words. Null otherwise (a paused engine is written to).
+    /// </summary>
+    private string? ReadOnlyReason => DisplayedNavStatus switch
+    {
+        NavigatorStatusTypes.Run => "Read only: the engine is running - you can draw, but the save will write nothing until it is stopped.",
+        null => "Read only: the engine status is not known, and to be safe the save will write nothing.",
+        _ => null,
+    };
+
+    private IReadOnlyList<PlantItemDto> IsolatedDevicesToVisit =>
+        _graph is { } graph
+            ? [.. graph.Items.Where(item => _checkIsolatedItemIds.Contains(item.ItemId))]
+            : [];
+
+    private IReadOnlyList<DrawioCheckTarget> CheckTargets =>
+        [.. IsolatedDevicesToVisit.Select(item => new DrawioCheckTarget(item.ItemId, NameOf(item)))];
+
+    private void OnCheckedIsolatedDevices(IReadOnlySet<Guid> isolatedItemIds)
+    {
+        _checkIsolatedItemIds = isolatedItemIds;
+        _goToOutcome = null;
+        _goToReached = false;
+    }
+
+    private void OnConfigCheckRunningChanged(bool running) => _configCheckRunning = running;
+
+    private async Task GoToDeviceAsync(Guid itemId)
+    {
+        _goToReached = false;
+        (_goToReached, _goToOutcome) = await SelectDeviceOnTheDrawingAsync(itemId);
+    }
+
+    /// <summary>Row 58: a row of the device list chosen - the same selection on the drawing as the checks' "go to".</summary>
+    private async Task GoToFromDeviceListAsync(Guid itemId)
+    {
+        var cellId = DrawnCellOf(itemId);
+        var (_, outcome) = await SelectDeviceOnTheDrawingAsync(itemId);
+        _deviceListGoTo = new DrawioGoTo(cellId, outcome);
+    }
+
+    /// <summary>Row 58: a cell of the device list confirmed - the properties panel's own write, see DrawioSelectionCoordinator.WriteConfigFromListAsync.</summary>
+    private Task<DrawioListWriteOutcome> WriteFromDeviceListAsync(PlantItemConfigDto before, PlantItemConfigDto edited, string change) =>
+        _selection.WriteConfigFromListAsync(before, edited, change);
+
+    /// <summary>
+    /// The sections of the bar above the drawing (the plant's file, Operations, the three lists, the
+    /// PLC connections, and since the passata grafica the plant checks), each in a floating window of
+    /// its own.
+    /// </summary>
+    private enum DrawioSection
+    {
+        PlantFile,
+        Operations,
+        Devices,
+        Junctions,
+        Missions,
+        PlcConnections,
+        Checks,
+    }
+
+    /// <summary>
+    /// The sections whose window is open (spec 2026-09-29): any number at a time, since a window
+    /// floats over the canvas and takes no height from the drawing - the old "one section open at a
+    /// time" rule existed only because an open section did.
+    /// </summary>
+    private readonly HashSet<DrawioSection> _openSections = [];
+
+    private bool IsOpen(DrawioSection section) => _openSections.Contains(section);
+
+    /// <summary>
+    /// The button of the strip pressed: a shut window opens; an open one that is behind another comes
+    /// to the front and stays open; the one in front of the open windows shuts (the owner's decision
+    /// D1 of 29/9, and the spec's "opening a window already open behind others brings it to the
+    /// front"). The others stay as they are.
+    /// </summary>
+    /// <remarks>
+    /// Which window is in front is the windows module's to say - it keeps the order, the page does not
+    /// - so the page asks it, for an open window only, and the module brings it to the front in the
+    /// same call (<c>bringToFrontIfBehind</c>). Asked rather than left to the module to catch the
+    /// click: open and shut stay the page's alone, as the rest of the page and its memory of the open
+    /// windows rest on. Without the module (not loaded, or failing) the answer is "in front", and the
+    /// button shuts the window, as it did before.
+    /// </remarks>
+    private async Task PressSectionButtonAsync(DrawioSection section)
+    {
+        if (IsOpen(section))
+        {
+            if (await BroughtToTheFrontAsync(section)) return;
+            await CloseSectionAsync(section);
+            return;
+        }
+
+        _openSections.Add(section);
+        await RememberOpenWindowsAsync();
+    }
+
+    /// <summary>
+    /// The window's X pressed, or Esc in it: the window shuts - and nothing at all happens if it is
+    /// already shut, so that the second press of a fast double click on the X does not open it again.
+    /// </summary>
+    private async Task CloseSectionAsync(DrawioSection section)
+    {
+        if (!_openSections.Remove(section)) return;
+        await RememberOpenWindowsAsync();
+    }
+
+    /// <summary>Whether the windows module brought this section's open window to the front because it was behind another (see <see cref="PressSectionButtonAsync"/>).</summary>
+    private async Task<bool> BroughtToTheFrontAsync(DrawioSection section)
+    {
+        if (_windowsModule is null) return false;
+        try
+        {
+            return await _windowsModule.InvokeAsync<bool>("bringToFrontIfBehind", WindowIdOf(section));
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            // The order cannot be asked: the button does what it did before the order was asked.
+            return false;
+        }
+    }
+
+    private static string WindowIdOf(DrawioSection section) => WindowIds.First(window => window.Section == section).Id;
+
+    /// <summary>
+    /// Where each window opens when this browser remembers nothing about it: a cascade in the order of
+    /// the strip, the lists wider than the two sections of commands (the device list has a column for
+    /// every field of the configuration). The plant checks are seventh: their button comes before the
+    /// six in the bar, but they joined the windows last, and the six keep their places. They are also
+    /// the smallest (owner's decision, 30/9): at rest what they hold - one row of two buttons - needs a
+    /// window about 90 px high, about 180 with a few results; at 640 x 440 it was mostly empty. Opened
+    /// with Devices they still cover some of its rows, which the owner accepted.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<DrawioSection, DrawioWindowPlace> WindowPlaces =
+        new Dictionary<DrawioSection, DrawioWindowPlace>
+        {
+            [DrawioSection.PlantFile] = DrawioWindowPlace.Cascade(0, 680, 320),
+            [DrawioSection.Operations] = DrawioWindowPlace.Cascade(1, 560, 320),
+            [DrawioSection.Devices] = DrawioWindowPlace.Cascade(2, 760, 440),
+            [DrawioSection.Junctions] = DrawioWindowPlace.Cascade(3, 640, 400),
+            [DrawioSection.Missions] = DrawioWindowPlace.Cascade(4, 1020, 620),
+            [DrawioSection.PlcConnections] = DrawioWindowPlace.Cascade(5, 980, 560),
+            [DrawioSection.Checks] = DrawioWindowPlace.Cascade(6, 480, 220),
+        };
+
+    private static readonly DrawioWindowPlace MissionStepsWindowPlace = new(210, 210, 920, 480);
+    private static readonly DrawioWindowPlace LinkedCellsWindowPlace = new(242, 242, 720, 520);
+
+    /// <summary>The device each contextual information window is pinned to; null means shut.</summary>
+    private Guid? _missionStepsWindowItemId;
+    private Guid? _linkedCellsWindowItemId;
+
+    private void CloseMissionStepsWindow() => _missionStepsWindowItemId = null;
+    private void CloseLinkedCellsWindow() => _linkedCellsWindowItemId = null;
+
+    /// <summary>The id of each section's window: the one DrawioWindow renders, and the one drawio-windows.js remembers it by.</summary>
+    private static readonly IReadOnlyList<(DrawioSection Section, string Id)> WindowIds =
+    [
+        (DrawioSection.PlantFile, "drawio-plant-file"),
+        (DrawioSection.Operations, "drawio-operations"),
+        (DrawioSection.Devices, "drawio-device-list"),
+        (DrawioSection.Junctions, "drawio-junction-list"),
+        (DrawioSection.Missions, "drawio-mission-list"),
+        (DrawioSection.PlcConnections, "drawio-plc-connections"),
+        (DrawioSection.Checks, "drawio-checks"),
+    ];
+
+    /// <summary>The windows module (DrawioWindow.ModulePath), imported by the page for the memory of which windows are open; null without it.</summary>
+    private IJSObjectReference? _windowsModule;
+
+    /// <summary>
+    /// Once, when the strip is first on the page: the windows that were open at the end of the last
+    /// visit, in this browser, open again - stacked as they were then, the one in front again in front
+    /// and with the focus, which the module sees to when it shows them (drawio-windows.js,
+    /// openedLastTime and show; draw.io takes the focus when it loads the plant a moment later, and
+    /// drawio-bridge.js gives it back). Without the module, or with a memory it cannot read, none
+    /// does: the page starts as it always has, every window shut.
+    /// </summary>
+    private async Task ReopenTheWindowsOpenLastTimeAsync()
+    {
+        string[]? ids;
+        try
+        {
+            _windowsModule = await JS.InvokeAsync<IJSObjectReference?>("import", DrawioWindow.ModulePath);
+            ids = _windowsModule is null ? null : await _windowsModule.InvokeAsync<string[]?>("openedLastTime");
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            // A convenience only: nothing opens again, and nothing is remembered from here on.
+            _windowsModule = null;
+            return;
+        }
+
+        var reopened = false;
+        foreach (var (section, id) in WindowIds)
+        {
+            if (ids?.Contains(id) == true && _openSections.Add(section)) reopened = true;
+        }
+
+        // OnAfterRenderAsync does not render again by itself once it returns.
+        if (reopened) StateHasChanged();
+    }
+
+    /// <summary>The windows open now, remembered for the next visit in this browser - by the module, in the order they are stacked.</summary>
+    private async Task RememberOpenWindowsAsync()
+    {
+        // The module is imported only after the bridge attach (ReopenTheWindowsOpenLastTimeAsync): a window toggled before that is not remembered until the next toggle.
+        if (_windowsModule is null) return;
+        try
+        {
+            string[] open = [.. WindowIds.Where(window => IsOpen(window.Section)).Select(window => window.Id)];
+            await _windowsModule.InvokeVoidAsync("rememberOpen", new object?[] { open });
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            // Not remembered for next time: the windows in front of the operator are unaffected.
+        }
+    }
+
+    /// <summary>What the drawing answered to a row of one of the lists, and the cell that row asked it to select.</summary>
+    private sealed record DrawioGoTo(string CellId, DrawioSaid Outcome);
+
+    private DrawioGoTo? _deviceListGoTo;
+
+    private DrawioGoTo? _junctionListGoTo;
+
+    private DrawioGoTo? _missionListGoTo;
+
+    /// <summary>
+    /// Row 60 (compito 3): a row of the missions list chosen - the device the mission is on selected
+    /// on the drawing, the same selection as the device list's. A mission on no device selects nothing,
+    /// and says so.
+    /// </summary>
+    private async Task GoToFromMissionListAsync(MissionDto mission)
+    {
+        if (mission.PositionItemId is not { } itemId || itemId == Guid.Empty)
+        {
+            _missionListGoTo = new DrawioGoTo("", new DrawioSaid($"The mission {mission.MissionId} is on no device, so nothing was selected on the drawing."));
+            return;
+        }
+
+        var cellId = DrawnCellOf(itemId);
+        var (_, outcome) = await SelectDeviceOnTheDrawingAsync(itemId);
+        _missionListGoTo = new DrawioGoTo(cellId, outcome);
+    }
+
+    /// <summary>
+    /// A list's "go to" line is about ONE cell of the drawing: once the selection is anything else,
+    /// "X is selected in the drawing" is no longer true (and "nothing was selected" is behind the
+    /// operator), so the line goes. It stays while the selection is that cell - which is also how the
+    /// selection the row itself caused arrives, before or after draw.io's answer.
+    /// </summary>
+    private void ForgetGoTosTheSelectionMadeUntrue(IReadOnlyList<string>? cellIds)
+    {
+        if (_deviceListGoTo is { } device && !IsOnly(cellIds, device.CellId)) _deviceListGoTo = null;
+        if (_junctionListGoTo is { } junction && !IsOnly(cellIds, junction.CellId)) _junctionListGoTo = null;
+        if (_missionListGoTo is { } mission && !IsOnly(cellIds, mission.CellId)) _missionListGoTo = null;
+    }
+
+    private static bool IsOnly(IReadOnlyList<string>? cellIds, string cellId) => cellIds is [var only] && only == cellId;
+
+    /// <summary>
+    /// Asks the drawing to select one cell and bring it into view (the bridge's <c>selectCell</c>):
+    /// its answer, or - when there was none - why, as <paramref name="failure"/>'s words, with what the
+    /// page's script threw behind the line's "?" (row 37 of the queue, extended to the whole page on
+    /// 10/10). Shared by the devices (the checks' "go to", the device list) and the junctions (the
+    /// junction list).
+    /// </summary>
+    private async Task<(string? Answer, DrawioSaid? Failure)> AskTheDrawingToSelectAsync(string cellId)
+    {
+        if (_bridgeModule is null)
+            return (null, new DrawioSaid("the drawing cannot be reached from this page (the bridge to draw.io did not load), so nothing was selected. Reload the page."));
+
+        try
+        {
+            return (await _bridgeModule.InvokeAsync<string?>("selectCell", cellId), null);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            return (null, DrawioSaid.Failed(
+                $"the drawing did not answer, because {DrawioFailureWords.WhyTheScriptDidNotAnswer(ex)}, so nothing was selected.", ex));
+        }
+    }
+
+    /// <summary>
+    /// The drawing asked to select one cell, and its answer worded - once, for a device and for a
+    /// junction alike: <paramref name="named"/> is what the line is about, <paramref name="shape"/>
+    /// what it is on the drawing ("cell", "arrow"), <paramref name="selected"/> what follows "is
+    /// selected in the drawing and brought into view", <paramref name="noCell"/> the whole line for a
+    /// subject with nothing drawn.
+    /// </summary>
+    private async Task<(bool Reached, DrawioSaid Outcome)> SelectOnTheDrawingAsync(string cellId, string named, string shape, string selected, string noCell)
+    {
+        var (answer, failure) = await AskTheDrawingToSelectAsync(cellId);
+        if (failure is not null) return (false, failure with { Text = $"{named}: {failure.Text}" });
+
+        return answer switch
+        {
+            "ok" => (true, new DrawioSaid($"{named} is selected in the drawing and brought into view{selected}.")),
+            "no-cell" => (false, new DrawioSaid(noCell)),
+            "no-graph" => (false, new DrawioSaid($"{named}: this page cannot reach the drawing's model - the same failure that stops it from following the selection - so nothing was selected. Reload the page.")),
+            "failed" => (false, new DrawioSaid($"{named}: draw.io refused to select the {shape} (the browser console says why). Nothing was selected.")),
+            _ => (false, new DrawioSaid($"{named}: the drawing answered something this page does not know how to read ({answer ?? "nothing at all"}), so it is NOT known whether the {shape} was selected.")),
+        };
+    }
+
+    private Task<(bool Reached, DrawioSaid Outcome)> SelectDeviceOnTheDrawingAsync(Guid itemId)
+    {
+        var named = _graph?.Items.FirstOrDefault(item => item.ItemId == itemId) is { } device
+            ? NameOf(device)
+            : itemId.ToString();
+
+        return SelectOnTheDrawingAsync(DrawnCellOf(itemId), named, "cell", ": its properties are in the column on the right",
+            $"{named} has no cell in the drawing, so nothing was selected: a device with no position is not drawn at all, and neither is one whose shape was deleted from the canvas. The device is on the plant either way.");
+    }
+
+    /// <summary>Row 59: a row of the junction list chosen - its arrow selected on the drawing.</summary>
+    private async Task GoToJunctionAsync(Guid junctionId)
+    {
+        var named = _graph?.Junctions.FirstOrDefault(junction => junction.JunctionId == junctionId) is { } junction
+            ? $"The junction {NameOfItem(junction.SourceItemId)} -> {NameOfItem(junction.DestinationItemId)}"
+            : $"The junction {junctionId}";
+
+        var edgeId = DrawnEdgeOf(junctionId);
+        var (_, outcome) = await SelectOnTheDrawingAsync(edgeId, named, "arrow", "",
+            $"{named} has no arrow in the drawing, so nothing was selected: a junction is drawn only between two drawn devices, and not at all once its arrow was deleted from the canvas. The junction is on the plant either way.");
+        _junctionListGoTo = new DrawioGoTo(edgeId, outcome);
+    }
+
+    /// <summary>
+    /// The drawn arrow of a junction: the one the save mapped to it (an arrow drawn by hand keeps
+    /// draw.io's own id), otherwise the junction's own id, which is what the seeding gives an arrow -
+    /// the twin of <see cref="DrawnCellOf"/> for devices.
+    /// </summary>
+    private string DrawnEdgeOf(Guid junctionId)
+    {
+        foreach (var (edgeId, mapped) in _plantJunctionByDrawnEdge)
+            if (mapped == junctionId) return edgeId;
+        return junctionId.ToString();
+    }
+
+    /// <summary>The junction whose arrow is the one cell selected on the drawing, if that is what is selected: its row of the junction list is marked.</summary>
+    private Guid? SelectedJunctionId
+    {
+        get
+        {
+            if (SelectionState.SelectedCellIds is not [var cellId] || _graph is not { } graph) return null;
+            if (_plantJunctionByDrawnEdge.TryGetValue(cellId, out var mapped)) return mapped;
+            return Guid.TryParse(cellId, out var id) && graph.Junctions.Any(junction => junction.JunctionId == id) ? id : null;
+        }
+    }
+
+    private string NameOfItem(Guid itemId) =>
+        _graph?.Items.FirstOrDefault(item => item.ItemId == itemId) is { } device ? NameOf(device) : itemId.ToString();
+
+    private async Task OnKeyAcceptedAsync() => await LoadGraphAsync();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _geometry = new DrawioGeometryCoordinator(
+            State,
+            _plantJunctionByDrawnEdge,
+            () => _decorationLoaded,
+            () => _decorationFailure,
+            xml => _decorationXml = xml,
+            denied => _lockDenied = denied, TakeOffTheCanvasAsync);
+        _save = new DrawioSaveCoordinator(
+            _geometry,
+            _writeGate,
+            () => _graph,
+            graph =>
+            {
+                if (_graph is { } page)
+                    page.Adopt(graph);
+                else
+                    _graph = graph;
+            },
+            State,
+            () => _documentSent,
+            _plantJunctionByDrawnEdge,
+            _plantItemByDrawnCell,
+            EnsureWritableAsync);
+        _save.Changed += OnCoordinatorChanged;
+        _selection = new DrawioSelectionCoordinator(
+            State,
+            _writeGate,
+            () => _graph,
+            _plantItemByDrawnCell,
+            ReadMarkedCellsAsync,
+            RenameCellAsync,
+            EnsureWritableAsync,
+            () => _navStatus);
+        _selection.Changed += OnCoordinatorChanged;
+        _creation = new DrawioCreationCoordinator(
+            State,
+            _writeGate,
+            () => _graph,
+            _plantItemByDrawnCell,
+            () => NewDevicesWritableAsync("created"),
+            CanvasTakesTheNameAsync,
+            _selection.RefreshSelectedConfigAsync);
+        _creation.Changed += OnCoordinatorChanged;
+        _duplication = new DrawioDuplicationCoordinator(State, _writeGate, () => _graph, () => NewDevicesWritableAsync("duplicated"), SourceOnTheCanvasAsync, DrawTheDuplicateAsync);
+        _duplication.Changed += OnCoordinatorChanged;
+        // The engine switch reads the status the page SHOWS: "already stopped" and "already
+        // reached" are said about what the operator sees, which is the newest status known.
+        // Without a Live feed the page reads the status by itself while a command is pending: the
+        // same GET as before a write, which shows what it reads when the feed is not Live.
+        _engine = new DrawioEngineCoordinator(_writeGate, () => State.Client, EnsureEngineCanStartAsync, UnsavedWorkAsync,
+            ReleaseStartPermitAsync, () => DisplayedNavStatus, RefreshEngineStatusAsync, () => _live?.Connection == LiveConnection.Live,
+            _gone.Token, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30));
+        _engine.Changed += OnCoordinatorChanged;
+        _writeGate.Changed += OnWriteGateChanged;
+        _routes = new LiveRouteReader(() => State.Client, () => _graph);
+        State.ConnectionCameBack += OnConnectionCameBack;
+
+        if (State.HasKey) await LoadGraphAsync();
+    }
+
+    private void OnWriteGateChanged()
+    {
+        if (_disposed) return;
+        _ = InvokeAsync(() =>
+        {
+            if (!_disposed) StateHasChanged();
+        });
+    }
+
+    private void OnCoordinatorChanged() => OnWriteGateChanged();
+
+    private async Task LoadGraphAsync()
+    {
+        var graph = new PlantGraph();
+        await graph.LoadAsync(State.Client);
+        _graph = graph;
+
+        await LoadDecorationAsync();
+        await RefreshEngineStatusAsync();
+
+        await SendLibraryAsync();
+        await SeedDrawioAsync();
+
+        // Last and not awaited: the drawing never waits for the live channel. draw.io starts only
+        // once the library is sent, and a channel slow to open - or not opening at all - would have
+        // kept the plant off the canvas, and this page on "Loading the plant...", for as long.
+        // StartLiveAsync throws nothing: whatever fails in it is said on the page, not dropped with
+        // the discarded task.
+        _ = StartLiveAsync();
+    }
+
+    private async Task LoadDecorationAsync()
+    {
+        try
+        {
+            _decorationXml = await State.Client.GetPlantDecorationAsync();
+            _decorationLoaded = true;
+            _decorationFailure = null;
+            _decorationNotice = null;
+            return;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or WcsApiException or TaskCanceledException)
+        {
+            _decorationXml = null;
+            _decorationLoaded = false;
+            _decorationFailure = ex;
+        }
+
+        // One sentence with the why in the page's words, and the host's answer behind its "?" (row 37
+        // of the queue, extended to the whole page on 10/10).
+        _decorationNotice = DrawioSaid.Failed(
+            $"Decoration: the plant's decoration could not be read because {DrawioFailureWords.Why(_decorationFailure)}: the drawing starts without it, and so as not to erase it, it will not be rewritten for this whole session. " +
+            "To try again, reload the page NOW - before you draw, while reloading costs nothing.",
+            _decorationFailure);
+    }
+
+    private async Task RefreshEngineStatusAsync()
+    {
+        var asked = _navSequence;
+        NavigatorStatusTypes read;
+        try
+        {
+            read = (await State.Client.GetStatusAsync()).NavStatus;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or WcsApiException or TaskCanceledException)
+        {
+            // Not known for the write decision; for the display, a read that failed says nothing
+            // about the engine, and what is shown stays the last thing known.
+            _navStatus = null;
+            return;
+        }
+
+        _navStatus = read;
+        // Shown only if it is the newest thing known: nothing was shown since this read started,
+        // and the feed is not Live - while it is, the host tells every change on the channel, and a
+        // GET that lands after a live event is the older of the two.
+        if (_navSequence == asked && _live?.Connection != LiveConnection.Live)
+            await ShowNavStatusAsync(read);
+    }
+
+    /// <summary>Shows <paramref name="status"/> as the engine's, and sends the hover once more if it has not gone through yet.</summary>
+    private async Task ShowNavStatusAsync(NavigatorStatusTypes status)
+    {
+        _navSequence++;
+        if (_shownNavStatus == status) return;
+        _shownNavStatus = status;
+        _engine.EngineStatusArrived(status);
+        ForgetTheMenuCommandUnlessRunning();
+        StateHasChanged();
+        await SendHoverAsync();
+    }
+
+    /// <summary>
+    /// Opens this page's event channel. Its events come on the channel's threads: everything goes
+    /// back to the circuit with InvokeAsync before touching the page.
+    /// </summary>
+    private async Task StartLiveAsync()
+    {
+        // A page disposed of while it was still loading must not open a channel nobody would close.
+        if (_disposed || _live is not null) return;
+        try
+        {
+            // Both can throw synchronously: State.Client and State.OpenEvents without a key, and a
+            // channel that refuses its options.
+            _live = new PlantLiveFeed(State.Client, State.OpenEvents(),
+                itemId => _graph?.Items.FirstOrDefault(item => item.ItemId == itemId)?.DeviceType,
+                // The host's own logging: a subscriber of the feed that throws is written down there.
+                logger: FeedLogger);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // What was thrown, apart from the page's own sentence: behind the "?" of its line in the
+            // row, and in the pill's tip under the sentence (row 37 of the queue, extended on 10/10).
+            _liveUnavailable = DrawioFailureWords.Detail(ex);
+            StateHasChanged();
+            return;
+        }
+
+        _live.FrameReady += OnLiveFrameReady;
+        _live.StatusChanged += OnLiveStatusChanged;
+        _live.CommandChanged += OnLiveCommandChanged;
+        await _live.StartAsync();
+        await RunLiveAsync(OnLiveStatusChangedAsync);
+    }
+
+    private void OnLiveFrameReady() => OnLiveEvent(RefreshLiveAsync);
+
+    private void OnLiveStatusChanged() => OnLiveEvent(OnLiveStatusChangedAsync);
+
+    /// <summary>A command's outcome, for the engine switch: through the same guard as every live event.</summary>
+    private void OnLiveCommandChanged(CommandDto command) => OnLiveEvent(() =>
+    {
+        _engine.CommandArrived(command);
+        return Task.CompletedTask;
+    });
+
+    /// <summary>
+    /// The one way the feed's events reach the page. It cannot throw back into the feed: FrameReady
+    /// comes on a timer thread of the process that also runs the engine. And it may come after this
+    /// page is gone - the feed can raise one just after its DisposeAsync has returned.
+    /// </summary>
+    private void OnLiveEvent(Func<Task> work)
+    {
+        if (_disposed) return;
+        try
+        {
+            _ = InvokeAsync(() => RunLiveAsync(work));
+        }
+        catch (ObjectDisposedException)
+        {
+            // The circuit's renderer is already torn down: there is no page left to update.
+        }
+    }
+
+    /// <summary>
+    /// Runs a piece of the live path on the circuit. Its task is discarded by whoever raised the
+    /// event, so an exception left in it would go nowhere: it is caught here and said on the page.
+    /// </summary>
+    private async Task RunLiveAsync(Func<Task> work)
+    {
+        if (_disposed) return;
+        try
+        {
+            await work();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            if (_disposed) return;
+            _liveFailure = DrawioSaid.Failed(
+                "Part of the live status stopped working on this page: the drawing and the save work as before.", ex);
+            _liveFailedIn = work;
+            TryStateHasChanged();
+            return;
+        }
+
+        // The same piece went through this time: what it had said is no longer true.
+        if (_liveFailedIn is not null && _liveFailedIn.Equals(work))
+        {
+            _liveFailure = null;
+            _liveFailedIn = null;
+            TryStateHasChanged();
+        }
+    }
+
+    private void TryStateHasChanged()
+    {
+        if (_disposed) return;
+        try
+        {
+            StateHasChanged();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The renderer went away in the meantime: there is no page left to tell.
+        }
+    }
+
+    private async Task OnLiveStatusChangedAsync()
+    {
+        if (_disposed || _live is null) return;
+        // The feed's word is the newest: every change it applies here counts as the last thing known,
+        // also while it is Interrupted - then its status is the last one it received.
+        if (_live.NavStatus is { } status)
+        {
+            _navSequence++;
+            _shownNavStatus = status;
+            _engine.EngineStatusArrived(status);
+            ForgetTheMenuCommandUnlessRunning();
+        }
+
+        // StateHasChanged first: the banner must not wait for the live module to take the hover.
+        StateHasChanged();
+        await SendHoverAsync();
+    }
+
+    /// <summary>
+    /// Queue item 21: a configuration write of this page that changed a load unit's size is on the
+    /// canvas at once, not at the next live event - on an idle plant that could be never. The graph's
+    /// own counter says whether the last frame was drawn with the sizes it holds now, and every render
+    /// of the page asks it (OnAfterRenderAsync): ONE place for every way the sizes move - the
+    /// properties panel, the device list, linking and unlinking a warehouse cell (each ends in a
+    /// render of the page), the mode switch's and the save's rereads of the plant, which read the
+    /// sizes again without seeding the drawing. An import reloads the page, and the seeding sends the
+    /// whole frame. Comparing two integers costs nothing on the renders that change nothing.
+    /// </summary>
+    private async Task RedrawLiveIfLoadUnitSizesMovedAsync()
+    {
+        if (_graph is { } graph && graph.LoadUnitSizesRevision != _liveLoadUnitSizesRevision) await RefreshLiveAsync();
+    }
+
+    /// <summary>The graph's <see cref="PlantGraph.LoadUnitSizesRevision"/> the last frame sent to the canvas was built with.</summary>
+    private int? _liveLoadUnitSizesRevision;
+
+    /// <summary>Sends the whole live frame to the canvas; the module draws only what changed.</summary>
+    private async Task RefreshLiveAsync()
+    {
+        if (_disposed || _live is null || _liveModule is null || !_documentSent || _graph is not { } graph) return;
+        string? answer;
+        string? reason = null;
+        try
+        {
+            // Taken BEFORE the frame is built: a write landing while this frame is on its way moves
+            // the counter past it, and the next check sends another.
+            _liveLoadUnitSizesRevision = graph.LoadUnitSizesRevision;
+            answer = await _liveModule.InvokeAsync<string?>("render", LiveFrameJson.Build(_live.TakeFrame(), DrawnCellOf, graph.LoadUnitSizeOf));
+        }
+        catch (JSException)
+        {
+            // The browser's own failure: its console has it.
+            answer = "failed";
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Not only the JS failures: a frame that cannot be built, or an answer that cannot be
+            // read, is the same fact for the page - the live status is not on the canvas. This method
+            // is also called straight from the seeding, where an exception would fail OnDrawioReady.
+            // The browser console knows nothing of these: the reason goes on the line.
+            answer = "failed";
+            reason = DrawioFailureWords.Detail(ex);
+        }
+
+        // 'no-graph' before draw.io's init is not a failure: the next frame after the seeding draws.
+        var failed = answer == "failed" || (answer == "no-graph" && SelectionState.SelectionUnavailable);
+        if (failed != _liveDrawFailed || (failed && reason != _liveDrawReason))
+        {
+            _liveDrawFailed = failed;
+            _liveDrawReason = failed ? reason : null;
+            StateHasChanged();
+        }
+
+        // A hover that did not go through is sent again at every frame until it does: besides a change
+        // of the engine's status, which may not come for as long as the engine stays put, nothing else
+        // would give it another chance.
+        if (!_hoverSent) await SendHoverAsync();
+
+        // Row 63: a device that goes offline or back is offered "Set Ready"/"Set Off Line" in the
+        // right-click menu from this frame on - selected or not, which is why it is not left to the
+        // render below, made only for the selected device.
+        await SyncDeviceMenuAsync();
+
+        // StatusOf is read at DeviceCommands' render time, not stored: without a render here, "Set
+        // Ready"/"Set Off Line" (and the panel's Status parameter generally) would stay whatever it
+        // was on the last selection or configuration change, one live frame behind the device - and
+        // so would the load unit in the panel's heading (SelectedLoadUnit, read the same way).
+        // Guarded by an actual change: a frame that carries every OTHER device's movement, and
+        // leaves the SELECTED one's status and load unit exactly as last rendered, does not deserve a
+        // render here - a status change, a load unit taken or left, or another device's selection each
+        // still show up, because each changes the (ItemId, Status, LoadUnit) triple being compared.
+        if (SelectionState.ConfigItemId is { } selectedItemId)
+        {
+            var current = (selectedItemId, _live?.StatusOf(selectedItemId)?.Status, SelectedLoadUnit);
+            if (_lastRenderedDeviceStatus != current)
+            {
+                _lastRenderedDeviceStatus = current;
+                TryStateHasChanged();
+            }
+        }
+    }
+
+    /// <summary>
+    /// The hover route is on whatever the engine's state: it only READS the route (two GETs at every
+    /// entry into a device), and a route is there to be seen also with the engine stopped - the
+    /// operator's change of destination builds it at once (owner's decision 3 of 30/9, missions plan;
+    /// until then it was on only with the engine running, spec row 53). So it is switched on once,
+    /// when the live module and the page's reference are there, and never off: the module's own
+    /// clear() takes it away with the page. One send at a time; a send that fails leaves it unknown,
+    /// and RefreshLiveAsync sends again at every frame until one goes through.
+    /// </summary>
+    private async Task SendHoverAsync()
+    {
+        if (_hoverSending || _hoverSent) return;
+        _hoverSending = true;
+        try
+        {
+            if (_disposed || _liveModule is null || _bridgeCallbackRef is null) return;
+            try
+            {
+                await _liveModule.InvokeVoidAsync("setHover", true, _bridgeCallbackRef);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                SetHoverFailure(ex);
+                return;
+            }
+
+            _hoverSent = true;
+            SetHoverFailure(null);
+        }
+        finally
+        {
+            _hoverSending = false;
+        }
+    }
+
+    /// <summary>The line of a hover that could not be switched on, or none once it went through. Honest about who can say why.</summary>
+    private void SetHoverFailure(Exception? ex)
+    {
+        DrawioSaid? line = ex switch
+        {
+            null => null,
+            JSException =>
+                "The route on hover cannot be switched on on this canvas (the browser console says why): the colours, the drawing and the save work as before.",
+            _ => DrawioSaid.Failed(
+                "The route on hover cannot be switched on on this page: the colours, the drawing and the save work as before.", ex),
+        };
+        if (line == _hoverFailure) return;
+        _hoverFailure = line;
+        TryStateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnLiveHover(string? cellId)
+    {
+        if (cellId is null || _selection.DeviceOf(cellId) is not { } device || _live is null)
+        {
+            _routes.Forget();
+            return;
+        }
+
+        var loaded = _live.StatusOf(device.ItemId)?.LuLoadStatus == LuLoadStatusTypes.Loaded;
+        if (await _routes.ReadAsync(device.ItemId, loaded) is not { } route || _liveModule is null) return;
+
+        try
+        {
+            await _liveModule.InvokeVoidAsync("showRoute", cellId,
+                route.Next is { } next ? DrawnCellOf(next) : null,
+                route.Final is { } final ? DrawnCellOf(final) : null);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            // A route that cannot be drawn is simply not drawn: the next hover asks again.
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!State.HasKey) return;
+        if (_bridgeAttachAttempted)
+        {
+            // Row 63: never before attach has gone out (see _bridgeAttached) - the rule the comment
+            // in AttachTheBridgeAsync is about.
+            await SyncDeviceMenuAsync();
+            await RevealWhenThePanelIsReadyAsync();
+            // Queue item 21: a load unit size written or read again is on the canvas at once.
+            await RedrawLiveIfLoadUnitSizesMovedAsync();
+            return;
+        }
+
+        await AttachTheBridgeAsync();
+
+        // Once, like the attach, and after it: the attach is what the drawing waits for, the windows
+        // are a convenience. Not at firstRender: the strip is on the page only once the key is.
+        await ReopenTheWindowsOpenLastTimeAsync();
+    }
+
+    private async Task AttachTheBridgeAsync()
+    {
+        _bridgeAttachAttempted = true;
+
+        // The live module FIRST, before the bridge's: from the moment _bridgeModule is set, nothing
+        // may await until attach is called. LoadGraphAsync sends the configuration as soon as it has
+        // the plant and _bridgeModule, and a configure that reaches the bridge before attach is lost:
+        // attach makes the promise draw.io's 'configure' waits on, nobody resolves it, and draw.io
+        // waits for ever on an empty canvas (measured in the browser suite, intermittent - it takes
+        // the plant landing during that await; TheConfigurationNeverReachesTheBridgeBeforeAttach).
+        // Importing it first costs nothing: it imports the bridge itself, so the import below finds
+        // it already loaded.
+        try
+        {
+            _liveModule = await JS.InvokeAsync<IJSObjectReference?>("import", LiveModulePath);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            // Without the live module the Editor still draws and saves: only the colours are missing.
+            _liveModule = null;
+            _liveDrawFailed = true;
+            _liveDrawReason = ex is JSException ? null : DrawioFailureWords.Detail(ex);
+        }
+
+        try
+        {
+            _bridgeModule = await JS.InvokeAsync<IJSObjectReference?>("import", BridgeModulePath);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            SetBridgeUnavailable(BridgeNotLoadedMessage);
+            return;
+        }
+        catch (OperationCanceledException)
+        {
+            SetBridgeUnavailable(BridgeTimedOutMessage);
+            return;
+        }
+
+        if (_bridgeModule is null)
+        {
+            SetBridgeUnavailable(BridgeNotLoadedMessage);
+            return;
+        }
+
+        _bridgeCallbackRef = DotNetObjectReference.Create(this);
+        try
+        {
+            await _bridgeModule.InvokeVoidAsync("attach", _iframeElement, _bridgeCallbackRef, FrameUrl);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            SetBridgeUnavailable(BridgeNotRespondingMessage);
+            return;
+        }
+        catch (OperationCanceledException)
+        {
+            SetBridgeUnavailable(BridgeTimedOutMessage);
+            return;
+        }
+
+        _bridgeAttached = true;
+
+        // Row 33, fix round 2: read AFTER attach, not before it. The comment above this method is
+        // the whole reason - "from the moment _bridgeModule is set, nothing may await until attach
+        // is called" - and this await broke exactly that rule: LoadGraphAsync runs concurrently
+        // (started, not awaited, from OnInitializedAsync) and reaches SendLibraryAsync's own
+        // "configure" call on this SAME _bridgeModule the instant it has the plant, which can land
+        // inside this very await. attach() makes a FRESH promise for draw.io's 'configure' to wait
+        // on; a configure sent before attach resolves the promise attach has not made yet, that
+        // answer is thrown away, and draw.io waits forever on an empty canvas - MEASURED: a real run
+        // of DrawioArrowByHandTest went red on exactly this, "the device never appeared on the
+        // canvas ... within 60 seconds", after this await had been placed before attach. The switch
+        // showing its remembered value a moment later than the canvas itself is a fair price for
+        // that not happening again.
+        await LoadRulerPreferenceAsync();
+
+        await SendLibraryAsync();
+
+        // Row 63: the renders that came while attach was on its way could not tell the bridge (see
+        // _bridgeAttached), and a page whose plant is already loaded may not render again for a long
+        // time - an untouched page does not. Said here, once, for them.
+        await SyncDeviceMenuAsync();
+    }
+
+    private async Task SendLibraryAsync()
+    {
+        if (_bridgeModule is null || _graph is not { } graph || _librarySent) return;
+        _librarySent = true;
+
+        try
+        {
+            await _bridgeModule.InvokeVoidAsync("configure", DrawioLibrary.Build(graph.Types));
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            SetBridgeUnavailable(LibraryNotSentMessage);
+        }
+    }
+
+    private void SetBridgeUnavailable(string message)
+    {
+        _bridgeUnavailable = true;
+        _bridgeUnavailableMessage = message;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnDrawioReady()
+    {
+        _drawioReady = true;
+        await SeedDrawioAsync();
+        await RunLiveAsync(SendHoverAsync);
+        // Row 33: "if at startup the memory says on, they turn on as soon as draw.io is ready" - this
+        // IS that moment, but the call is UNCONDITIONAL and not only "if (_rulersOn)". Fix round 1:
+        // draw.io builds its OWN ruler at its OWN startup, before this method ever runs - MEASURED in
+        // app.min.js, EditorUi's constructor reads mxSettings.isRulerOn() (draw.io's shared
+        // ".drawio-config" localStorage entry, the very one setRulerVisible's own mxSettings.save()
+        // writes into) and creates the mxDualRuler right there if it says on. A stale "on" left in
+        // that shared entry - by an earlier session, or by this very bundle's own last save - would
+        // otherwise show rulers on a canvas this page believes are off, with no way back: the old
+        // "if" only ever asked draw.io to turn rulers ON, never to turn an unwanted ON back off.
+        // setRulerVisible is cheap when nothing has to change - it asks isRulerVisible() first - so
+        // reconciling every time costs nothing in the ordinary case where the two already agree.
+        await SetRulerVisibleAsync(_rulersOn);
+    }
+
+    /// <summary>Row 33: the switch's remembered value, read off the browser's own storage through the bridge.</summary>
+    private async Task LoadRulerPreferenceAsync()
+    {
+        if (_bridgeModule is null) return;
+        try
+        {
+            _rulersOn = await _bridgeModule.InvokeAsync<bool>("loadRulerPreference");
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            // Row 33's own rule: without memory the page works the same, with the default (off).
+            _rulersOn = false;
+        }
+
+        // OnAfterRenderAsync does not render again by itself once it returns: without this the
+        // switch would go on showing the false it was first rendered with, even after _rulersOn
+        // just became true above.
+        StateHasChanged();
+
+        // THE RACE: OnDrawioReady can run its own reconciliation (setRulerVisible(_rulersOn), see
+        // there) BEFORE this await above returns - draw.io's 'init' is not ordered against this
+        // call. When that happens the canvas was reconciled with the false this field still held,
+        // and _rulersOn changing above never reaches the canvas: the switch shows on, the rulers
+        // stay off. _drawioReady already true is exactly that signal, and it is safe to reconcile
+        // again here - setRulerVisible is cheap when nothing has to change (it asks isRulerVisible()
+        // first, see there).
+        if (_drawioReady) await SetRulerVisibleAsync(_rulersOn);
+    }
+
+    /// <summary>
+    /// The operator flipped the switch: shown at once (the switch is the operator's own gesture, it
+    /// must not wait for draw.io to answer), then applied to the canvas and remembered for next time -
+    /// two separate calls, because one failing must not stop the other: a ruler that could not be
+    /// toggled is still worth remembering for the next reload, and a preference that could not be
+    /// saved must not leave the canvas showing the old state.
+    /// </summary>
+    private async Task OnRulerToggleAsync(bool enabled)
+    {
+        _rulersOn = enabled;
+        StateHasChanged();
+        await SetRulerVisibleAsync(enabled);
+        await SaveRulerPreferenceAsync(enabled);
+    }
+
+    private async Task SetRulerVisibleAsync(bool enabled)
+    {
+        if (_bridgeModule is null) return;
+        try
+        {
+            await _bridgeModule.InvokeVoidAsync("setRulerVisible", enabled);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            // The switch still shows what the operator asked for; only the canvas did not follow.
+            // Nothing else to do from here - the bridge's own console line says why, as everywhere
+            // else in this file.
+        }
+    }
+
+    private async Task SaveRulerPreferenceAsync(bool enabled)
+    {
+        if (_bridgeModule is null) return;
+        try
+        {
+            await _bridgeModule.InvokeVoidAsync("saveRulerPreference", enabled);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            // Not remembered for next time: the session in front of the operator is unaffected.
+        }
+    }
+
+    /// <summary>
+    /// Row 8, the owner's decision of 27/9: draw.io was asked to cut a selection holding devices of
+    /// the plant, and the bridge did nothing (drawio-bridge.js, guardTheCut). Said here, on the page,
+    /// until the selection moves.
+    /// </summary>
+    [JSInvokable]
+    public void OnDrawioCutRefused(string[]? cellIds)
+    {
+        var ids = cellIds ?? [];
+        var devices = ids.Select(id => _selection.DeviceOf(id)).ToList();
+        var names = ids.Select((id, i) => devices[i] is { } device ? NameOf(device) : id).ToList();
+        // The bridge refuses a cell the page knows as a device AND a cell that only carries the device
+        // mark (a refused drop, an orphan): the second is not "a plant device", and is not worded as one.
+        var what = devices.Count > 0 && devices.All(device => device is not null)
+            ? "A plant device cannot be cut: drag it to move it, or delete it with Delete."
+            : "A device shape cannot be cut: it is marked as a device, and the plant does not know it - delete it with Delete, or point it at a device from the properties column.";
+        _cutRefused = $"{what} Nothing was cut ({(names.Count == 0 ? "the selection holds a device" : string.Join(", ", names))}).";
+        _cutRefusals++;
+        TryStateHasChanged();
+    }
+
+    /// <summary>The line of <see cref="OnDrawioCutRefused"/>, null when there is nothing to say.</summary>
+    private string? _cutRefused;
+
+    /// <summary>
+    /// How many cuts were refused: each one is a new outcome in the row under the bar, so a second
+    /// Ctrl+X on the same selection shows its line again after the X closed the first.
+    /// </summary>
+    private long _cutRefusals;
+
+    [JSInvokable]
+    public Task OnDrawioSelectionChanged(string[]? cellIds)
+    {
+        _cutRefused = null;
+        ForgetGoTosTheSelectionMadeUntrue(cellIds);
+        ForgetTheMenuEntryTheSelectionMadeUntrue(cellIds);
+        return _selection.SelectionChangedAsync(cellIds ?? []);
+    }
+
+    [JSInvokable]
+    public void OnDrawioSelectionUnavailable()
+    {
+        ForgetGoTosTheSelectionMadeUntrue(null);
+        ForgetTheMenuEntryTheSelectionMadeUntrue(null);
+        _selection.SelectionUnavailable();
+    }
+
+    /// <summary>
+    /// Queue item 15: draw.io selected <paramref name="count"/> cells, too many for their identifiers to
+    /// cross the circuit in one message (drawio-bridge.js, tellOrWarn): the bridge sent their count
+    /// instead. What depended on the selection is let go as for any selection that moved, and the
+    /// panel's line says it.
+    /// </summary>
+    [JSInvokable]
+    public Task OnDrawioTooManyCellsSelected(int count)
+    {
+        _cutRefused = null;
+        ForgetGoTosTheSelectionMadeUntrue(null);
+        ForgetTheMenuEntryTheSelectionMadeUntrue(null);
+        return _selection.SelectionTooLargeToFollowAsync(count);
+    }
+
+    [JSInvokable]
+    public Task OnDrawioCellsAdded(DrawioAddedCell[]? cells) =>
+        _creation.CellsAddedAsync(cells ?? []);
+
+    /// <summary>
+    /// Queue item 15: a gesture brought <paramref name="count"/> cells into the drawing, too many to
+    /// describe to the page in one message of the circuit (drawio-bridge.js, tellOrWarn): the bridge
+    /// sent their count instead, and none of them can become a device. Said in the row under the bar.
+    /// </summary>
+    [JSInvokable]
+    public void OnDrawioTooManyCellsAdded(int count)
+    {
+        _tooManyCellsAdded = $"Too many cells to follow ({count}): the cells just added are not known to this page, and none of them became a device.";
+        _tooManyCellsAddedTimes++;
+        TryStateHasChanged();
+    }
+
+    /// <summary>The line of <see cref="OnDrawioTooManyCellsAdded"/>, null when there is nothing to say.</summary>
+    private string? _tooManyCellsAdded;
+
+    /// <summary>How many gestures brought too many cells: each one is a new outcome in the row, as a refused cut is.</summary>
+    private long _tooManyCellsAddedTimes;
+
+    [JSInvokable]
+    public void OnDrawioCreationUnavailable() => _creation.MarkUnavailable();
+
+    /// <summary>
+    /// Row 63 (compito 5): an entry of ours chosen in draw.io's right-click menu on a device
+    /// (drawio-bridge.js, hookThePopupMenu). Every entry is an action the properties panel already
+    /// has, and it is done THROUGH the panel: the bridge has already made the device the only cell
+    /// selected, so the panel is about it, and the entry either brings a part of that panel into view
+    /// (<see cref="RevealWhenThePanelIsReadyAsync"/>) or hands the command to the panel's own commands
+    /// component (<see cref="DrawioMenuCommand"/>), which sends it as its button would. Nothing here
+    /// touches draw.io's model or the drawing.
+    /// </summary>
+    /// <remarks>
+    /// What the page refuses, it says (<c>#drawio-menu-notice</c>), and it never does something else
+    /// instead: a cell it does not know as a device, an entry it does not know, a device the panel is
+    /// not showing (the selection the menu made did not reach the page), a command with the engine
+    /// not running - the same rule the panel's commands follow (<see cref="DeviceCommands"/>).
+    /// </remarks>
+    [JSInvokable]
+    public async Task OnDrawioMenuEntry(string? cellId, string? entry)
+    {
+        _menuNotice = null;
+        _menuReveal = null;
+        _menuCommand = null;
+
+        if (cellId is null || _selection.DeviceOf(cellId) is not { } device)
+        {
+            _menuNotice = $"The menu entry was about a shape that is not a device of the plant (cell {cellId ?? "(none)"}): nothing was done.";
+            StateHasChanged();
+            return;
+        }
+
+        var name = NameOf(device);
+        if (DrawioContextMenu.Parse(entry) is not { } chosen)
+        {
+            _menuNotice = $"The menu entry \"{entry}\" is not one this page knows: nothing was done to {name}.";
+        }
+        else if (DrawioContextMenu.CommandOf(chosen) is { } command)
+        {
+            var label = DrawioContextMenu.Of(command).Label;
+            if (DisplayedNavStatus != NavigatorStatusTypes.Run)
+                _menuNotice = $"{label} was NOT sent to {name}: the engine is not running, and the device commands are offered only while it runs.";
+            else if (SelectionState.ConfigItemId != device.ItemId)
+                _menuNotice = $"{label} was NOT sent to {name}: the properties panel is not showing it (the selection did not reach this page). Select it and use the panel's own button.";
+            else
+                _menuCommand = new DrawioMenuCommand(device.ItemId, command);
+        }
+        else if (SelectionState.ConfigItemId != device.ItemId)
+        {
+            _menuNotice = $"{DrawioContextMenu.WhatOf(chosen)} of {name} could not be shown: the properties panel is not showing it (the selection did not reach this page). Select it on the drawing.";
+        }
+        else if (chosen is DrawioMenuEntry.MissionSteps or DrawioMenuEntry.LinkedStorageCells)
+        {
+            var alreadyOpen = chosen == DrawioMenuEntry.MissionSteps
+                ? _missionStepsWindowItemId == device.ItemId
+                : _linkedCellsWindowItemId == device.ItemId;
+            if (chosen == DrawioMenuEntry.MissionSteps) _missionStepsWindowItemId = device.ItemId;
+            else _linkedCellsWindowItemId = device.ItemId;
+
+            if (alreadyOpen && _windowsModule is not null)
+            {
+                try
+                {
+                    await _windowsModule.InvokeAsync<bool>("activate",
+                        chosen == DrawioMenuEntry.MissionSteps ? "drawio-mission-steps-window" : "drawio-linked-storage-cells-window");
+                }
+                catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+                {
+                    // It is already open; only bringing it above another window and focusing it was lost.
+                }
+            }
+        }
+        else
+        {
+            // "Duplicate Device" asks the panel's own question (the first of its two steps); the
+            // answer stays the operator's, in the panel.
+            if (chosen == DrawioMenuEntry.DuplicateDevice) AskToDuplicate(device.ItemId);
+            _menuReveal = new DrawioMenuReveal(device.ItemId, DrawioContextMenu.TargetsOf(chosen)!, DrawioContextMenu.WhatOf(chosen), name);
+        }
+
+        StateHasChanged();
+    }
+
+    /// <summary>A part of the properties panel an entry of the right-click menu asked to bring into view, once the panel has it.</summary>
+    private sealed record DrawioMenuReveal(Guid ItemId, string[] Targets, string What, string Name);
+
+    private DrawioMenuReveal? _menuReveal;
+
+    /// <summary>The device command chosen from the right-click menu, until the panel's commands component takes it or something makes it untrue.</summary>
+    private DrawioMenuCommand? _menuCommand;
+
+    /// <summary>What the page refused of a right-click menu entry, or could not do: said in the properties dock until the next entry or selection.</summary>
+    private DrawioSaid? _menuNotice;
+
+    /// <summary>
+    /// Whether the properties panel shows everything it will show for <paramref name="itemId"/>: its
+    /// configuration read (or its failure said), and the warehouse cells too for a device that has
+    /// them - the same conditions the dock's own markup renders its sections on. Before that, the
+    /// part the menu asked for may not be there yet, or may be pushed down by what arrives above it.
+    /// </summary>
+    private bool ThePanelIsSettledFor(Guid itemId)
+    {
+        var state = SelectionState;
+        if (state.ConfigItemId != itemId) return false;
+        if (state.ConfigError is not null) return true;
+        if (state.Config is null) return false;
+        return state.CellsKind == CellPanelKind.None
+               || state.CellsError is not null
+               || (state.WmsCells is not null && state.CellsMappings is not null);
+    }
+
+    /// <summary>
+    /// Brings the part of the panel a menu entry asked for into view, once the panel is settled for
+    /// that device: opened if it is a box, scrolled to, focused (drawio-bridge.js, revealInPanel). A
+    /// panel that could not be reached is said, not kept quiet about. It goes through the bridge, so
+    /// it waits for attach like every other call (<see cref="_bridgeAttached"/>): the entry stays
+    /// pending until then, and the renders that attach itself makes bring it into view.
+    /// </summary>
+    private async Task RevealWhenThePanelIsReadyAsync()
+    {
+        if (_menuReveal is not { } reveal || !_bridgeAttached || _bridgeModule is not { } bridge
+            || !ThePanelIsSettledFor(reveal.ItemId)) return;
+        _menuReveal = null;
+
+        string? answer = null;
+        Exception? failure = null;
+        try
+        {
+            answer = await bridge.InvokeAsync<string?>("revealInPanel", (object)reveal.Targets);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            failure = ex;
+        }
+
+        if (answer is not null && reveal.Targets.Contains(answer)) return;
+        // Row 37 of the queue: a failure of the page's script is said in words, and what it threw is
+        // behind the line's "?"; an answer the script did give is the page's own, and stays in the line.
+        // Final review, M7: the why is the failure's own - "the script failed" was false for a call
+        // that ran out of time, or for the connection to the browser lost.
+        _menuNotice = failure is not null
+            ? DrawioSaid.Failed($"{reveal.What} of {reveal.Name} could not be brought into view because {DrawioFailureWords.WhyTheScriptDidNotAnswer(failure)}: they are in the column on the right.", failure)
+            : $"{reveal.What} of {reveal.Name} could not be brought into view ({(answer is null ? "the page did not answer" : $"the page answered {answer}")}): they are in the column on the right.";
+        TryStateHasChanged();
+    }
+
+    /// <summary>
+    /// A menu entry is about ONE device: once the selection is anything else, what it asked for no
+    /// longer applies - a command is not sent to a device the operator has left, and a part of the
+    /// panel is not brought into view for a device the panel no longer shows. The selection the menu
+    /// itself makes arrives BEFORE the entry does (the bridge selects, then calls), so it is never
+    /// the one that takes the entry away. A notice goes with any selection: it was about the gesture
+    /// before it.
+    /// </summary>
+    private void ForgetTheMenuEntryTheSelectionMadeUntrue(IReadOnlyList<string>? cellIds)
+    {
+        var onlyDevice = cellIds is [var only] ? _selection.DeviceOf(only)?.ItemId : null;
+        if (_menuReveal is { } reveal && reveal.ItemId != onlyDevice) _menuReveal = null;
+        if (_menuCommand is { } command && command.ItemId != onlyDevice) _menuCommand = null;
+        if (_duplicateQuestion is { } asked && asked.ItemId != onlyDevice) _duplicateQuestion = null;
+        if (_missionStepsWindowItemId != onlyDevice) _missionStepsWindowItemId = null;
+        if (_linkedCellsWindowItemId != onlyDevice) _linkedCellsWindowItemId = null;
+        _menuNotice = null;
+    }
+
+    /// <summary>
+    /// A command chosen while the engine ran, and not yet taken when it stopped, is not kept for the
+    /// next time it runs: that would send it to the device long after the operator chose it.
+    /// </summary>
+    private void ForgetTheMenuCommandUnlessRunning()
+    {
+        if (_menuCommand is not { Taken: false } pending || DisplayedNavStatus == NavigatorStatusTypes.Run) return;
+        _menuCommand = null;
+        _menuNotice = $"{DrawioContextMenu.Of(pending.Command).Label} was NOT sent to {NameOfItem(pending.ItemId)}: the engine stopped running before the panel could send it.";
+    }
+
+    /// <summary>
+    /// What the bridge needs to build our entries in draw.io's right-click menu, which it builds on
+    /// its own and at once (no round trip to this page is possible while draw.io draws a menu): the
+    /// cells that ARE devices of the plant - the same answer <see cref="DrawioSelectionCoordinator.DeviceOf"/>
+    /// gives, so a junction's arrow or a drawing-only shape gets none - whether the engine runs, by
+    /// the same rule as the panel's commands (<see cref="DeviceCommands"/>: the status the page
+    /// shows), and which devices are offline, for "Set Ready" in place of "Set Off Line" as the
+    /// panel's own button says it. Sent only when it changed.
+    /// </summary>
+    private async Task SyncDeviceMenuAsync()
+    {
+        if (_bridgeModule is null || !_bridgeAttached || _disposed) return;
+
+        var running = DisplayedNavStatus == NavigatorStatusTypes.Run;
+        var devices = new SortedSet<string>(StringComparer.Ordinal);
+        var offline = new SortedSet<string>(StringComparer.Ordinal);
+        if (_graph is { } graph)
+        {
+            var known = new HashSet<Guid>();
+            var offlineItems = new HashSet<Guid>();
+            foreach (var item in graph.Items)
+            {
+                known.Add(item.ItemId);
+                devices.Add(item.ItemId.ToString());
+                if (_live?.StatusOf(item.ItemId)?.Status == DeviceStatusTypes.OffLine)
+                {
+                    offlineItems.Add(item.ItemId);
+                    offline.Add(item.ItemId.ToString());
+                }
+            }
+
+            foreach (var (cellId, itemId) in _plantItemByDrawnCell)
+            {
+                if (!known.Contains(itemId)) continue;
+                devices.Add(cellId);
+                if (offlineItems.Contains(itemId)) offline.Add(cellId);
+            }
+        }
+
+        var said = $"{running}|{string.Join(",", devices)}|{string.Join(",", offline)}";
+        if (said == _deviceMenuSaid) return;
+        _deviceMenuSaid = said;
+        try
+        {
+            await _bridgeModule.InvokeVoidAsync("setDeviceMenu", running, devices.ToArray(), offline.ToArray());
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            // Said again at the next render or frame: the menu offers what it was last told, and an
+            // entry chosen from a stale menu is judged again here, on what the page knows now.
+            _deviceMenuSaid = null;
+        }
+    }
+
+    /// <summary>What <see cref="SyncDeviceMenuAsync"/> last told the bridge, so that it tells again only a change.</summary>
+    private string? _deviceMenuSaid;
+
+    /// <returns>
+    /// Null when the drawing took the name; otherwise the words that end the creation's line, with what
+    /// the page's script threw behind the line's "?" (row 37 of the queue, extended to the whole page on
+    /// 10/10).
+    /// </returns>
+    private async Task<DrawioSaid?> CanvasTakesTheNameAsync(string cellId, string name)
+    {
+        const string stale = ": the shape keeps the label it had until the page is reloaded.";
+        if (_bridgeModule is null) return $" The drawing could not be told{stale}";
+
+        try
+        {
+            if (!await _bridgeModule.InvokeAsync<bool>("renameCell", cellId, name, true))
+                return $" The drawing did not take that name (the cell is no longer there, or the selection could not be followed){stale}";
+        }
+        catch (Exception ex)
+        {
+            return DrawioSaid.Failed($" The drawing could not be told, because {DrawioFailureWords.WhyTheScriptDidNotAnswer(ex)}{stale}", ex);
+        }
+
+        return null;
+    }
+
+    private async Task<IReadOnlyList<DrawioMarkedCell>?> ReadMarkedCellsAsync()
+    {
+        if (_bridgeModule is null) return null;
+        try
+        {
+            return await _bridgeModule.InvokeAsync<DrawioMarkedCell[]?>("markedCells");
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
+    // alreadyOnThePlant tells the bridge whether the model edit it is about to make is an echo of a
+    // write the plant already holds (true - the ordinary case, the config panel's rename) or real
+    // unsaved work (false - the re-pointing gesture, row 15: the shape/device pair only reaches the
+    // plant at the next save). See renameCell in drawio-bridge.js.
+    private async Task<DrawioCanvasRenameResult> RenameCellAsync(string cellId, string? name, bool alreadyOnThePlant)
+    {
+        if (_bridgeModule is null) return new(false, false, null);
+        try
+        {
+            return new(await _bridgeModule.InvokeAsync<bool>("renameCell", cellId, name ?? "", false, alreadyOnThePlant), true, null);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            return new(false, false, ex.Message);
+        }
+    }
+
+    private async Task SeedDrawioAsync()
+    {
+        if (_bridgeModule is null || !_drawioReady || _graph is not { } graph) return;
+
+        _documentSent = false;
+
+        _plantJunctionByDrawnEdge.Clear();
+        _plantItemByDrawnCell.Clear();
+
+        if (_liveModule is not null)
+        {
+            // The overlays are on cells that the load below replaces. A live module that does not
+            // answer is not a drawing that did not arrive: it is kept apart from the load's failure.
+            try
+            {
+                await _liveModule.InvokeVoidAsync("forget");
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // Whatever it is, it is not fatal: the overlays are secondary and the drawing is not.
+                // A forget that did not happen leaves at worst an overlay on a cell about to go; the
+                // next frame is drawn on the new document either way.
+            }
+        }
+
+        try
+        {
+            await _bridgeModule.InvokeVoidAsync("load", _iframeElement, DrawioDocument.Build(graph, _decorationXml));
+            _documentSent = true;
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            SetBridgeUnavailable(DocumentNotSentMessage);
+        }
+
+        // The new drawing has none of the live status yet: the whole frame goes to it at once.
+        await RefreshLiveAsync();
+    }
+
+    /// <summary>
+    /// The drawing draw.io handed over for a save. The answer goes back to the bridge, and it is
+    /// what puts down the mark that makes closing the tab ask "Leave site?" (row 46): true only for
+    /// a round that wrote everything - see <see cref="DrawioSaveCoordinator.SavedAsync(string)"/>.
+    /// </summary>
+    /// <remarks>
+    /// Not what the bridge calls since queue item 13: the drawing does not cross the circuit as one
+    /// message any more - see <see cref="OnDrawioHandedTheDrawingOver"/>, which takes it and then runs
+    /// this same round on it.
+    /// </remarks>
+    public Task<bool> OnDrawioSaved(string xml) => _save.SavedAsync(xml);
+
+    /// <summary>
+    /// Queue item 13: draw.io handed a drawing over for a save, and the bridge keeps it under the
+    /// number <paramref name="drawing"/>: the page takes it as a stream (the bridge's
+    /// <c>handedOverDrawing</c>, see <see cref="DrawioDrawingTransfer"/>) and runs the save round on it,
+    /// with the same answer as <see cref="OnDrawioSaved"/>: true only for a round that wrote everything.
+    /// Still called <c>OnDrawioSaved</c> from the bridge: it is the same event.
+    /// </summary>
+    [JSInvokable(nameof(OnDrawioSaved))]
+    public Task<bool> OnDrawioHandedTheDrawingOver(long drawing)
+    {
+        // Queue item 14: this number reached the page, whatever its round does next - a drop of the
+        // connection did not take it. And a new save makes the line about a lost one stale.
+        _savesAccountedFor.Add(drawing);
+        _saveLostInADrop = false;
+        _saveMayHaveBeenWritten = false;
+        return RunTheSaveRoundAsync(drawing);
+    }
+
+    private async Task<bool> RunTheSaveRoundAsync(long drawing)
+    {
+        try
+        {
+            var round = await _save.RoundAsync(async () => _bridgeModule is { } bridge
+                ? await DrawioDrawingTransfer.FetchAsync(bridge, "handedOverDrawing", [drawing])
+                  // No bytes: the bridge no longer holds that number (it lets go at a detach), or draw.io
+                  // handed over nothing. Said as that, and not as a drawing that is "not XML".
+                  ?? throw new DrawioDrawingNotReceivedException(
+                      "there was no drawing under the number the save was handed over with - draw.io handed over nothing, or the page had already let go of it. Press Save again")
+                : throw new DrawioDrawingNotReceivedException("the page is no longer connected to draw.io - reload it"));
+            // Final fix round, C1: a round that stopped before writing anything is not said, at a drop
+            // that takes its answer, as a save that may have been written.
+            if (round == DrawioSaveRound.WroteNothing) _saveRoundsThatWroteNothing.Add(drawing);
+            return round == DrawioSaveRound.WroteEverything;
+        }
+        finally
+        {
+            // Final review, C18: the round is over and the page will not ask for its drawing again. If
+            // its answer is lost in a drop, the bridge's call never settles and the bridge would hold
+            // the drawing for good; the next drop's coming back lets go of it.
+            _saveRoundsOver.Add(drawing);
+        }
+    }
+
+    private const string SaveLostInADropMessage =
+        "The connection dropped during the save; nothing was written, press Save again.";
+
+    private const string SaveMayHaveBeenWrittenMessage =
+        "The connection dropped while the plant was being saved: the save may have been written. Reopen the plant to see what it holds.";
+
+    private const string ConnectionCameBackMessage =
+        "The connection to the host dropped and came back: what you did in that moment may not have reached the page.";
+
+    /// <summary>
+    /// Queue item 14: the numbers of the saves that reached this page (<see cref="OnDrawioHandedTheDrawingOver"/>),
+    /// and of those already said lost. A number the bridge still holds after a drop and that is not
+    /// among these is a call the drop took; one that reached the page went to the host, and its outcome
+    /// had not come back to the browser - its round may still be running, and its answer will still get
+    /// there, or have ended with its answer lost in the drop (task 12: "the save may have been written",
+    /// unless the round wrote nothing). Each is said once, at the drop that finds it (<see cref="_savesSaidAtADrop"/>), and not again at every drop after - a call that
+    /// never settles stays in the bridge until the page tells it to let go (<see cref="_saveRoundsOver"/>).
+    /// One per save, never pruned: a number taken out while its round runs would read as lost at the
+    /// next drop.
+    /// </summary>
+    private readonly HashSet<long> _savesAccountedFor = [];
+
+    /// <summary>
+    /// Queue item 14 and task 12: the saves a drop has been said about - lost, or that may have been
+    /// written. Said once each. Never a round still running: its answer reaches the bridge on the
+    /// connection that came back, and its own report says what it wrote (final fix round, C1).
+    /// </summary>
+    private readonly HashSet<long> _savesSaidAtADrop = [];
+
+    /// <summary>
+    /// Final review, C18: the numbers whose round has ended on this page. With the lost ones, they are
+    /// what the bridge is told to let go of when a drop comes back (<c>letGoOfSaves</c>): a call that
+    /// never settles - the save's, or its answer's on the way back - kept the whole drawing in the
+    /// browser for the rest of the session, one copy of the plant per save a drop took.
+    /// </summary>
+    private readonly HashSet<long> _saveRoundsOver = [];
+
+    /// <summary>
+    /// Final fix round, C1: the rounds among <see cref="_saveRoundsOver"/> that stopped before writing
+    /// anything - refused at the gate, or whose drawing did not arrive. Their answer lost in a drop is
+    /// no save that may have been written: the page knows nothing was.
+    /// </summary>
+    private readonly HashSet<long> _saveRoundsThatWroteNothing = [];
+
+    /// <summary>How many times the circuit's connection came back: each one is a new outcome in the row.</summary>
+    private long _connectionDrops;
+
+    /// <summary>A drop took a save's call: said until the next save reaches the page.</summary>
+    private bool _saveLostInADrop;
+
+    /// <summary>How many drops took a save: each one is a new outcome in the row, as a refused cut.</summary>
+    private long _savesLostInADrop;
+
+    /// <summary>Task 12: a drop crossed a save that had reached the page: said until the next save reaches it.</summary>
+    private bool _saveMayHaveBeenWritten;
+
+    /// <summary>Task 12: how many drops crossed such a save: each one is a new outcome in the row.</summary>
+    private long _savesMayHaveBeenWritten;
+
+    /// <summary>Raised by the session (<see cref="EditorSessionState.ConnectionCameBack"/>) on whatever thread Blazor's handler runs.</summary>
+    private void OnConnectionCameBack()
+    {
+        if (_disposed) return;
+        _ = InvokeAsync(SayWhatTheDropMayHaveTakenAsync);
+    }
+
+    /// <summary>
+    /// Queue item 14: the line every drop gets, and the save's when the bridge still holds the number
+    /// of a save that never reached the page - its call was sent while the connection was down, and
+    /// Blazor neither sends it again nor settles it. Task 12: and when it holds the number of one that
+    /// did reach the page and whose round ended with its answer lost in the drop - the round went to the
+    /// host, and what it wrote is not known from there. Not for a round still running, whose answer
+    /// comes on the connection that came back, nor for one that stopped before writing anything
+    /// (final fix round, C1).
+    /// </summary>
+    private async Task SayWhatTheDropMayHaveTakenAsync()
+    {
+        if (_disposed) return;
+        _connectionDrops++;
+        if (_bridgeAttached && _bridgeModule is { } bridge)
+        {
+            try
+            {
+                // Final fix round, C1: the rounds that ended before the bridge is asked. One that ends
+                // while it answers does so on the connection that came back, and its answer gets there.
+                var overBeforeAsking = _saveRoundsOver.ToHashSet();
+                var held = await bridge.InvokeAsync<long[]>("savesHandedOver");
+                var lost = held.Where(drawing => !_savesAccountedFor.Contains(drawing)).ToList();
+                if (lost.Count > 0)
+                {
+                    _savesAccountedFor.UnionWith(lost);
+                    _savesSaidAtADrop.UnionWith(lost);
+                    _saveLostInADrop = true;
+                    _savesLostInADrop++;
+                }
+
+                // Task 12: a round that reached the page, ended, and whose answer the drop took - and not
+                // one still running, nor one the page knows wrote nothing (final fix round, C1).
+                var mayHaveBeenWritten = held
+                    .Where(drawing => !lost.Contains(drawing)
+                        && overBeforeAsking.Contains(drawing)
+                        && !_saveRoundsThatWroteNothing.Contains(drawing)
+                        && _savesSaidAtADrop.Add(drawing))
+                    .ToList();
+                if (mayHaveBeenWritten.Count > 0)
+                {
+                    _saveMayHaveBeenWritten = true;
+                    _savesMayHaveBeenWritten++;
+                }
+
+                // Final review, C18: what nobody will ask for again - the lost ones, and the ones whose
+                // round is over - and not a round still running, which takes its drawing by itself.
+                var done = held.Where(drawing => lost.Contains(drawing) || _saveRoundsOver.Contains(drawing)).ToArray();
+                if (done.Length > 0) await bridge.InvokeVoidAsync("letGoOfSaves", (object)done);
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+            {
+                // The bridge could not be asked - the connection dropped again, most likely: the line
+                // of the drop is said anyway, and the next one asks again.
+            }
+        }
+
+        TryStateHasChanged();
+    }
+
+    private async Task<DrawioSaid?> ImportThroughTheGateAsync(Func<Task> write)
+    {
+        if (!_writeGate.TryEnter(DrawioPlantWriter.Importing, out var writeLease))
+        {
+            return DrawioWriteRefusal.ForImport(_writeGate.Current);
+        }
+
+        using var importLease = writeLease!;
+        if (await EnsureWritableAsync() is { } refused)
+            return refused;
+        // Owner's decision of 27/9 on Pause: a plant is imported only with the engine stopped - Run,
+        // Recover and Dispose are refused above (CanEdit), Pause here, at write time.
+        if (_navStatus == NavigatorStatusTypes.Pause)
+            return "Nothing was sent: the engine is paused, and a plant is imported only with the engine stopped - an import rebuilds every device without its connection, and resuming from Pause does not open them again.";
+
+        try
+        {
+            await write();
+        }
+        catch (WcsApiException ex) when (ex.StatusCode is HttpStatusCode.Conflict or HttpStatusCode.BadRequest or HttpStatusCode.Locked)
+        {
+            // REFUSED BEFORE ANYTHING WAS WRITTEN (row 46, second half of the owner's decision of
+            // 2026-09-25; fix round 1 added Locked). Conflict/BadRequest: the host validates the
+            // whole replacement before it touches the database (GraphEndpoints), and these two codes
+            // are its way of saying so - work in progress, or an invalid file. Locked: the SAME
+            // route requires the edit permit (RequiresEditPermission -> EditPermissionFilter), which
+            // runs as a filter BEFORE the endpoint body - a permit that expired, or was taken by
+            // another circuit, in the moment between EnsureWritableAsync's own check above and the
+            // PUT actually landing on the host answers 423 before anything is touched either. All
+            // three are refusals of the SAME shape, and ImportExport's own catch for them does not
+            // reload the page: the drawing on the canvas is exactly the one the operator has been
+            // drawing on, unsaved work and all, so nothing here forgets it.
+            throw;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or WcsApiException)
+        {
+            // The write was ATTEMPTED and its outcome is NOT known - a dropped connection, a timeout,
+            // a 5xx, or a WcsApiException of some OTHER status than the three refusals just above.
+            // This is exactly the set ImportExport.ConfirmImportAsync's own general catch recognizes
+            // (fix round 1: it used to be "anything but OutOfMemoryException", which is wider than
+            // that catch and would have forgotten the unsaved work even for a failure ImportExport
+            // does not reload for - a lie about what is about to happen next). For everything in
+            // this set ImportExport DOES reload the page UNCONDITIONALLY (the canvas may be drawing
+            // a plant that is no longer there), and that reload must not ask "Leave site?" about a
+            // drawing the operator can no longer trust either way. Forgotten here, before the
+            // exception reaches that catch, for the same reason a write that went through forgets
+            // below - and ForgetUnsavedWorkAsync itself never throws towards its caller, so this
+            // cannot turn one failure into two.
+            await ForgetUnsavedWorkAsync();
+            throw;
+        }
+
+        await ForgetUnsavedWorkAsync();
+        return null;
+    }
+
+    /// <summary>
+    /// The whole plant may have just been replaced by an import, and ImportExport reloads the page
+    /// next: what the canvas holds is superseded by the operator's own confirmed choice - or may be,
+    /// which is just as much a reason not to trust it - so the reload must not ask "Leave site?".
+    /// Called from <see cref="ImportThroughTheGateAsync"/> in the TWO cases where the write was
+    /// ATTEMPTED (fix round 1: not only the one where it plainly went through) - a success, or an
+    /// outcome left unknown by a dropped connection, a timeout or a 5xx - and in neither case of a
+    /// REFUSAL that left the plant untouched (409/400/423, all caught before this is ever reached):
+    /// a refused import leaves the drawing - and its unsaved work - exactly where it was, and nothing
+    /// here has a reason to forget it.
+    /// </summary>
+    private async Task ForgetUnsavedWorkAsync()
+    {
+        if (_bridgeModule is null) return;
+        try
+        {
+            await _bridgeModule.InvokeVoidAsync("forgetUnsavedWork");
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // WHATEVER it is, it stops here. This runs right after a write that went through OR
+            // whose outcome is unknown - either way ImportExport is about to reload the page - and
+            // anything thrown from here would reach ImportExport as a failure of the import itself
+            // (the "outcome unknown" warning, wrongly, about a write that may have succeeded) or
+            // escape it with no reload at all. Not forgotten only means the reload that follows asks
+            // "Leave site?" once too often, which is the side a doubt is allowed to fall on.
+        }
+    }
+
+    /// <summary>
+    /// Row 50 (task 1): the write gate and the edit permit, in the same shape as
+    /// <see cref="ImportThroughTheGateAsync"/> - <see cref="DrawioPlantWriter.Mode"/> instead of
+    /// <see cref="DrawioPlantWriter.Importing"/>. It only decides the refusals that are known BEFORE
+    /// any write is attempted: another writer already holding the gate, or
+    /// <see cref="EnsureWritableAsync"/> saying read-only (permit denied, or the engine already Run
+    /// per the page's own cached status) - both RETURNED as a string, never thrown.
+    /// </summary>
+    /// <remarks>
+    /// Fix round 1, item 12 (this summary used to contradict itself): whatever <c>write()</c> itself
+    /// throws - a 409 if the engine starts running in the exact window after
+    /// <see cref="EnsureWritableAsync"/> already passed (<c>PlantQueries.SetConnectionTypeForAllAsync</c>
+    /// /<c>RequireNotRunning</c>), a 423 if the permit is lost in that same window, or a transport
+    /// failure - is NOT caught here: it propagates to <c>DrawioOperations.ConfirmModeAsync</c>, which
+    /// tells apart a clean refusal, an unknown outcome, and a write that went through but whose
+    /// following reread failed (fix round 1, IMPORTANT 4) - a distinction this method cannot make on
+    /// its own, since it does not know whether it is <c>write()</c> itself or the caller's own reread
+    /// afterwards (<see cref="ReloadPlantItemsAsync"/>, invoked by DrawioOperations through its
+    /// <c>OnModeWritten</c> parameter, not called from here at all) that eventually fails.
+    /// </remarks>
+    private Task<DrawioSaid?> ModeThroughTheGateAsync(Func<Task> write) =>
+        _writeGate.WriteThroughAsync(DrawioPlantWriter.Mode, DrawioWriteRefusal.ForMode, ModeWritableAsync, write);
+
+    /// <summary>
+    /// Owner's decision of 27/9 (D1): the edit permit, as for every write, and the engine STOPPED - the
+    /// same rule as the PLC connections (<see cref="PlcConnectionsWritableAsync"/>), and the host's
+    /// (PlantQueries.SetConnectionTypeForAllAsync, RequireStopped). The engine gives each device the
+    /// simulator or the PLC only when it opens the connections (DeviceConnections.OpenConnection), and
+    /// resuming from Pause does not reopen them (ExecutableCommands.StartNavigator): switched in Pause,
+    /// the plant would say one mode while the engine keeps driving the other.
+    /// </summary>
+    private async Task<DrawioSaid?> ModeWritableAsync()
+    {
+        var refused = await EnsureWritableAsync();
+        if (_lockDenied is null && _navStatus is { } status && status != NavigatorStatusTypes.Stop)
+            return $"Connection mode was NOT written: the engine is {EngineStateWords(status)}, and the connection mode is switched only with the engine stopped - {WhyTheModeWaitsFor(status)}. Nothing was written.";
+        return refused is null ? null : refused with { Text = $"Connection mode was NOT written. {refused.Text}" };
+    }
+
+    /// <summary>
+    /// Owner's decision of 27/9 on Pause: a device is created (the palette's drop) or duplicated only
+    /// with the engine STOPPED, as the host requires (PlantQueries.CreateItemConfigurationAsync,
+    /// RequireStopped): it would be born without its connection - the engine gives devices the
+    /// simulator or the PLC only when it opens the connections (DeviceConnections.OpenConnection), and
+    /// resuming from Pause does not open them again (ExecutableCommands.StartNavigator). Run, Recover
+    /// and Dispose are refused by <see cref="EnsureWritableAsync"/> itself, in its own words; Pause here.
+    /// </summary>
+    private async Task<DrawioSaid?> NewDevicesWritableAsync(string gesture)
+    {
+        var refused = await EnsureWritableAsync();
+        if (refused is null && _navStatus == NavigatorStatusTypes.Pause)
+            return $"The engine is paused, and a device is {gesture} only with the engine stopped: {NewDeviceWhy}";
+        return refused;
+    }
+
+    /// <summary>Why a new device waits for Stop - the reason <see cref="NewDevicesWritableAsync"/> and the duplicate's question give.</summary>
+    internal const string NewDeviceWhy =
+        "it would be born without its connection - the engine gives devices the simulator or the PLC only when it opens the connections, and resuming from Pause does not open them again.";
+
+    /// <summary>
+    /// What the duplicate's question says while the page SHOWS an engine that is not stopped - the
+    /// answer is held until it is (owner's decision of 27/9 on Pause; the write checks again).
+    /// </summary>
+    private string? DuplicateNotNow => DisplayedNavStatus is { } status && status != NavigatorStatusTypes.Stop
+        ? $"Not now: the engine is {EngineStateWords(status)}, and a device is duplicated only with the engine stopped" +
+          (status == NavigatorStatusTypes.Pause ? $": {NewDeviceWhy}" : ".")
+        : null;
+
+    /// <summary>Why the connection mode waits for Stop, said for the state the engine is in (see <see cref="ModeWritableAsync"/>).</summary>
+    private static string WhyTheModeWaitsFor(NavigatorStatusTypes status) => status switch
+    {
+        NavigatorStatusTypes.Run => "while it runs, the engine drives every device with the simulator or the PLC it gave it when it opened the connections",
+        NavigatorStatusTypes.Pause => "the engine gives a device the simulator or the PLC only when it opens the connections, and resuming from Pause does not reopen them",
+        _ => "until it is stopped, the engine may be opening or using the connections",
+    };
+
+    /// <summary>
+    /// Row 62 (compito 4): the save of the PLC connections through the write gate and the edit permit
+    /// (<see cref="DrawioPlantWriteGate.WriteThroughAsync"/>, the same as the connection mode's), with
+    /// <see cref="DrawioPlantWriter.PlcConnections"/> and the refusals worded for the grid, which keeps
+    /// what was typed. What <c>write()</c> throws is the grid's to tell apart
+    /// (DrawioPlcConnections.ConfirmSaveAsync).
+    /// </summary>
+    private Task<DrawioSaid?> PlcConnectionsThroughTheGateAsync(Func<Task> write) =>
+        _writeGate.WriteThroughAsync(DrawioPlantWriter.PlcConnections, DrawioWriteRefusal.ForPlcConnections, PlcConnectionsWritableAsync, write,
+            afterUnreadablePermit: "Your changes are still in the grid.");
+
+    /// <summary>
+    /// The edit permit, as for every write, and the engine STOPPED - not only "not running", which is
+    /// all <see cref="EnsureWritableAsync"/> refuses (<see cref="CanEdit"/>): paused, the engine still
+    /// holds the PLC connections open, and resuming from Pause does not reopen them
+    /// (<c>ExecutableCommands.StartNavigator</c> skips <c>OpenDeviceConnections</c> when paused).
+    /// </summary>
+    /// <remarks>
+    /// <b>The host has the same rule since Task 4b</b> (<c>PUT /plc/connections</c> with
+    /// <c>RequiresEditPermission</c>, <c>PlcSettingsFacade.ReplaceAsync</c> refusing any state but Stop
+    /// with 409): the page refuses first and says why in its own words; the host's 409 is left for an
+    /// engine started from elsewhere between this check and the PUT (DrawioPlcConnections.HostRefusal).
+    /// The status judged is this call's own: when the
+    /// permit request fails, <see cref="EnsureWritableAsync"/> clears it before returning, and the
+    /// permit is the reason.
+    /// </remarks>
+    private async Task<DrawioSaid?> PlcConnectionsWritableAsync()
+    {
+        var refused = await EnsureWritableAsync();
+        if (_lockDenied is null && _navStatus is { } status && status != NavigatorStatusTypes.Stop)
+            return $"The PLC connections were NOT saved: the engine is {EngineStateWords(status)}, and they are saved only with the engine stopped - {WhyNotWith(status)}. Nothing was written; your changes are still in the grid.";
+        return refused is null ? null : refused with { Text = $"The PLC connections were NOT saved. {refused.Text} Your changes are still in the grid." };
+    }
+
+    private static string EngineStateWords(NavigatorStatusTypes status) => status switch
+    {
+        NavigatorStatusTypes.Run => "running",
+        NavigatorStatusTypes.Pause => "paused",
+        NavigatorStatusTypes.Recover => "recovering",
+        NavigatorStatusTypes.Dispose => "shutting down",
+        _ => status.ToString(),
+    };
+
+    /// <summary>Why the PLC connections wait for Stop, said for the state the engine is in (see <see cref="PlcConnectionsWritableAsync"/>).</summary>
+    private static string WhyNotWith(NavigatorStatusTypes status) => status switch
+    {
+        NavigatorStatusTypes.Run => "while it runs, the engine is using the PLC connections it built when the plant was loaded",
+        NavigatorStatusTypes.Pause => "while paused, the engine keeps its PLC connections open, and resuming does not reopen them",
+        _ => "until it is stopped, the engine may be building or using its PLC connections",
+    };
+
+    /// <summary>
+    /// Rereads just the plant's devices (row 50's brief: "and then rereads the plant"), without resending
+    /// anything to the drawio bridge: <see cref="Wcs.WebEditor.Model.PlantGraph.LoadAsync"/> fills the
+    /// SAME <see cref="_graph"/> instance in place, so DrawioOperations - which was handed that same
+    /// reference - reads the new values on its very next render without a fresh parameter from here.
+    /// </summary>
+    /// <remarks>
+    /// Fix round 1, CRITICAL 1: also forces the properties panel to reread the SELECTED device's own
+    /// configuration (<see cref="DrawioSelectionCoordinator.ForceRefreshSelectedConfigAsync"/>), even
+    /// though the selection itself has not moved. Without this, a device selected before the mode
+    /// switch kept the panel's STALE <c>ConnectionType</c> in <c>_selectedConfig</c>; the next save on
+    /// ANY other field of that same panel would send the whole configuration back, including that
+    /// stale value - silently undoing the switch on whichever device happened to be selected. This
+    /// call never throws (it swallows its own read failures into <c>ConfigError</c>), so it cannot
+    /// turn a successful plant-wide write into this method reporting a reread failure that was really
+    /// only about the panel.
+    /// <para>
+    /// Fix round 2, MINOR 2: the panel reread runs from a <c>finally</c>, so it still happens even
+    /// when the plant-wide reread above (<c>graph.LoadAsync</c>) itself fails - a stale panel must
+    /// never be left showing a value nobody can trust any more just because a DIFFERENT read failed.
+    /// </para>
+    /// <para>
+    /// Final review, M2: the plant reread's failure is RETURNED, not rethrown, next to whether the
+    /// panel was cleared - DrawioOperations.ConfirmModeAsync needs both to say "WAS written, but not
+    /// read again" AND that what was typed into the panel is gone. A rethrown failure could not carry
+    /// the second fact, and the line used to leave it out. A failure of any other kind still
+    /// propagates, after the panel's own reread.
+    /// </para>
+    /// </remarks>
+    private async Task<DrawioModeReread> ReloadPlantItemsAsync()
+    {
+        Exception? plantRereadFailure = null;
+        var panelWasReread = false;
+        try
+        {
+            if (_graph is { } graph) await graph.LoadAsync(State.Client);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or WcsApiException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            plantRereadFailure = ex;
+        }
+        finally
+        {
+            panelWasReread = await _selection.ForceRefreshSelectedConfigAsync();
+        }
+
+        return new DrawioModeReread(panelWasReread, plantRereadFailure);
+    }
+
+    /// <summary>
+    /// The edit permit asked for NOW, and the engine's state read for the write: null lets it through,
+    /// otherwise its refusal. A permit that could not be asked for is said in one sentence with the why,
+    /// and what came back - the host's answer as it came, or the failure's own message - is behind the
+    /// "?" of whichever line says it (row 37 of the queue: the panel, the save, the device list, the PLC
+    /// connections, the connection mode, the engine's start, the creation, the Plant file window).
+    /// </summary>
+    private async Task<DrawioSaid?> EnsureWritableAsync()
+    {
+        try
+        {
+            var lease = await State.Client.AcquireEditLockAsync(State.Holder);
+            _lockDenied = lease.IsMine ? null : lease;
+            _lockEverGranted |= lease.IsMine;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or WcsApiException or TaskCanceledException)
+        {
+            // Returned BEFORE the status is read: what an earlier call left in _navStatus is not this
+            // call's answer, and a caller that judged it would give an old reason - "the engine is
+            // already running" (EnsureEngineCanStartAsync), "paused" (the PLC connections) - instead
+            // of this one. Cleared to unknown, so every caller gives the permit as the reason; every
+            // caller's own test of the engine state needs a known status. (CanEdit is then false, as
+            // it must be for a write that was not let through.)
+            _navStatus = null;
+            return DrawioSaid.Failed($"The edit permit could not be asked for because {DrawioFailureWords.Why(ex)}: nothing was written.", ex);
+        }
+
+        await RefreshEngineStatusAsync();
+
+        if (CanEdit) return null;
+
+        return _lockDenied is { } denied
+            ? $"Read only: somebody else has been editing the plant since {denied.SinceLocal:HH:mm:ss}. Nothing was written."
+            : _navStatus switch
+            {
+                NavigatorStatusTypes.Run => "Read only: the engine is running - stop it before changing the plant. Nothing was written.",
+                NavigatorStatusTypes.Recover => "Read only: the engine is recovering - it is loading the plant, and stops by itself when it has finished: write then. Nothing was written.",
+                NavigatorStatusTypes.Dispose => "Read only: the engine is shutting down. Nothing was written.",
+                _ => "Read only: the engine status is not known, and to be safe no write is made. Nothing was written.",
+            };
+    }
+
+    /// <summary>
+    /// The edit permit for a start, as for any write - worded for the engine. Its own GET may say Run
+    /// while what the page shows does not know it yet (the live event is still on its way): then the
+    /// engine is not "NOT started", it is already running.
+    /// </summary>
+    private async Task<DrawioSaid?> EnsureEngineCanStartAsync()
+    {
+        if (await EnsureWritableAsync() is not { } refused) return null;
+        // Worded for a START (confirmation review, M-C): EnsureWritableAsync's own sentences are for a
+        // write ("... write then").
+        return _lockDenied is not null
+            ? refused with { Text = $"The engine was NOT started. {refused.Text}" }
+            : _navStatus switch
+            {
+                NavigatorStatusTypes.Run => "The engine is already running (the host says so): nothing was sent.",
+                NavigatorStatusTypes.Recover => "The engine was NOT started: it is recovering - loading the plant - and stops by itself when it has finished: start it then.",
+                NavigatorStatusTypes.Dispose => "The engine was NOT started: it is shutting down.",
+                _ => refused with { Text = $"The engine was NOT started. {refused.Text}" },
+            };
+    }
+
+    /// <summary>
+    /// The edit permit the engine's start took, given back once the start is over, whatever its end:
+    /// held for the rest of the minute, it would refuse the other pages with "somebody else has been
+    /// editing". The coordinator calls this while it still holds the write gate, so no write of this
+    /// page can be under way with the same permit; the host releases it only if it is this holder's.
+    /// </summary>
+    private async Task ReleaseStartPermitAsync()
+    {
+        if (_disposed || !State.HasKey) return;
+        try
+        {
+            await State.Client.ReleaseEditLockAsync(State.Holder);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or WcsApiException or TaskCanceledException)
+        {
+            // Not given back: it expires by itself within the minute.
+        }
+    }
+
+    /// <summary>
+    /// What the save would write if it ran now, read off the drawing WITHOUT saving it: the same three
+    /// inputs as the save (the drawing, the plant as opened, the plant now), the same comparison.
+    /// Null when there is nothing; otherwise the sentence that says why the engine was not started -
+    /// with what came back, when a call failed, behind its "?" (row 37 of the queue, extended to the
+    /// whole page on 10/10).
+    /// </summary>
+    private async Task<DrawioSaid?> UnsavedWorkAsync()
+    {
+        const string unknown =
+            "It cannot be known whether the drawing holds unsaved work ({0}), so the engine was NOT started. Reload the page.";
+
+        if (_bridgeModule is null || _graph is not { } opened || !_documentSent)
+            return string.Format(unknown, "the drawing has not reached draw.io");
+
+        string? xml;
+        try
+        {
+            // As a stream, not as one message: see DrawioDrawingTransfer (queue item 13).
+            xml = await DrawioDrawingTransfer.FetchAsync(_bridgeModule, "currentDrawing", []);
+        }
+        catch (DrawioDrawingNotReceivedException ex)
+        {
+            // The message is the page's own words; what the browser threw, if anything, is the inner one.
+            return new DrawioSaid(string.Format(unknown, ex.Message), ex.InnerException is { } failure ? DrawioFailureWords.Detail(failure) : null);
+        }
+
+        if (xml is null) return string.Format(unknown, "draw.io did not hand the drawing over");
+
+        DrawioContents drawn;
+        try
+        {
+            drawn = DrawioReader.Read(xml);
+        }
+        catch (XmlException ex)
+        {
+            return DrawioSaid.Failed(string.Format(unknown, "the drawing that came back from draw.io is not readable as XML"), ex);
+        }
+
+        if (drawn.Diagrams > 1)
+            return "The drawing has more than one page, and the save refuses it: the engine was NOT started. Reload the page first.";
+
+        // The save's own guard (DrawioSaveCoordinator): a drawing with none of the cells that were
+        // sent is not the plant's, and the save refuses it as a whole - "save first" would be advice
+        // the save does not take.
+        var cellsDrawn = drawn.Devices.Count + drawn.Junctions.Count + drawn.Unknown.Count;
+        var cellsSent = opened.Items.Count(item => DrawioDocument.IsDrawn(opened, item))
+            + opened.Junctions.Count(junction => DrawioDocument.IsDrawn(opened, junction));
+        if (cellsDrawn == 0 && cellsSent > 0)
+            return $"The drawing that came back from draw.io holds none of the {cellsSent} plant cells that had been sent to it: it is not the plant's drawing, the save would refuse it, and the engine was NOT started. Reload the page.";
+
+        var current = new PlantGraph();
+        try
+        {
+            await current.LoadAsync(State.Client);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or WcsApiException or TaskCanceledException)
+        {
+            return DrawioSaid.Failed(string.Format(unknown, $"the plant could not be read from the host because {DrawioFailureWords.Why(ex)}"), ex);
+        }
+
+        return DrawioUnsavedWork.Describe(
+            DrawioDelta.Compute(drawn, opened, current, _plantJunctionByDrawnEdge, _plantItemByDrawnCell));
+    }
+
+    private static string NameOf(PlantItemDto item) =>
+        item.Name is { Length: > 0 } name ? name : item.ItemId.ToString();
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        _gone.Cancel();
+        _save.Changed -= OnCoordinatorChanged;
+        _selection.Changed -= OnCoordinatorChanged;
+        _creation.Changed -= OnCoordinatorChanged;
+        _duplication.Changed -= OnCoordinatorChanged;
+        _engine.Changed -= OnCoordinatorChanged;
+        _writeGate.Changed -= OnWriteGateChanged;
+        State.ConnectionCameBack -= OnConnectionCameBack;
+
+        // Nothing of the live status may keep the bridge from detaching or the edit permit from
+        // being released below: its failures stop here, whatever they are.
+        // The live module is cleared first: its hover callbacks stop before the feed does, instead of
+        // reaching a page whose channel is being closed.
+        if (_liveModule is not null)
+        {
+            try
+            {
+                await _liveModule.InvokeVoidAsync("clear");
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+            }
+        }
+
+        if (_live is not null)
+        {
+            try
+            {
+                await _live.DisposeAsync();
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+            }
+        }
+
+        if (_liveModule is not null)
+        {
+            try
+            {
+                await _liveModule.DisposeAsync();
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+            }
+        }
+
+        if (_bridgeModule is not null)
+        {
+            try
+            {
+                await _bridgeModule.InvokeVoidAsync("detach");
+                await _bridgeModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+        }
+
+        _bridgeCallbackRef?.Dispose();
+
+        if (_windowsModule is not null)
+        {
+            try
+            {
+                await _windowsModule.DisposeAsync();
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+            {
+                // Only the page's reference to the module goes: the windows detach themselves.
+            }
+        }
+
+        if (_lockEverGranted && State.HasKey)
+        {
+            try
+            {
+                await State.Client.ReleaseEditLockAsync(State.Holder);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or WcsApiException or TaskCanceledException)
+            {
+            }
+        }
+
+        // Cancelled first thing above; whatever still holds its token sees it cancelled.
+        _gone.Dispose();
+    }
+
+    /// <summary>
+    /// Takes the cells of the devices somebody else deleted off the canvas (coda dei lavori voce 7,
+    /// owner's decision of 27/9): true only when the bridge says they are gone. A page with no bridge,
+    /// a bridge that answers anything else, or one that could not be reached is "not taken off" - and
+    /// the save's report then tells the operator to delete them by hand.
+    /// </summary>
+    /// <remarks>
+    /// The list travels as ONE argument: handed over as it is, a string[] would be taken for the
+    /// params array of InvokeAsync and every identifier would arrive as an argument of its own.
+    /// </remarks>
+    private async Task<bool> TakeOffTheCanvasAsync(IReadOnlyList<string> cellIds)
+    {
+        if (_bridgeModule is null) return false;
+        try
+        {
+            return await _bridgeModule.InvokeAsync<string?>("removeDeletedDeviceCells", new object?[] { cellIds.ToArray() }) == "ok";
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            return false;
+        }
+    }
+}

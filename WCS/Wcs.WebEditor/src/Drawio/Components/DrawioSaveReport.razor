@@ -1,0 +1,124 @@
+@* The save's whole report: since the passata grafica (2026-09-29) the window behind the "Details" of
+   the save's line in the row under the bar (DrawioNotices), and no longer a band above the bar. The
+   markup is the one of before, id for id and class for class: the tests and the browser's helpers
+   read it by them, with the window shut or open. *@
+@using Wcs.WebEditor.Drawio.Coordination
+
+@if (HasAnything(State))
+{
+    <div id="drawio-save-report" class="drawio-save-report">
+        @if (State.Error is { } error)
+        {
+            <DrawioFailureLine Id="drawio-save-error" LineClass="drawio-save-error" Text="@error" Detail="@State.ErrorDetail" />
+        }
+        @if (State.Summary is { } summary)
+        {
+            <p id="drawio-save-summary" class="drawio-save-summary">@summary</p>
+        }
+        @if (State.Written.Count > 0)
+        {
+            <ul class="drawio-save-written">
+                @foreach (var line in State.Written)
+                {
+                    <li class="drawio-written">Written: @line</li>
+                }
+            </ul>
+        }
+        @if (State.Unconfirmed.Count > 0)
+        {
+            <ul class="drawio-save-unconfirmed">
+                @foreach (var line in State.Unconfirmed)
+                {
+                    <li class="drawio-unconfirmed">NOT confirmed (the request went out and got no answer, the host may have executed it anyway): @line</li>
+                }
+            </ul>
+        }
+        @if (State.NotWritten.Count > 0)
+        {
+            <ul class="drawio-save-not-written">
+                @foreach (var line in State.NotWritten)
+                {
+                    <li class="drawio-not-written">NOT written: @line</li>
+                }
+            </ul>
+        }
+        @if (State.Refusals.Count > 0)
+        {
+            <ul class="drawio-save-refusals">
+                @for (var i = 0; i < State.Refusals.Count; i++)
+                {
+                    var refusal = State.Refusals[i];
+                    <li class="drawio-refusal">@Said($"drawio-save-refusal-{i}", $"{refusal.Id}: {refusal.Reason}", refusal.Detail)</li>
+                }
+            </ul>
+        }
+        @if (State.Notices.Count > 0)
+        {
+            <ul class="drawio-save-notices">
+                @for (var i = 0; i < State.Notices.Count; i++)
+                {
+                    var notice = State.Notices[i];
+                    <li class="drawio-notice">@Said($"drawio-save-notice-{i}", $"{notice.Id}: {notice.Message}", notice.Detail)</li>
+                }
+            </ul>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public required DrawioSaveReportState State { get; set; }
+
+    /// <summary>
+    /// A line of the report, and - for a line about a request that failed - what came back behind a "?"
+    /// at its end (row 37 of the queue, extended to the whole page on 10/10): the sentence is then the
+    /// span <paramref name="lineId"/>, the "?" <c>{lineId}-help</c> and the text <c>{lineId}-detail</c>,
+    /// as on every failure line of the page. A line that says no failure is its text alone, as it was.
+    /// </summary>
+    private static RenderFragment Said(string lineId, string sentence, string? detail) => detail is null
+        ? @<text>@sentence</text>
+        : @<text><span id="@lineId">@sentence</span><DrawioHelp Id="@($"{lineId}-help")" Label="Technical detail of the failure"><p id="@($"{lineId}-detail")" class="drawio-failure-detail">@detail</p></DrawioHelp></text>;
+
+    /// <summary>The tail of the summary of a round that did not write everything: "below" is behind "Details" now.</summary>
+    private const string SeeBelow = " - see below.";
+
+    /// <summary>
+    /// The save's line in the row under the bar, with this report behind its "Details" - null when the
+    /// round left nothing to say. Red when something was refused or not written, or the round stopped;
+    /// orange when a write got no answer or a choice was made for whoever draws; green otherwise. The
+    /// sentence is the round's error, or its summary. Transient, and each round
+    /// (<paramref name="round"/>) is a new outcome, even when it ends as the one before did.
+    /// </summary>
+    public static DrawioNoticeLine? NoticeOf(DrawioSaveReportState state, long round) =>
+        HasAnything(state)
+            ? new DrawioNoticeLine("drawio-save", ToneOf(state), LineOf(state), Dismissable: true, @<DrawioSaveReport State="state" />)
+            {
+                DetailsTitle = "Save report",
+                Occurrence = round,
+            }
+            : null;
+
+    private static bool HasAnything(DrawioSaveReportState state) =>
+        state.Error is not null || state.Summary is not null || state.Refusals.Count > 0 ||
+        state.Notices.Count > 0 || state.Unconfirmed.Count > 0;
+
+    private static DrawioNoticeTone ToneOf(DrawioSaveReportState state)
+    {
+        if (state.Error is not null || state.Refusals.Count > 0 || state.NotWritten.Count > 0) return DrawioNoticeTone.Bad;
+        if (state.Unconfirmed.Count > 0 || state.Notices.Count > 0) return DrawioNoticeTone.Warn;
+        return DrawioNoticeTone.Ok;
+    }
+
+    /// <summary>
+    /// The error of a round that stopped, or the summary without its " - see below.": the lines it
+    /// points at are in the window, not under it. A round always has one of the two; the last words
+    /// are for one that ever had neither.
+    /// </summary>
+    private static string LineOf(DrawioSaveReportState state) => state switch
+    {
+        { Error: { } error } => error,
+        { Summary: { } summary } when summary.EndsWith(SeeBelow, StringComparison.Ordinal) => $"{summary[..^SeeBelow.Length]}.",
+        { Summary: { } summary } => summary,
+        _ => "The save left a report: see Details.",
+    };
+}

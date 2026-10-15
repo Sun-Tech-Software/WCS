@@ -1,0 +1,332 @@
+@using System.ComponentModel
+@using System.Globalization
+@using Wcs.Api.Contracts.Dtos
+@using Wcs.WebEditor.Drawio.Coordination
+@using Wcs.WebEditor.Properties
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div id="drawio-property-dock" class="drawio-property-dock" @ref="_dock">
+    <div id="drawio-property-dock-resizer" class="drawio-property-dock-resizer"
+         role="separator" aria-label="Resize properties panel" aria-orientation="vertical"
+         aria-valuemin="320" aria-valuemax="560" aria-valuenow="320" tabindex="0"></div>
+    @* The panel's heading (passata grafica, 2026-09-29): what is selected in the drawing - the line
+       that sat above the bar until then, the same id, the same words and the same error class - with
+       the selected device's type and the load unit it holds under it, and the note that names the
+       device and says when the permit is asked for behind the "?". Outside the part that scrolls, so
+       the panel always says whose properties it shows. Until draw.io has said anything there is no
+       line, and no heading: "Nothing selected." would be a claim nobody has measured. *@
+    @if (SelectionText is not null || State.ConfigItemId is not null)
+    {
+        <div class="drawio-property-head">
+            <div class="drawio-property-heading">
+                @if (SelectionText is { } selection)
+                {
+                    <p id="drawio-selection" class="@(State.SelectionUnavailable ? "drawio-selection drawio-selection-error" : "drawio-selection")">@selection</p>
+                }
+                @if (State.ConfigItemId is { } shownId)
+                {
+                    <p class="drawio-property-kind">
+                        @if (TypeOf(shownId) is { } type)
+                        {
+                            <span id="drawio-property-type">@type</span>
+                        }
+                        @if (LoadUnit is { } loadUnit)
+                        {
+                            <span id="drawio-property-load-unit">Load unit: @loadUnit</span>
+                        }
+                    </p>
+                }
+            </div>
+            @if (State.ConfigItemId is not null)
+            {
+                <DrawioHelp Id="drawio-property-help" Label="About the properties panel">
+                    <p id="drawio-property-subject" class="drawio-property-subject">
+                        @State.ConfigSubjectName, as the host has it. Change what you need and press "Save": the edit
+                        permit is asked for then, not now, so looking at a device takes nothing away from anyone.
+                        If the write is refused, what you typed stays here.
+                    </p>
+                </DrawioHelp>
+            }
+        </div>
+    }
+    <div class="drawio-property-scroll">
+        @if (State.ConfigItemId is { } itemId)
+        {
+            @* Named after its device (role=region, aria-label): the right-click menu's "Properties" puts
+               the focus here (DrawioContextMenu), and the name of the device is in the heading above,
+               outside the panel, and behind its "?". *@
+            <div id="drawio-property-panel" tabindex="-1" role="region" aria-label="@($"Properties of {State.ConfigSubjectName}")">
+                @* The panel's actions in one row: Duplicate, then the commands while the engine runs. *@
+                @if (Duplicate is not null || Commands is not null)
+                {
+                    <div class="drawio-property-actions">
+                        @Duplicate
+                        @Commands
+                    </div>
+                }
+                @if (State.ConfigError is { } configError)
+                {
+                    <DrawioFailureLine Id="drawio-property-error" Class="drawio-property-error" Text="@configError" Detail="@State.ConfigErrorDetail" />
+                }
+                else if (State.Config is null)
+                {
+                    <p id="drawio-property-loading" class="drawio-property-loading">Reading the configuration from the host...</p>
+                }
+                else
+                {
+                    <PropertyPanel Config="State.Config" Items="Items" CanEdit="true" OnSave="OnSaveConfig"
+                                   OnFieldActivated="ShowPropertyDescription" />
+                }
+            </div>
+        }
+        else if (State.ReassociableCell is { } orphanCell)
+        {
+            <div id="drawio-reassociate" class="drawio-reassociate">
+                <p id="drawio-reassociate-subject" class="drawio-property-subject">
+                    This shape is marked as a device and the plant does not know it (cell @orphanCell).
+                    The save will refuse it at every round. Type the identifier of the device it should
+                    stand for and press "Associa": nothing reaches the plant now - the next save writes
+                    this shape's position and size to that device.
+                </p>
+                <label class="drawio-reassociate-field" for="drawio-reassociate-id">
+                    Device identifier
+                    <input id="drawio-reassociate-id" class="drawio-reassociate-input" type="text"
+                           placeholder="00000000-0000-0000-0000-000000000000"
+                           value="@State.ReassociateTyped"
+                           @oninput="ReassociateTypedChanged" />
+                </label>
+                <button id="drawio-reassociate-confirm" class="drawio-reassociate-confirm"
+                        @onclick="() => OnReassociate.InvokeAsync()">Associa</button>
+                <details id="drawio-reassociate-candidates" class="drawio-reassociate-candidates">
+                    <summary id="drawio-reassociate-candidates-summary">@State.ReassociationCandidatesLine</summary>
+                    @if (State.ReassociationCandidates is { Count: > 0 } candidates)
+                    {
+                        <ul class="drawio-reassociate-list">
+                            @foreach (var candidate in candidates)
+                            {
+                                <li class="drawio-reassociate-candidate">@NameOf(candidate): @candidate.ItemId</li>
+                            }
+                        </ul>
+                    }
+                    else
+                    {
+                        <p id="drawio-reassociate-none" class="drawio-reassociate-none">
+                            Every device this plant holds is already drawn by a shape on this canvas, so there
+                            is nothing for this one to stand for. It is a shape too many - delete it, and if a
+                            device is missing drag one out of the "@DrawioLibrary.SectionTitle" section.
+                        </p>
+                    }
+                </details>
+            </div>
+        }
+        else
+        {
+            <p id="drawio-property-hint" class="drawio-property-hint">
+                Select one device in the drawing and its configuration shows up here, ready to be changed.
+            </p>
+        }
+    </div>
+
+    @if (State.ConfigWriteError is { } writeError)
+    {
+        <DrawioFailureLine Id="drawio-property-write-error" LineClass="drawio-property-outcome" Class="drawio-property-error" Text="@writeError" Detail="@State.ConfigWriteErrorDetail" />
+    }
+    @if (State.ConfigWritten is { } written)
+    {
+        <p id="drawio-property-written" class="drawio-property-outcome drawio-property-written">@written</p>
+    }
+    @if (DuplicateReport is { Count: > 0 } duplicateReport)
+    {
+        <ul id="drawio-duplicate-report" class="drawio-property-outcome drawio-duplicate-report">
+            @for (var at = 0; at < duplicateReport.Count; at++)
+            {
+                // A copy per line: the "?"'s note renders later, and would read the loop's last value.
+                var index = at;
+                var line = duplicateReport[index];
+                <li class="@(line.WentThrough ? "drawio-property-written" : "drawio-property-error")">
+                    @if (line.Detail is { } detail)
+                    {
+                        @* Row 37 of the queue: what came back behind the line's "?", as on every line of the panel. *@
+                        <div class="drawio-failure-line">
+                            <span id="@($"drawio-duplicate-report-{index}")">@line.Text</span>
+                            <DrawioHelp Id="@($"drawio-duplicate-report-{index}-help")" Label="Technical detail of the failure">
+                                <p id="@($"drawio-duplicate-report-{index}-detail")" class="drawio-failure-detail">@detail</p>
+                            </DrawioHelp>
+                        </div>
+                    }
+                    else
+                    {
+                        @line.Text
+                    }
+                </li>
+            }
+        </ul>
+    }
+    @if (MenuNotice is { } menuNotice)
+    {
+        <DrawioFailureLine Id="drawio-menu-notice" LineClass="drawio-property-outcome" Class="drawio-property-error" Text="@menuNotice" Detail="@MenuNoticeDetail" />
+    }
+    @if (State.ReassociateOutcome is { } outcome)
+    {
+        <DrawioFailureLine Id="drawio-reassociate-outcome" LineClass="drawio-property-outcome"
+                           Class="@(State.ReassociateWentThrough ? "drawio-property-written" : "drawio-property-error")"
+                           Text="@outcome" Detail="@State.ReassociateOutcomeDetail" />
+    }
+    @if (State.ConfigItemId is not null && State.Config is not null)
+    {
+        <aside id="drawio-property-description" class="drawio-property-description"
+               aria-label="Property description" aria-live="polite">
+            <DrawioIcon Name="help" />
+            <div class="drawio-property-description-copy">
+                <p class="drawio-property-description-heading">Property description</p>
+                @if (_activeProperty is { } activeProperty)
+                {
+                    <p id="drawio-property-description-title" class="drawio-property-description-title">@activeProperty.Label</p>
+                    <p id="drawio-property-description-body" class="drawio-property-description-body">@activeProperty.Help</p>
+                }
+                else
+                {
+                    <p id="drawio-property-description-body" class="drawio-property-description-body">
+                        Select a property to see what it controls.
+                    </p>
+                }
+            </div>
+        </aside>
+    }
+</div>
+
+@code {
+    public const string ModulePath = "./_content/Wcs.WebEditor/drawio-property-dock.js";
+
+    private ElementReference _dock;
+    private IJSObjectReference? _module;
+    private Task? _attach;
+    private bool _disposed;
+
+    protected override Task OnAfterRenderAsync(bool firstRender) => _attach ??= AttachAsync();
+
+    private async Task AttachAsync()
+    {
+        try
+        {
+            var module = await JS.InvokeAsync<IJSObjectReference?>("import", ModulePath);
+            if (module is null) return;
+            if (_disposed)
+            {
+                await module.DisposeAsync();
+                return;
+            }
+            _module = module;
+            await module.InvokeVoidAsync("attach", _dock);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            // The CSS default keeps the panel usable when browser interop is unavailable.
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        if (_module is not { } module) return;
+        _module = null;
+        try
+        {
+            try { await module.InvokeVoidAsync("detach", _dock); }
+            finally { await module.DisposeAsync(); }
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            // A closed circuit cannot detach browser handlers; the element is going away too.
+        }
+    }
+
+    [Parameter, EditorRequired]
+    public DrawioSelectionState State { get; set; } = null!;
+
+    /// <summary>The device commands, when the engine is running (row 54); rendered above the configuration.</summary>
+    [Parameter]
+    public RenderFragment? Commands { get; set; }
+
+    /// <summary>Row 63 (compito 5 fix round 2): the panel's "Duplicate device" for the selected device (DrawioDuplicateDevice).</summary>
+    [Parameter]
+    public RenderFragment? Duplicate { get; set; }
+
+    /// <summary>
+    /// The report of the last duplication (DrawioDuplicationCoordinator.Report): at the foot of the
+    /// dock with the other outcomes, because the selection moves on to the new device when it works.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<DrawioDuplicationLine>? DuplicateReport { get; set; }
+
+    /// <summary>
+    /// Row 63: what the page refused of an entry of draw.io's right-click menu, or could not do
+    /// (DrawioEditor.OnDrawioMenuEntry) - with the other outcomes at the foot of the dock.
+    /// </summary>
+    [Parameter]
+    public string? MenuNotice { get; set; }
+
+    /// <summary>What the page's script answered when <see cref="MenuNotice"/> is about its failure: behind the line's "?" (row 37 of the queue).</summary>
+    [Parameter]
+    public string? MenuNoticeDetail { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<PlantItemDto> Items { get; set; } = [];
+
+    /// <summary>
+    /// The load unit the selected device holds, as the live channel says it (PlantLiveState.ViewOf, the
+    /// words of the device list's "Load unit" column); null when it holds none or nothing is known.
+    /// </summary>
+    [Parameter]
+    public string? LoadUnit { get; set; }
+
+    [Parameter]
+    public EventCallback<PlantItemConfigDto> OnSaveConfig { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnReassociateTypedChanged { get; set; }
+
+    [Parameter]
+    public EventCallback OnReassociate { get; set; }
+
+    private const string SelectionUnavailableMessage =
+        "What is selected inside the drawing cannot be read: drawing and saving still work, but this page " +
+        "cannot follow the selection. Reload the page.";
+
+    /// <summary>The DeviceType field's converter on the contract: the heading says the type in the words the field shows.</summary>
+    private static readonly TypeConverter DeviceTypeWords =
+        TypeDescriptor.GetProperties(typeof(PlantItemConfigDto))[nameof(PlantItemConfigDto.DeviceType)]!.Converter;
+
+    private Guid? _describedItemId;
+    private PropertyField? _activeProperty;
+
+    protected override void OnParametersSet()
+    {
+        if (State.ConfigItemId == _describedItemId) return;
+        _describedItemId = State.ConfigItemId;
+        _activeProperty = null;
+    }
+
+    private void ShowPropertyDescription(PropertyField field) => _activeProperty = field;
+
+    /// <summary>The selection line, or null until draw.io has said something (see the heading's comment).</summary>
+    private string? SelectionText =>
+        State.SelectionUnavailable ? SelectionUnavailableMessage
+        : State.SelectedCellIds is not null ? State.SelectionLine
+        : null;
+
+    /// <summary>The device's type as the plant the page holds has it; null when the plant does not have the device.</summary>
+    private string? TypeOf(Guid itemId) =>
+        Items.FirstOrDefault(item => item.ItemId == itemId) is { } item
+            ? DeviceTypeWords.ConvertToString(null, CultureInfo.InvariantCulture, (short)item.DeviceType)
+            : null;
+
+    private Task ReassociateTypedChanged(ChangeEventArgs args) =>
+        OnReassociateTypedChanged.InvokeAsync(args.Value?.ToString() ?? "");
+
+    private static string NameOf(PlantItemDto item) =>
+        item.Name is { Length: > 0 } name ? name : item.ItemId.ToString();
+}

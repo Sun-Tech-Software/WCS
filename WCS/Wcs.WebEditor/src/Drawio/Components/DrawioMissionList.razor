@@ -1,0 +1,1516 @@
+@* Compito 3, row 60: the list of the ACTIVE missions, as the WinForms FrmMISSIONS_LU showed them
+   (FrmMISSIONS_LU.cs:51 reads them with GET /missions; :66 AddColumnsToGrid - every property of the
+   mission, the Guid columns by device name except MissionId, GroupedMovementId and AssignmentGuid),
+   and the one change that grid allowed: moving a mission onto another device (:92,
+   SetMissionPositionAsync).
+   <para>
+   <b>Followed live.</b> Read once when the section is opened, then kept with the channel's
+   MissionChanged on top (LiveMissionBoard: the events that arrive while a read is in flight are
+   replayed on top of it), and read again whenever the feed says events may have gone by unseen
+   (PlantLiveFeed.Resynced: the channel's opening, every reconnection, the host's resync signal).
+   Shut, the list does nothing: an event or a resync only marks it stale, and it is read again when
+   the section is opened.
+   </para>
+   <para>
+   <b>Moving a mission is not an engine command.</b> PUT /missions/{id}/position answers at once -
+   204, 404, 400 or 409 with the host's words (Wcs.Host MissionEndpoints), or 503 while the engine is
+   still in Recover (MissionMoveProblems.EngineRecoveringTitle, owner's answer 4 of 8/10) or not loaded
+   (ServiceUnavailableProblems.EngineNotLoaded in the problem's field, row 34 of the queue) - and has no
+   command id and no CommandChanged to follow: the outcome IS the answer. It asks for no edit permit
+   (MissionEndpoints maps it without RequiresEditPermission, and the WinForms grid moved missions
+   while the engine ran) and it does not go through the page's write gate, which guards the plant's
+   configuration. Confirmed in two steps on the page, like the engine switch. Never optimistic: the
+   row moves when the host says so - the list is read again after a move that went through or whose
+   outcome is unknown, and the channel's PositionChanged moves it too - and a refusal leaves the row
+   as it was, with the host's own words on the outcome line (the Recover refusal with the page's own
+   sentence).
+   </para>
+   <para>
+   <b>Setting a mission's destination</b> (missions plan of 30/9, task 6) is the same kind of work:
+   PUT /missions/{id}/destination, no edit permit, any engine state, the answer IS the outcome. The
+   target picker serves both actions. The question names the load unit, the new destination and the
+   one it replaces, and always shows the mission's gateway with the operator's choice on it (keep,
+   clear or change it; none, or add one), keeping what there is preselected; the button that sends
+   it is the one blue button. The engine computes the new route at once, also with the engine stopped, so the hover shows
+   it on the canvas. Every refusal is said in plain words from the problem's TITLE (one per outcome,
+   MissionDestinationProblems) and fields, never from the Italian detail; 400, 409, 422 and 503
+   changed nothing the row shows that the channel would not say (a storage cell lost on the way is
+   announced as a MissionChanged, and the refusal's lostTheCell field has the outcome line say it), so
+   only a 204, a 404 and an answer that never came read the list again. After a 204 the gateway is
+   said from the row read again, not from what was asked: the engine drops a gateway already reached. A route
+   that the gateway blocks while one exists without it offers to send the same change again with the
+   gateway cleared - if its row and its target are still the ones chosen when the refusal lands, and
+   for as long as they stay chosen.
+   </para>
+   <para>
+   <b>What the question says</b> (voce 39, task 7). Towards the warehouse it is already bound for, the
+   question follows the gateway's radios: with the gateway as it is, a cell is asked again - another
+   one when the row carries the operator's choice (OperatorDestination, row 44); with the
+   gateway changed, the cell stays and only the route is computed again - promised only when the row
+   has a cell. An extraction sent to a warehouse is told what happens to its order: picked up, the
+   warehouse system already counts it as served; still in its cell, it becomes a change of cell, its
+   order (when it has one) goes back free, and a refusal after the warehouse system was told closes
+   the mission - the refusal does not say so, so that refusal too reads the list again, and the
+   outcome says it when the row is gone. After an outcome that is not known, no other change of
+   destination is asked until a read of the list that began after it goes through, and the outcome
+   line ends with the row as the host has it then.
+   </para>
+   <para>
+   <b>A change during a step</b> (item 54, decision 4 of the owner of 13/10). With a step of the mission
+   in flight the host no longer refuses a move or a change of destination: it answers 202, and the
+   change waits for the end of the step and is applied from where the step ends. The outcome line says
+   "applied at the end of the movement", the list is read again, and the row carries the change that
+   waits (MissionDto.PendingChange and PendingChangeItemId, two columns like every other) for as long as
+   it waits - only in memory on the host (owner's answer 4 of 13/10), so its disappearance is seen. The
+   chosen mission's line says it too.
+   </para>
+   <para>
+   <b>A relocator and a precise cell</b> (item 54, decisions 5 and 6 of the owner of 13/10). Towards a
+   relocator (a device a warehouse names as its relocator) the question asks "Deposit it, or only bring
+   it there?", with nothing chosen, and the change is not sent until the operator answers; the choice
+   travels in the body (MissionDestinationUpdate.AtTheRelocator) and the row shows it
+   (MissionDto.RelocatorArrival). Towards a warehouse, or a relocator that is to deposit it, the cell is
+   the warehouse system's to choose as before, or one the operator chooses: from the list the host asks
+   the warehouse system for (GET /missions/{id}/storage-cells, the first 20 in the order of its search of
+   every day, owner's answer 6), read once per question - an answer for a question no longer open is
+   dropped - or written by its door A code in the field (answer 7). The precise cell goes alone in the
+   body (CellDoorCode): through a relocator it is the relocator serving the cell that deposits it. Its
+   refusals are said from the 422's field (cellRefusal), and the outcome names the cell in the warehouse
+   the row read again carries.
+   </para> *@
+@using System.Globalization
+@using System.Net
+@using System.Text.Json
+@using Wcs.Api.Client
+@using Wcs.Api.Contracts
+@using Wcs.Api.Contracts.Dtos
+@using Wcs.WebEditor.Drawio.Coordination
+@using Wcs.WebEditor.Live
+@using Wcs.WebEditor.Model
+@using Wcs.WebEditor.Session
+@using static Wcs.Common.Enums
+@inherits DrawioListSection
+@implements IDisposable
+@inject EditorSessionState Session
+
+<button type="button" id="drawio-mission-list-toggle" class="drawio-section-toggle" aria-label="Missions"
+        aria-pressed="@(Open ? "true" : "false")" @onclick="ToggleAsync">
+    <DrawioIcon Name="missions" />
+    <span class="drawio-toggle-label">Missions</span>
+</button>
+@{
+    // Once per render, before the window: its title bar counts the rows the list shows.
+    var rows = Open ? VisibleRows().ToList() : null;
+}
+<DrawioWindow Id="drawio-mission-list" Class="drawio-mission-list" Title="Missions" Icon="missions"
+              Count="@(!_board.HasRead || rows is null ? null : rows.Count.ToString(CultureInfo.InvariantCulture))"
+              Help="@(Open ? ScopeNote : null)" Open="Open" OnClose="CloseAsync" Place="Place">
+    @if (rows is not null)
+    {
+        var pageCount = PageCount(rows.Count);
+        var currentPage = Math.Min(_page, pageCount);
+        var pageRows = rows.Skip((currentPage - 1) * PageSize).Take(PageSize).ToList();
+        var displayColumns = DisplayColumns();
+        <div class="drawio-mission-list-body">
+            <div class="drawio-device-list-tools">
+                <span class="drawio-filter">
+                    <DrawioIcon Name="search" />
+                    <input type="search" id="drawio-mission-list-filter" class="drawio-device-list-filter"
+                           aria-label="Filter missions"
+                           placeholder="Filter on any field: LU, source, destination, status..." value="@Filter" @oninput="FilterMissionsTyped" />
+                </span>
+                <div class="drawio-mission-view-switch" role="group" aria-label="Mission table view">
+                    <button type="button" id="drawio-mission-list-view-compact"
+                            class="@(!_extended ? "drawio-mission-view-active" : null)"
+                            aria-pressed="@(!_extended ? "true" : "false")" @onclick="() => SetExtended(false)">Compact</button>
+                    <button type="button" id="drawio-mission-list-view-extended"
+                            class="@(_extended ? "drawio-mission-view-active" : null)"
+                            aria-pressed="@(_extended ? "true" : "false")" @onclick="() => SetExtended(true)">Extended</button>
+                </div>
+                <span class="drawio-mission-field-count">@(_extended ? $"{Columns.Count}/{Columns.Count} current fields" : $"{CompactColumnKeys.Count} operational fields")</span>
+                <span id="drawio-mission-list-count" class="drawio-device-list-count">@CountLine(rows.Count)</span>
+                <button type="button" id="drawio-mission-list-reread" disabled="@_board.Reading" @onclick="ReadAsync">Read again</button>
+            </div>
+            @if (_board.Reading)
+            {
+                <p id="drawio-mission-list-reading" class="drawio-operations-outcome">Reading the missions from the host...</p>
+            }
+            @if (_readError is { } readError)
+            {
+                <DrawioFailureLine Id="drawio-mission-list-read-error" Class="drawio-operations-error" Text="@readError.Text" Detail="@readError.Detail" />
+            }
+            <section id="drawio-mission-move" class="drawio-mission-move">
+                @if (_chosen is { } chosenId)
+                {
+                    var chosen = _board.Find(chosenId);
+                    <p id="drawio-mission-move-chosen" class="drawio-mission-selection-summary">
+                        @if (chosen is null)
+                        {
+                            @($"The mission {chosenId} is no longer active on the host: there is nothing to move or to send elsewhere.")
+                        }
+                        else
+                        {
+                            @($"Chosen: {MissionName(chosen)}, now on {DeviceName(chosen.PositionItemId)}, {BoundFor(chosen.DestinationItemId)}.{WaitingLine(chosen)}")
+                        }
+                    </p>
+                    <div class="drawio-test-route-endpoints">
+                        <input type="search" id="drawio-mission-move-search" placeholder="Search a device by name"
+                               disabled="@Asking" value="@_targetSearch"
+                               @oninput="e => _targetSearch = e.Value as string ?? string.Empty" />
+                        <select id="drawio-mission-move-target" disabled="@Asking"
+                                value="@(_target?.ToString() ?? string.Empty)" @onchange="TargetPicked">
+                            <option value="">(choose a device)</option>
+                            @foreach (var device in Candidates(_targetSearch, _target))
+                            {
+                                <option value="@device.ItemId">@NameOf(device)</option>
+                            }
+                        </select>
+                        <button type="button" id="drawio-mission-move-use-selected"
+                                disabled="@(SelectedItemId is null || Asking)"
+                                @onclick="UseSelected">Use selected on the drawing</button>
+                    </div>
+                    <p id="drawio-mission-move-selected" class="drawio-test-route-selected">
+                        Selected on the drawing: @(SelectedItemId is null ? "(nothing selected)" : SelectedItemName)
+                    </p>
+                    <span id="drawio-mission-move-target-chosen">Target: @(_target is { } target ? DeviceName(target) : "(none chosen)")</span>
+                    @if (_pending is { } pending)
+                    {
+                        <div>
+                            <span id="drawio-mission-move-question" class="drawio-operations-question">Move @pending.Mission from @pending.From to @pending.Target?</span>
+                            <button type="button" id="drawio-mission-move-confirm" @onclick="ConfirmMoveAsync">Yes</button>
+                            <button type="button" id="drawio-mission-move-cancel" @onclick="() => _pending = null">Cancel</button>
+                        </div>
+                    }
+                    else if (_pendingDestination is { } asked)
+                    {
+                        <div id="drawio-mission-destination-box" class="drawio-mission-destination-box">
+                            <span id="drawio-mission-destination-question" class="drawio-operations-question">@QuestionOf(asked)</span>
+                            @* The mission's gateway, always shown, with what there is kept unless the operator says otherwise. *@
+                            <fieldset id="drawio-mission-destination-gateway" class="drawio-mission-destination-gateway">
+                                <legend id="drawio-mission-destination-gateway-now">Gateway: @(asked.GatewayName ?? "none")</legend>
+                                @if (asked.GatewayName is not null)
+                                {
+                                    @GatewayOption("keep", "Keep it", GatewayChoice.Keep)
+                                    @GatewayOption("clear", "Clear it", GatewayChoice.Clear)
+                                    @GatewayOption("change", "Change it", GatewayChoice.Change)
+                                }
+                                else
+                                {
+                                    @GatewayOption("none", "None", GatewayChoice.Keep)
+                                    @GatewayOption("add", "Add one", GatewayChoice.Change)
+                                }
+                                @if (_gatewayChoice == GatewayChoice.Change)
+                                {
+                                    <div class="drawio-test-route-endpoints">
+                                        <input type="search" id="drawio-mission-destination-gateway-search" placeholder="Search a device by name"
+                                               value="@_gatewaySearch" @oninput="e => _gatewaySearch = e.Value as string ?? string.Empty" />
+                                        <select id="drawio-mission-destination-gateway-target"
+                                                value="@(_gateway?.ToString() ?? string.Empty)" @onchange="GatewayPicked">
+                                            <option value="">(choose a device)</option>
+                                            @foreach (var device in Candidates(_gatewaySearch, _gateway))
+                                            {
+                                                <option value="@device.ItemId">@NameOf(device)</option>
+                                            }
+                                        </select>
+                                    </div>
+                                }
+                            </fieldset>
+                            @* Item 54, decision 5: towards a relocator the operator says what it does with the load unit. *@
+                            @if (asked.TargetIsRelocator)
+                            {
+                                <fieldset id="drawio-mission-destination-relocator" class="drawio-mission-destination-gateway">
+                                    <legend id="drawio-mission-destination-relocator-question">Deposit it, or only bring it there?</legend>
+                                    @ArrivalOption("deposit", "Deposit it", MissionRelocatorArrival.Deposit)
+                                    @ArrivalOption("stay", "Only bring it there", MissionRelocatorArrival.Stay)
+                                </fieldset>
+                            }
+                            @* Item 54, decision 6: the cell, chosen by the warehouse system as always, or by the operator. *@
+                            @if (CellCanBeChosen(asked))
+                            {
+                                <fieldset id="drawio-mission-destination-cell" class="drawio-mission-destination-gateway">
+                                    <legend>Storage cell</legend>
+                                    @CellOption("warehouse", "Chosen by the warehouse system", CellChoice.ByTheWarehouse)
+                                    @CellOption("precise", "A cell I choose", CellChoice.Precise)
+                                    @if (_cellChoice == CellChoice.Precise)
+                                    {
+                                        <div class="drawio-mission-destination-cell-pick">
+                                            @if (_cellList is { Loading: true })
+                                            {
+                                                <span id="drawio-mission-destination-cell-reading" class="drawio-operations-outcome">Asking the warehouse system for the cells...</span>
+                                            }
+                                            else if (_cellList is { Failure: { } listFailure })
+                                            {
+                                                <DrawioFailureLine Id="drawio-mission-destination-cell-error" Class="drawio-operations-error"
+                                                                   Text="@listFailure.Text" Detail="@listFailure.Detail" />
+                                            }
+                                            else if (_cellList is { Cells: { } cells })
+                                            {
+                                                <span id="drawio-mission-destination-cell-listed" class="drawio-operations-outcome">@CellsLine(asked, cells.Count)</span>
+                                                @if (cells.Count > 0)
+                                                {
+                                                    <select id="drawio-mission-destination-cell-list" value="@(cells.Any(c => c.DoorCode == _cellCode.Trim()) ? _cellCode.Trim() : string.Empty)"
+                                                            @onchange="e => _cellCode = e.Value as string ?? string.Empty">
+                                                        <option value="">(choose a cell)</option>
+                                                        @foreach (var cell in cells)
+                                                        {
+                                                            <option value="@cell.DoorCode">@CellName(cell)</option>
+                                                        }
+                                                    </select>
+                                                }
+                                            }
+                                            <label class="drawio-mission-destination-option">
+                                                Door A code of the cell
+                                                <input type="text" id="drawio-mission-destination-cell-code" placeholder="for example 3B02.0363.0001"
+                                                       value="@_cellCode" @oninput="e => _cellCode = e.Value as string ?? string.Empty" />
+                                            </label>
+                                        </div>
+                                    }
+                                </fieldset>
+                            }
+                            <div class="drawio-mission-actions">
+                                <button type="button" id="drawio-mission-destination-confirm" class="drawio-btn-primary"
+                                        disabled="@(!CanConfirmDestination(asked))"
+                                        @onclick="ConfirmDestinationAsync">Set destination</button>
+                                <button type="button" id="drawio-mission-destination-cancel" @onclick="() => _pendingDestination = null">Cancel</button>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="drawio-mission-actions">
+                            <button type="button" id="drawio-mission-move-button" class="drawio-mission-action-position"
+                                    disabled="@(!CanMove(chosen))" @onclick="() => AskToMove(chosen)">Change position</button>
+                            <button type="button" id="drawio-mission-destination-button" class="drawio-mission-action-destination"
+                                    disabled="@(!CanSetDestination(chosen))" @onclick="() => AskToSetDestination(chosen)">Send elsewhere</button>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <p id="drawio-mission-move-hint" class="drawio-operations-outcome">Click a mission's row to move it onto another device or to set its destination.</p>
+                }
+                @if (_sending is { } sending)
+                {
+                    <p id="drawio-mission-move-sending" class="drawio-operations-outcome">@sending</p>
+                }
+                @* One outcome line for the section: the last of the two actions. *@
+                @if (_outcome is { } moveOutcome)
+                {
+                    <DrawioFailureLine Id="drawio-mission-move-outcome" LineClass="drawio-operations-outcome"
+                                       Class="@(_went ? "drawio-device-list-written" : "drawio-device-list-not-written")"
+                                       Text="@moveOutcome.Text" Detail="@moveOutcome.Detail" />
+                }
+                @if (_withoutTheGateway is not null && !Asking)
+                {
+                    <button type="button" id="drawio-mission-destination-clear-gateway" class="drawio-btn-primary"
+                            @onclick="ClearTheGatewayAndSetAsync">Clear the gateway and set destination</button>
+                }
+            </section>
+            @if (GoToOutcome is { } goTo)
+            {
+                <DrawioFailureLine Id="drawio-mission-list-goto" LineClass="drawio-operations-outcome" Text="@goTo.Text" Detail="@goTo.Detail" />
+            }
+            @if (_board.HasRead)
+            {
+                <section id="drawio-mission-list-grid" class="drawio-mission-grid">
+                    <div class="drawio-list-scroll drawio-mission-grid-scroll">
+                        <table id="drawio-mission-list-table" class="drawio-list-table drawio-mission-table @(_extended ? "drawio-mission-table-extended" : "drawio-mission-table-compact")">
+                            <thead>
+                                <tr>
+                                    @foreach (var column in displayColumns)
+                                    {
+                                        <th data-column="@column.Key" hidden="@ColumnHidden(column.Key)"
+                                            class="@HeaderClass(column.Key)" aria-sort="@AriaSort(column.Key)"
+                                            @onclick="() => SortMissionsBy(column.Key)">@column.Label</th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var mission in pageRows)
+                                {
+                                    var selected = mission.MissionId == _chosen;
+                                    <tr data-mission-id="@mission.MissionId" aria-selected="@(selected ? "true" : "false")"
+                                        class="@(selected ? "drawio-list-row drawio-list-row-selected" : "drawio-list-row")"
+                                        @onclick="() => ChooseAsync(mission)">
+                                        @foreach (var column in displayColumns)
+                                        {
+                                            <td data-column="@column.Key" hidden="@ColumnHidden(column.Key)"
+                                                class="@CellClass(column.Key, mission)">@column.TextOf(mission, DeviceName)</td>
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <footer class="drawio-mission-pager" aria-label="Mission pages">
+                        <span id="drawio-mission-list-page-summary" aria-live="polite">@PageLine(rows.Count, currentPage)</span>
+                        <div class="drawio-mission-page-buttons">
+                            <button type="button" id="drawio-mission-list-previous" aria-label="Previous page"
+                                    disabled="@(currentPage == 1)" @onclick="() => GoToPage(currentPage - 1, pageCount)">‹</button>
+                            @foreach (var pageNumber in PageChoices(currentPage, pageCount))
+                            {
+                                <button type="button" class="@(pageNumber == currentPage ? "drawio-mission-page-active" : null)"
+                                        aria-label="Page @pageNumber" aria-current="@(pageNumber == currentPage ? "page" : null)"
+                                        @onclick="() => GoToPage(pageNumber, pageCount)">@pageNumber</button>
+                            }
+                            <button type="button" id="drawio-mission-list-next" aria-label="Next page"
+                                    disabled="@(currentPage == pageCount)" @onclick="() => GoToPage(currentPage + 1, pageCount)">›</button>
+                        </div>
+                    </footer>
+                </section>
+            }
+        </div>
+    }
+</DrawioWindow>
+
+@code {
+    /// <summary>What the list is: the paragraph that opened the window until the passata grafica, word for word, behind the "?" of its title bar while the window is open.</summary>
+    private static readonly RenderFragment ScopeNote =
+        @<p class="drawio-mission-list-scope">
+            Every active mission, as the host has it, followed live. Click a row to select on the drawing the
+            device the mission is on, and to choose that mission to move it onto another device or to set its
+            destination.
+        </p>;
+
+    /// <summary>The plant as the page holds it: the devices' names, and the targets a mission can be moved onto.</summary>
+    [Parameter] public PlantGraph? Graph { get; set; }
+
+    [Parameter] public PlantLiveFeed? Feed { get; set; }
+
+    /// <summary>The device selected on the drawing (DrawioSelectionState.ConfigItemId): what "Use selected on the drawing" takes as the target.</summary>
+    [Parameter] public Guid? SelectedItemId { get; set; }
+
+    [Parameter] public string? SelectedItemName { get; set; }
+
+    /// <summary>What the drawing answered to the last row chosen here, worded by the page; what its script threw, if it did not answer, is behind the line's "?".</summary>
+    [Parameter] public DrawioSaid? GoToOutcome { get; set; }
+
+    /// <summary>A row was chosen: the page selects on the drawing the device the mission is on.</summary>
+    [Parameter] public EventCallback<MissionDto> OnSelect { get; set; }
+
+    /// <summary>FrmMISSIONS_LU.cs:66: every property of the mission; the Guid columns are devices, except these three.</summary>
+    private static readonly IReadOnlyList<DrawioDtoColumn<MissionDto>> Columns =
+        DrawioDtoColumn<MissionDto>.Of(nameof(MissionDto.MissionId), nameof(MissionDto.GroupedMovementId), nameof(MissionDto.AssignmentGuid));
+
+    private static readonly IReadOnlyList<string> ColumnKeys = [.. Columns.Select(column => column.Key)];
+    private static readonly Dictionary<string, DrawioDtoColumn<MissionDto>> ColumnByKey = Columns.ToDictionary(column => column.Key);
+
+    private static readonly IReadOnlyList<string> CompactColumnKeys =
+    [
+        nameof(MissionDto.LoadUnitId), nameof(MissionDto.LoadUnitCode), nameof(MissionDto.PositionItemId),
+        nameof(MissionDto.SourceItemId), nameof(MissionDto.DestinationItemId), nameof(MissionDto.Status),
+        nameof(MissionDto.StorageDoorCode), nameof(MissionDto.PickUpDoorCode), nameof(MissionDto.MissionType),
+        nameof(MissionDto.OperationType),
+    ];
+
+    private static readonly HashSet<string> CompactColumnKeySet = [.. CompactColumnKeys];
+    private const int PageSize = 10;
+    private bool _extended;
+    private int _page = 1;
+
+    /// <summary>A move asked and not confirmed yet: what the question names, frozen when "Move" was pressed.</summary>
+    private sealed record PendingMove(Guid MissionId, Guid TargetId, string Mission, string From, string Target);
+
+    /// <summary>
+    /// A change of destination asked and not confirmed yet, frozen when "Set destination" was pressed:
+    /// the load unit as the operator knows it (and how a sentence starts with it), where it is (its
+    /// identifier, null: nowhere, and its name), the new destination, the one it replaces (null: none)
+    /// and the mission's gateway (null: none) - the words of the question and of the outcome. The
+    /// target is a warehouse also when it is a group of warehouses: the engine reserves a cell in one
+    /// of them. <see cref="Again"/>: the destination it
+    /// has, or the group of the warehouse it has (the engine writes the member it reserved in);
+    /// <see cref="HasCell"/>: the row has a storage door; <see cref="OperatorChose"/>: the row carries the
+    /// mark of the operator's choice (<see cref="MissionDto.OperatorDestination"/>); <see cref="Order"/>: what the change does to
+    /// the order of an extraction sent to a warehouse (null: nothing); <see cref="ChangeOfCell"/>: an
+    /// extraction still in its cell sent to a warehouse its position does not reach, which the engine
+    /// turns into a change of cell. Item 54: <see cref="TargetIsRelocator"/>: a warehouse names the target
+    /// as its relocator (decision 5, MissionGateway.IsARelocator); <see cref="CellOrder"/> and
+    /// <see cref="CellChangeOfCell"/>: the same as <see cref="Order"/> and <see cref="ChangeOfCell"/> for a
+    /// precise cell chosen through a relocator, which the engine treats as a change towards the
+    /// warehouse of the cell (decision 6).
+    /// </summary>
+    private sealed record PendingDestination(Guid MissionId, Guid TargetId, string LoadUnit, string LoadUnitFirst, Guid? PositionId, string Position,
+        string Target, bool TargetIsStorage, Guid? CurrentId, string? Current, Guid? GatewayId, string? GatewayName,
+        bool Again, bool HasCell, bool OperatorChose, string? Order, bool ChangeOfCell,
+        bool TargetIsRelocator = false, string? CellOrder = null, bool CellChangeOfCell = false)
+    {
+        /// <summary>
+        /// The question, with the gateway as the radios leave it (<paramref name="through"/>: null when
+        /// they do not change it, otherwise how the new gateway is said). The same warehouse again
+        /// (decisions 5 and 6 of 2/10, MissionGateway.ChangeToStorageAsync): with the gateway as it is,
+        /// a request for a cell there again - another one when the operator had chosen it (the engine
+        /// leaves out the cell it has, MissionGateway.CellToReplaceAsync), possibly the same one when the
+        /// engine had. The row says which (<see cref="OperatorChose"/>; row 44 of the queue, owner's
+        /// decision of 10/10), and the question says only that one. With the gateway
+        /// changed the mission keeps the cell it has and only its route is computed again - with or
+        /// without the operator's choice. Without a cell on the row there is nothing to keep: the
+        /// request asks for one whatever the gateway, and the question promises nothing.
+        /// </summary>
+        public string QuestionWith(string? through)
+        {
+            var question = Current is null ? $"Send {LoadUnit} to {Target}?"
+                : !Again ? $"Send {LoadUnit} to {Target} instead of {Current}?"
+                : !TargetIsStorage ? $"Send {LoadUnit} to {Target} again?"
+                : !HasCell ? $"Send {LoadUnit} to {Target} again? It has no cell there now: this asks the warehouse system for one in {Target}."
+                : through is not null ? $"Send {LoadUnit} to {Target} again{through}? It keeps the cell it has in {Target}: only its route is computed again."
+                : (OperatorChose
+                      ? $"Send {LoadUnit} to {Target} again? This asks the warehouse system for another cell in {Target}."
+                      : $"Send {LoadUnit} to {Target} again? This asks the warehouse system for a cell in {Target} again.")
+                  + " Changing the gateway instead keeps the cell it has and only computes its route again.";
+            return Order is null ? question : $"{question} {Order}";
+        }
+
+        /// <summary>
+        /// The question with a precise cell (item 54, decision 6): the cell by its code, in the target -
+        /// a warehouse, a group of warehouses, or the relocator that deposits it - and what the warehouse
+        /// system does with it. No cell is kept: the operator chose one.
+        /// </summary>
+        public string QuestionWithTheCell(string code, string? through)
+        {
+            var into = TargetIsRelocator ? $"into the cell {code}, deposited by {Target}" : $"into the cell {code} of {Target}";
+            var instead = Current is null || Again ? "" : $" instead of {Current}";
+            var question = $"Send {LoadUnit} {into}{through}{instead}? The warehouse system checks that the cell is free and suits it, "
+                           + "and reserves it; otherwise the change is refused with the reason.";
+            var order = TargetIsRelocator ? CellOrder : Order;
+            return order is null ? question : $"{question} {order}";
+        }
+
+        /// <summary>Where the load unit still goes after a refusal: nothing changed.</summary>
+        public string Still => Current is null ? "It still has no destination." : $"It is still bound for {Current}.";
+    }
+
+    /// <summary>Where the cell comes from (item 54, decision 6): the warehouse system chooses it, as always, or the operator.</summary>
+    private enum CellChoice { ByTheWarehouse, Precise }
+
+    /// <summary>
+    /// The cells the warehouse system proposes for the question open now (GET /missions/{id}/storage-cells):
+    /// on their way, read (<see cref="Cells"/>, the first 20 in the order of its search of every day), or
+    /// not read (<see cref="Failure"/>). Kept with the mission and the target it was asked for, so that an
+    /// answer for a question no longer open is not shown under another.
+    /// </summary>
+    private sealed record CellList(Guid MissionId, Guid TargetId, bool Loading, List<StorageCellCandidateDto>? Cells, DrawioSaid? Failure);
+
+    /// <summary>What the operator chose for the gateway: keep what there is (also nothing), clear it, or set the device picked.</summary>
+    private enum GatewayChoice { Keep, Clear, Change }
+
+    /// <summary>
+    /// A change of destination as it goes to the host: the question it answers, the choice on the gateway,
+    /// and the name of the device to set (only with Set); item 54, what the relocator does with the load
+    /// unit (decision 5) or the precise cell's door A code (decision 6), never both.
+    /// </summary>
+    private sealed record DestinationRequest(PendingDestination Asked, MissionGatewayUpdate Gateway, string? NewGatewayName,
+        MissionRelocatorArrival? Arrival = null, string? CellCode = null)
+    {
+        /// <summary>The change of cell the request makes of an extraction still in its cell: through a relocator only a precise cell makes one.</summary>
+        public bool ChangeOfCell => Asked.TargetIsRelocator ? CellCode is not null && Asked.CellChangeOfCell : Asked.ChangeOfCell;
+    }
+
+    /// <summary>A change of destination whose outcome is not known, and the outcome line that said so: the next request waits for a read of the list that started after it.</summary>
+    private sealed record NotKnown(PendingDestination Asked, DrawioSaid Outcome);
+
+    private readonly LiveMissionBoard _board = new();
+    private DrawioSaid? _readError;
+
+    /// <summary>A reason to read again arrived while a read was in flight: exactly one more read follows it.</summary>
+    private bool _readAgain;
+
+    /// <summary>Something may have changed while the section was shut: it is read again when it is opened.</summary>
+    private bool _stale;
+
+    private bool _wasOpen;
+    private PlantLiveFeed? _subscribedFeed;
+    private bool _disposed;
+
+    private Guid? _chosen;
+    private Guid? _target;
+    private string _targetSearch = "";
+    private PendingMove? _pending;
+    private PendingDestination? _pendingDestination;
+    private GatewayChoice _gatewayChoice;
+    private Guid? _gateway;
+    private string _gatewaySearch = "";
+
+    /// <summary>Item 54, decision 5: what the relocator does with the load unit, as the operator chose it; null until chosen.</summary>
+    private MissionRelocatorArrival? _arrival;
+
+    /// <summary>Item 54, decision 6: where the cell comes from, and the code of the one the operator chose (from the list, or written).</summary>
+    private CellChoice _cellChoice;
+    private string _cellCode = "";
+    private CellList? _cellList;
+
+    /// <summary>What the section is asking the host now, said on the page; null when nothing is on its way. One request at a time.</summary>
+    private string? _sending;
+
+    /// <summary>
+    /// The outcome of the last of the two actions: one sentence, and what the host answered - or the
+    /// failure's own type and message - behind its "?" (row 37 of the queue, extended to the whole page
+    /// on 10/10), where the host's words used to be quoted in it.
+    /// </summary>
+    private DrawioSaid? _outcome;
+    private bool _went;
+
+    /// <summary>
+    /// The change whose outcome is not known (d6 §8, the retry trap): until a read of the list that
+    /// began after it goes through, no other change of destination is asked. A gateway-only change
+    /// that went through, sent again from the row as it was, would find the gateway already written and
+    /// ask the warehouse system for another cell; read again, the row and the question show the gateway
+    /// as the host has it now.
+    /// </summary>
+    private NotKnown? _readBeforeAsking;
+
+    /// <summary>The change the gateway blocked while there is a route without it: the same change, ready to go again with the gateway cleared - while its row and its target are the ones chosen.</summary>
+    private DestinationRequest? _withoutTheGateway;
+
+    /// <summary>A question is open or a request is on its way: the target cannot change under it.</summary>
+    private bool Asking => _pending is not null || _pendingDestination is not null || _sending is not null;
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(Feed, _subscribedFeed))
+        {
+            if (_subscribedFeed is not null)
+            {
+                _subscribedFeed.MissionChanged -= OnMissionChanged;
+                _subscribedFeed.Resynced -= OnResynced;
+            }
+
+            _subscribedFeed = Feed;
+            if (Feed is not null)
+            {
+                Feed.MissionChanged += OnMissionChanged;
+                Feed.Resynced += OnResynced;
+            }
+        }
+
+        var opened = Open && !_wasOpen;
+        _wasOpen = Open;
+        var readNow = opened && (!_board.HasRead || _stale) && !_board.Reading;
+        if (readNow) _ = ReadAsync();
+        // Opened again while a read started before the shutting is still on its way, and something
+        // happened while shut (an event, a resync): that answer may predate it, so exactly one more
+        // read follows it. Without this the list stayed wrong while open (fix round 1).
+        else if (opened && _stale && _board.Reading) _readAgain = true;
+
+        ParametersArrived((Graph, Graph?.Revision, SelectedItemId, SelectedItemName, GoToOutcome), renderAnyway: readNow);
+    }
+
+    private string CountLine(int visible) => !_board.HasRead
+        ? "Not read yet."
+        : string.IsNullOrWhiteSpace(Filter)
+            ? $"{_board.Rows.Count} active missions."
+            : $"{visible} of {_board.Rows.Count} active missions.";
+
+    private IReadOnlyList<DrawioDtoColumn<MissionDto>> DisplayColumns() => _extended
+        ? Columns
+        : [.. CompactColumnKeys.Select(key => ColumnByKey[key]),
+           .. Columns.Where(column => !CompactColumnKeySet.Contains(column.Key))];
+
+    private bool ColumnHidden(string key) => !_extended && !CompactColumnKeySet.Contains(key);
+
+    private static string? HeaderClass(string key) => key switch
+    {
+        nameof(MissionDto.LoadUnitId) => "drawio-mission-column-primary",
+        nameof(MissionDto.MissionType) => "drawio-mission-column-type",
+        nameof(MissionDto.OperationType) => "drawio-mission-column-operation",
+        _ => null,
+    };
+
+    private static string? CellClass(string key, MissionDto mission) => key switch
+    {
+        nameof(MissionDto.LoadUnitId) => "drawio-mission-column-primary",
+        nameof(MissionDto.Status) => mission.Status switch
+        {
+            MissionStatusTypes.Run => "drawio-mission-status-run",
+            MissionStatusTypes.Stop => "drawio-mission-status-stop",
+            MissionStatusTypes.Done => "drawio-mission-status-done",
+            MissionStatusTypes.Error => "drawio-mission-status-error",
+            _ => null,
+        },
+        nameof(MissionDto.MissionType) => "drawio-mission-column-type",
+        nameof(MissionDto.OperationType) => "drawio-mission-column-operation",
+        _ => null,
+    };
+
+    private void SetExtended(bool extended)
+    {
+        _extended = extended;
+        if (!extended && SortKey is { } sortKey && !CompactColumnKeySet.Contains(sortKey)) ClearSort();
+        _page = 1;
+    }
+
+    private void FilterMissionsTyped(ChangeEventArgs e)
+    {
+        FilterTyped(e);
+        _page = 1;
+    }
+
+    private void SortMissionsBy(string key)
+    {
+        SortBy(key);
+        _page = 1;
+    }
+
+    private static int PageCount(int rowCount) => DataGridPagination.PageCount(rowCount, PageSize);
+
+    private void GoToPage(int page, int pageCount) => _page = Math.Clamp(page, 1, pageCount);
+
+    private static string PageLine(int rowCount, int page) =>
+        DataGridPagination.PageLine(rowCount, page, PageSize, "missions");
+
+    private static IEnumerable<int> PageChoices(int currentPage, int pageCount) =>
+        DataGridPagination.PageChoices(currentPage, pageCount);
+
+    private void NormalizePage() => _page = Math.Min(_page, PageCount(VisibleRows().Count()));
+
+    /// <summary>
+    /// Reads every active mission. One read at a time: a reason to read again that arrives during
+    /// one makes exactly one more after it (its answer may predate that reason). Never throws - it
+    /// runs unobserved from OnParametersSet and from the channel's resync.
+    /// </summary>
+    private async Task ReadAsync()
+    {
+        if (_board.Reading)
+        {
+            _readAgain = true;
+            return;
+        }
+
+        do
+        {
+            _readAgain = false;
+            _stale = false;
+            _board.BeginRead();
+            _readError = null;
+            try
+            {
+                var read = await Session.Client.GetMissionsAsync();
+                if (_disposed) return;
+                _board.ReadLanded(read);
+                NormalizePage();
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                if (_disposed) return;
+                _board.ReadFailed();
+                var why = DrawioFailureWords.Why(ex);
+                _readError = DrawioSaid.Failed(_board.HasRead
+                    ? $"The missions could not be read again from the host because {why}: the rows below are how the host had them at the last read, with what the channel said since."
+                    : $"The missions could not be read from the host because {why}.", ex);
+            }
+        }
+        while (_readAgain && !_disposed);
+
+        // A read that began after a change whose outcome is not known went through: the row says what
+        // the host has now, and the next change can be asked.
+        if (_readBeforeAsking is { } notKnown && _readError is null && _board.HasRead)
+        {
+            _readBeforeAsking = null;
+            if (_outcome is { } outcome && outcome == notKnown.Outcome)
+                _outcome = outcome with { Text = outcome.Text + ReadAgainLine(notKnown.Asked.MissionId) };
+        }
+
+        StateHasChanged();
+    }
+
+    /// <summary>The mission as the host has it after a read: where it is bound and through what, or that it is gone.</summary>
+    private string ReadAgainLine(Guid missionId)
+    {
+        if (_board.Find(missionId) is not { } row) return " Read again: it is no longer active on the host.";
+        var gateway = row.GatewayItemId is { } through && through != Guid.Empty ? $"passing through {DeviceName(through)}" : "with no gateway";
+        return $" Read again: {BoundFor(row.DestinationItemId)}, {gateway}.";
+    }
+
+    /// <summary>The rows as filtered and sorted now: by the chosen column, otherwise by date and identifier - the order in which the missions came. Called once per render.</summary>
+    /// <remarks>The filter looks at every field of the mission, the ones Compact does not show included - as it did before the two views, and as its placeholder says.</remarks>
+    private IEnumerable<MissionDto> VisibleRows()
+    {
+        var rows = Filtered<MissionDto>(_board.Rows, ColumnKeys, (mission, key) => ColumnByKey[key].TextOf(mission, DeviceName));
+        if (SortKey is not { } key || !ColumnByKey.TryGetValue(key, out var by))
+            return rows.OrderBy(mission => mission.Date).ThenBy(mission => mission.MissionId);
+
+        return Sorted(rows, mission => by.SortValue(mission, DeviceName), Comparer<object?>.Create(DrawioDtoColumn<MissionDto>.Compare))
+            .ThenBy(mission => mission.Date).ThenBy(mission => mission.MissionId);
+    }
+
+    // ---- Names ------------------------------------------------------------------------------------
+
+    private string DeviceName(Guid? itemId) =>
+        itemId is not { } id || id == Guid.Empty ? "(no device)" : DeviceName(id);
+
+    private string DeviceName(Guid itemId) =>
+        Names().TryGetValue(itemId, out var item) ? NameOf(item) : $"{itemId} (not on the plant)";
+
+    private static string NameOf(PlantItemDto item) => item.Name is { Length: > 0 } name ? name : item.ItemId.ToString();
+
+    /// <summary>How a sentence names a mission: by its load unit when it has one, which is how an operator knows it.</summary>
+    private static string MissionName(MissionDto mission) =>
+        LoadUnitLabel(mission) is { } label ? $"the mission of load unit {label}" : $"the mission {mission.MissionId}";
+
+    /// <summary>
+    /// How the destination's sentences name a mission: its load unit bare, as the operator reads it on
+    /// the label ("Send UC256355 to ..."); a mission without one by its identifier.
+    /// </summary>
+    private static string LoadUnitName(MissionDto mission) =>
+        mission.LoadUnitCode is { Length: > 0 } code ? code
+        : LoadUnitLabel(mission) is { } label ? $"load unit {label}"
+        : $"the mission {mission.MissionId}";
+
+    /// <summary>
+    /// <see cref="LoadUnitName"/> at the start of a sentence: the words are capitalized, a load unit's
+    /// code never - it is the identifier on the label, and "uc42" is not "Uc42".
+    /// </summary>
+    private static string LoadUnitFirst(MissionDto mission) =>
+        mission.LoadUnitCode is { Length: > 0 } code ? code : Capitalized(LoadUnitName(mission));
+
+    /// <summary>The load unit as a label: its code, or its number; null for a mission without one.</summary>
+    private static string? LoadUnitLabel(MissionDto mission) =>
+        mission.LoadUnitCode is { Length: > 0 } code ? code
+        : mission.LoadUnitId != 0m ? mission.LoadUnitId.ToString("0.##", CultureInfo.InvariantCulture)
+        : null;
+
+    private string BoundFor(Guid? destination) =>
+        destination is { } id && id != Guid.Empty ? $"bound for {DeviceName(id)}" : "with no destination";
+
+    /// <summary>
+    /// The change that waits for the end of the mission's step, said after the chosen mission (item 54,
+    /// decision 4): empty when none waits.
+    /// </summary>
+    private string WaitingLine(MissionDto mission) => (mission.PendingChange, mission.PendingChangeItemId) switch
+    {
+        (MissionPendingChangeKind.Destination, { } to) => $" At the end of its movement it is sent to {DeviceName(to)}.",
+        (MissionPendingChangeKind.Position, { } onto) => $" At the end of its movement it is moved onto {DeviceName(onto)}.",
+        _ => "",
+    };
+
+    private static string Capitalized(string text) => text.Length == 0 ? text : char.ToUpperInvariant(text[0]) + text[1..];
+
+    /// <summary>The plant's devices by identifier, built again only when the plant moved: every device cell asks it.</summary>
+    private Dictionary<Guid, PlantItemDto> Names()
+    {
+        if (Graph is not { } graph) return [];
+        if (_names is null || !ReferenceEquals(_namesOf, graph) || _namesRevision != graph.Revision)
+        {
+            _names = graph.Items.GroupBy(item => item.ItemId).ToDictionary(group => group.Key, group => group.First());
+            _namesOf = graph;
+            _namesRevision = graph.Revision;
+        }
+
+        return _names;
+    }
+
+    private Dictionary<Guid, PlantItemDto>? _names;
+    private PlantGraph? _namesOf;
+    private int _namesRevision;
+
+    // ---- Choosing and moving ----------------------------------------------------------------------
+
+    /// <summary>A row chosen: the mission to move or to send elsewhere, and the device it is on selected on the drawing (by the page).</summary>
+    private Task ChooseAsync(MissionDto mission)
+    {
+        if (_chosen != mission.MissionId)
+        {
+            _chosen = mission.MissionId;
+            _pending = null;
+            _pendingDestination = null;
+            // The offer to clear the gateway was for the mission chosen before: it does not follow the row.
+            _withoutTheGateway = null;
+        }
+
+        return OnSelect.InvokeAsync(mission);
+    }
+
+    /// <summary>
+    /// The devices a target or a gateway can be picked from: the plant's, by name, those whose name holds
+    /// what is typed in <paramref name="search"/> - and <paramref name="chosen"/>, always.
+    /// </summary>
+    private IEnumerable<PlantItemDto> Candidates(string search, Guid? chosen)
+    {
+        var devices = (Graph?.Items ?? []).OrderBy(NameOf, StringComparer.OrdinalIgnoreCase).ThenBy(item => item.ItemId);
+        var wanted = search.Trim();
+        return wanted.Length == 0
+            ? devices
+            : devices.Where(item => item.ItemId == chosen || NameOf(item).Contains(wanted, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void TargetPicked(ChangeEventArgs e) =>
+        TargetIs(Guid.TryParse(e.Value as string, out var id) ? id : null);
+
+    private void UseSelected()
+    {
+        if (SelectedItemId is { } id) TargetIs(id);
+    }
+
+    /// <summary>
+    /// The target picked, from the list or from the drawing. The offer to clear the gateway is the
+    /// refused change, frozen with its target: it ends when another target is picked, as it does when
+    /// another row is chosen - its button names no target, and would send the one the page no longer
+    /// shows (fix round 1).
+    /// </summary>
+    private void TargetIs(Guid? target)
+    {
+        _target = target;
+        if (_withoutTheGateway is { } blocked && blocked.Asked.TargetId != target) _withoutTheGateway = null;
+    }
+
+    private bool CanMove(MissionDto? mission) =>
+        mission is not null && _target is { } target && target != mission.PositionItemId && _sending is null;
+
+    /// <summary>The first step of the two: the question names the mission, where it is and where it goes, frozen now.</summary>
+    private void AskToMove(MissionDto? mission)
+    {
+        if (!CanMove(mission) || _target is not { } target) return;
+        _pending = new PendingMove(mission!.MissionId, target, MissionName(mission), DeviceName(mission.PositionItemId), DeviceName(target));
+    }
+
+    /// <summary>
+    /// The second step: the move asked of the host, and its answer told - see the file's own remarks.
+    /// 400 and 409 are refusals before anything moved: the row stays as it is, and the host's words
+    /// say why; so is the 503 of an engine still in Recover, told by its title, and the 503 of an engine
+    /// not loaded, told by its field (row 34 of the queue), each with the page's own sentence. Anything
+    /// else reads the list again, so the rows show where the host says the mission
+    /// is.
+    /// </summary>
+    private async Task ConfirmMoveAsync()
+    {
+        if (_pending is not { } move || _sending is not null) return;
+        _pending = null;
+        _sending = "Asking the host to move the mission...";
+        _outcome = null;
+        _went = false;
+        _withoutTheGateway = null;
+        var readAgain = true;
+        try
+        {
+            var applied = await Session.Client.SetMissionPositionAsync(move.MissionId, move.TargetId);
+            _went = true;
+            // Item 54, decision 4: with a step of the mission in flight the move waits for its end (202).
+            _outcome = applied == MissionChangeApplied.AtTheEndOfTheMovement
+                ? $"{Capitalized(move.Mission)} has a step under way: the move onto {move.Target} is applied at the end of the movement."
+                : $"{Capitalized(move.Mission)} was moved onto {move.Target}: the host took it.";
+        }
+        catch (WcsApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            _outcome = DrawioSaid.Failed($"{Capitalized(move.Mission)} was NOT moved: it is no longer active on the host (it ended or was removed).", ex);
+        }
+        catch (WcsApiException ex) when (ex.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Conflict)
+        {
+            readAgain = false;
+            // What the status means on this route (MissionEndpoints, PUT .../position): a 400 is a
+            // device the host does not know, a 409 the device occupied by another mission, its only
+            // refusal: a step of the mission under way is no longer one, the move waits for its end
+            // (202, item 54).
+            var refusal = ex.StatusCode == HttpStatusCode.BadRequest
+                ? $"the host does not know {move.Target} as a device"
+                : $"the host refused it - {move.Target} carries another mission";
+            _outcome = DrawioSaid.Failed($"{Capitalized(move.Mission)} was NOT moved onto {move.Target}: {refusal}. It is still on {move.From}.", ex);
+        }
+        catch (WcsApiException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable
+                                         && Refusal.Of(ex.Body) is { Title: MissionMoveProblems.EngineRecoveringTitle })
+        {
+            // The engine is in Recover (owner's answer 4 of 8/10): a refusal before anything moved, told
+            // by its title - the same 503 also comes with the engine not loaded, told by its field just
+            // below, or without its database, which stays "not known".
+            readAgain = false;
+            _outcome = DrawioSaid.Failed($"{Capitalized(move.Mission)} was NOT moved onto {move.Target}. The engine is still loading the missions: try again in a moment.", ex);
+        }
+        catch (WcsApiException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable
+                                         && DrawioSelectionCoordinator.UnavailableReason(ex.Body) == ServiceUnavailableProblems.EngineNotLoaded)
+        {
+            // The engine is not loaded (row 34 of the queue, told by the host's field): the host refused
+            // the request before it reached the engine, so nothing moved; a list read again would get
+            // the same 503.
+            readAgain = false;
+            _outcome = DrawioSaid.Failed($"{Capitalized(move.Mission)} was NOT moved onto {move.Target}: the engine is not ready (it is not loaded on the host). It is still on {move.From}.", ex);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // The failures after which the outcome is NOT known, the same for a move and for a change
+            // of destination: no answer (transport, timeout), an answer this page does not expect, one
+            // it cannot read, or the unforeseen, which must not leave the handler (it would end the
+            // circuit). The request may have reached the host, so the list is read again. One sentence
+            // with the why in the page's words, what came back behind its "?" (row 37 of the queue,
+            // extended to the whole page on 10/10).
+            _outcome = DrawioSaid.Failed(
+                $"It is NOT known whether {move.Mission} was moved onto {move.Target}, because {DrawioFailureWords.Why(ex)}. The list is read again from the host.", ex);
+        }
+        finally
+        {
+            _sending = null;
+        }
+
+        if (readAgain && !_disposed) await ReadAsync();
+    }
+
+    // ---- Setting the destination ------------------------------------------------------------------
+
+    /// <summary>
+    /// Any device can be asked for, also where the load unit is: the host refuses that one in words
+    /// ("already there"), and it alone knows whether a device is in the same group as the position.
+    /// </summary>
+    private bool CanSetDestination(MissionDto? mission) =>
+        mission is not null && _target is not null && _sending is null && _readBeforeAsking is null;
+
+    /// <summary>The first step of the two: the question and the gateway's choice, frozen now, with what there is kept.</summary>
+    private void AskToSetDestination(MissionDto? mission)
+    {
+        if (!CanSetDestination(mission) || _target is not { } target) return;
+        var currentId = mission!.DestinationItemId is { } destination && destination != Guid.Empty ? destination : (Guid?)null;
+        var gatewayId = mission.GatewayItemId is { } through && through != Guid.Empty ? through : (Guid?)null;
+        var isAWarehouse = IsAWarehouse(target);
+        var isARelocator = IsARelocator(target);
+        var (order, changeOfCell) = OrderOf(mission, target, isAWarehouse);
+        var (cellOrder, cellChangeOfCell) = isARelocator ? OrderOf(mission, target, towardsAWarehouse: true) : (order, changeOfCell);
+        _pendingDestination = new PendingDestination(mission.MissionId, target, LoadUnitName(mission), LoadUnitFirst(mission),
+            mission.PositionItemId, DeviceName(mission.PositionItemId), DeviceName(target), isAWarehouse, currentId,
+            currentId is { } current ? DeviceName(current) : null, gatewayId, gatewayId is { } gatewayNow ? DeviceName(gatewayNow) : null,
+            currentId is { } bound && (bound == target || IsAMemberOf(bound, target)), mission.StorageDoorCode is { Length: > 0 },
+            mission.OperatorDestination, order, changeOfCell, isARelocator, cellOrder, cellChangeOfCell);
+        _gatewayChoice = GatewayChoice.Keep;
+        _gateway = null;
+        _gatewaySearch = "";
+        _arrival = null;
+        _cellChoice = CellChoice.ByTheWarehouse;
+        _cellCode = "";
+        _cellList = null;
+    }
+
+    /// <summary>
+    /// A relocator, as the engine says it (MissionGateway.IsARelocator, item 54): a warehouse names it as
+    /// its relocator (<see cref="PlantItemDto.RelocateItemId"/>) - a group too, when a warehouse names the
+    /// group; a member of a relocating group is not one by itself.
+    /// </summary>
+    private bool IsARelocator(Guid itemId) =>
+        (Graph?.Items ?? []).Any(storage => storage.DeviceType == DeviceTypes.Storage && storage.RelocateItemId == itemId);
+
+    /// <summary>
+    /// The engine treats as a warehouse a storage, and a group whose members include a storage
+    /// (MissionGateway.StoragesOf): towards either it reserves a cell.
+    /// </summary>
+    private bool IsAWarehouse(Guid itemId)
+    {
+        if (!Names().TryGetValue(itemId, out var item)) return false;
+        if (item.DeviceType == DeviceTypes.Storage) return true;
+        return item is { DeviceType: DeviceTypes.GroupOfAutomationDevices, GroupItemId: not 0 }
+               && (Graph?.Items ?? []).Any(member => member.BelongingGroupId == item.GroupItemId && member.DeviceType == DeviceTypes.Storage);
+    }
+
+    /// <summary>
+    /// A storage member of the group <paramref name="groupId"/>: the destination the engine writes when a
+    /// group of warehouses is chosen (it reserves in one of its members), so that group chosen again is
+    /// the same warehouse again.
+    /// </summary>
+    private bool IsAMemberOf(Guid storageId, Guid groupId) =>
+        Names().TryGetValue(groupId, out var group) && group is { DeviceType: DeviceTypes.GroupOfAutomationDevices, GroupItemId: not 0 }
+        && Names().TryGetValue(storageId, out var member) && member.DeviceType == DeviceTypes.Storage
+        && member.BelongingGroupId == group.GroupItemId;
+
+    /// <summary>
+    /// What a change towards a warehouse does to an extraction's order (answers 1 and 3 of 2/10, as
+    /// MissionGateway.ChangeToStorageAsync and PathMission.CommitRoute do it): picked up already - it is
+    /// on a device that is not a warehouse - it becomes a deposit, and the warehouse system, which
+    /// counts the order as served since the pick-up, is told to reopen it through the engine's durable
+    /// queue (item 45: PathMission.BecomeADepositOfAPickedExtraction), unless the order is already
+    /// shipped or closed, which the log then says;
+    /// still in its cell - on a warehouse, or nowhere with a warehouse as its source
+    /// (PathMission.LoadUnitIsInItsStorageCell) - and sent to a warehouse its position does not reach
+    /// (PathMission.Reaches: nowhere reaches nothing, so also its own warehouse), it becomes a change of
+    /// cell. With an order to leave - an assignment, or a row of the extraction queue - the engine tells
+    /// the warehouse system it leaves it, and closes the mission only if the change is refused after
+    /// that (MissionGateway.LeaveTheExtractionAsync sets LeftTheExtraction): a refusal before it - no
+    /// route to the door proposed, no cell, the cell's address not read, a step in flight - leaves the
+    /// mission the extraction it was. Without one the warehouse system is told nothing and no refusal
+    /// closes it. Null for any other change. <paramref name="towardsAWarehouse"/>: the change goes to a
+    /// warehouse - the target is one, or (item 54, decision 6) a precise cell is chosen through the
+    /// relocator that is the target.
+    /// </summary>
+    private (string? Order, bool ChangeOfCell) OrderOf(MissionDto mission, Guid target, bool towardsAWarehouse)
+    {
+        if (mission.MissionType != MissionTypes.Extraction || !towardsAWarehouse) return (null, false);
+        var position = mission.PositionItemId is { } at && Names().TryGetValue(at, out var on) ? on : null;
+        if (position is { DeviceType: not DeviceTypes.Storage })
+            return ("It was picked up for an order: the warehouse system is told to reopen that order, and an order already shipped stays as it is.", false);
+
+        // Only a target the position reaches is "already there" for the engine (PathMission.Reaches):
+        // nowhere, with its own warehouse as the source, the load unit sent to that warehouse is a
+        // change of cell like any other.
+        var storage = position ?? (mission.SourceItemId is { } from && Names().TryGetValue(from, out var source)
+                                   && source.DeviceType == DeviceTypes.Storage ? source : null);
+        if (storage is null || Reaches(mission.PositionItemId, target)) return (null, false);
+        var hasAnOrder = mission.AssignmentGuid is { } assignment && assignment != Guid.Empty || mission.ExtractionQueueId > 0;
+        if (!hasAnOrder)
+            return ($"It is still in its cell in {NameOf(storage)}: this makes it a change of cell. It has no order for the warehouse system to free.", true);
+        return ($"It is still in its cell in {NameOf(storage)}: this makes it a change of cell, and its order goes back free in the warehouse system."
+                + " If the change is refused after the warehouse system was told, the mission ends and the load unit stays in its cell.", true);
+    }
+
+    /// <summary>
+    /// The engine's rule for "arrived" (PathMission.Reaches): <paramref name="target"/> is the
+    /// position itself, or the group the position belongs to. Nowhere reaches nothing.
+    /// </summary>
+    private bool Reaches(Guid? position, Guid target)
+    {
+        if (position is not { } at || at == Guid.Empty || target == Guid.Empty) return false;
+        if (at == target) return true;
+        return Names().TryGetValue(at, out var device) && device.BelongingGroupId != 0
+               && Names().TryGetValue(target, out var group) && group is { DeviceType: DeviceTypes.GroupOfAutomationDevices, GroupItemId: not 0 }
+               && device.BelongingGroupId == group.GroupItemId;
+    }
+
+    /// <summary>
+    /// The question as the gateway's radios leave it now: they may change the gateway, and towards the
+    /// same warehouse that keeps the cell. A gateway picked that the load unit has already reached (its
+    /// position, or the position's group) is no gateway for the engine (MissionGateway.ChangeDestinationAsync
+    /// drops it): it is said as clearing the one there is, and as no change when there is none.
+    /// </summary>
+    private string QuestionOf(PendingDestination asked)
+    {
+        var clears = _gatewayChoice == GatewayChoice.Clear
+                     || _gatewayChoice == GatewayChoice.Change && _gateway is { } reached && Reaches(asked.PositionId, reached);
+        string? through = _gatewayChoice switch
+        {
+            _ when clears => asked.GatewayId is not null ? ", with no gateway" : null,
+            GatewayChoice.Change when _gateway is { } picked && picked != asked.GatewayId => $", passing through {DeviceName(picked)}",
+            _ => null,
+        };
+        if (PreciseCell(asked) is { } code) return asked.QuestionWithTheCell(code, through);
+        var question = asked.QuestionWith(through);
+        // Item 54, decision 5: what the relocator does, once the operator said it.
+        return (asked.TargetIsRelocator ? _arrival : null) switch
+        {
+            MissionRelocatorArrival.Stay => $"{question} It stays at {asked.Target}: nothing else is done with it.",
+            MissionRelocatorArrival.Deposit => $"{question} At {asked.Target} the warehouse system is asked for a cell {asked.Target} reaches, and {asked.Target} deposits it there.",
+            _ => question,
+        };
+    }
+
+    /// <summary>The cell can be chosen (item 54, decision 6): towards a warehouse, or towards a relocator that is to deposit it.</summary>
+    private bool CellCanBeChosen(PendingDestination asked) =>
+        asked.TargetIsStorage || asked.TargetIsRelocator && _arrival == MissionRelocatorArrival.Deposit;
+
+    /// <summary>The precise cell's code as it goes to the host, trimmed; null when the cell is the warehouse system's to choose, or no code is written yet.</summary>
+    private string? PreciseCell(PendingDestination asked) =>
+        CellCanBeChosen(asked) && _cellChoice == CellChoice.Precise && _cellCode.Trim() is { Length: > 0 } code ? code : null;
+
+    /// <summary>
+    /// What the question still needs before it can be sent: the gateway to set when "change" is chosen,
+    /// what the relocator does (item 54, decision 5), the cell's code when the operator chooses it (decision 6).
+    /// </summary>
+    private bool CanConfirmDestination(PendingDestination asked) =>
+        !(_gatewayChoice == GatewayChoice.Change && _gateway is null)
+        && !(asked.TargetIsRelocator && _arrival is null)
+        && !(CellCanBeChosen(asked) && _cellChoice == CellChoice.Precise && PreciseCell(asked) is null);
+
+    /// <summary>One choice of what the relocator does: a radio button with its label.</summary>
+    private RenderFragment ArrivalOption(string value, string label, MissionRelocatorArrival choice) =>
+        @<label class="drawio-mission-destination-option">
+            <input type="radio" id="@($"drawio-mission-destination-relocator-{value}")" name="drawio-mission-destination-relocator"
+                   value="@value" checked="@(_arrival == choice)" @onchange="() => _arrival = choice" />
+            @label
+        </label>;
+
+    /// <summary>One choice of where the cell comes from: a radio button with its label. Choosing the operator's cell asks the warehouse system for the list.</summary>
+    private RenderFragment CellOption(string value, string label, CellChoice choice) =>
+        @<label class="drawio-mission-destination-option">
+            <input type="radio" id="@($"drawio-mission-destination-cell-{value}")" name="drawio-mission-destination-cell"
+                   value="@value" checked="@(_cellChoice == choice)" @onchange="() => CellChosenAsync(choice)" />
+            @label
+        </label>;
+
+    /// <summary>
+    /// The cell's choice changed: with the operator's cell, the warehouse system's list is read, once per
+    /// question - again only after a failure. Never throws: it runs from a click.
+    /// </summary>
+    private async Task CellChosenAsync(CellChoice choice)
+    {
+        _cellChoice = choice;
+        if (choice != CellChoice.Precise || _pendingDestination is not { } asked) return;
+        if (_cellList is { Failure: null } list && list.MissionId == asked.MissionId && list.TargetId == asked.TargetId) return;
+
+        var waiting = _cellList = new CellList(asked.MissionId, asked.TargetId, Loading: true, null, null);
+        CellList answer;
+        try
+        {
+            var cells = await Session.Client.GetMissionStorageCellsAsync(asked.MissionId, asked.TargetId);
+            answer = waiting with { Loading = false, Cells = cells };
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            answer = waiting with { Loading = false, Failure = DrawioSaid.Failed(CellsNotListed(asked, ex), ex) };
+        }
+
+        // An answer for a question that is no longer open is dropped: another row, another target, or
+        // the same question asked again, whose list is its own.
+        if (_disposed || !ReferenceEquals(_cellList, waiting) || !ReferenceEquals(_pendingDestination, asked)) return;
+        _cellList = answer;
+    }
+
+    /// <summary>Why the cells were not listed, in the page's words, from the problem's title and field; the host's own words are behind the line's "?".</summary>
+    private static string CellsNotListed(PendingDestination asked, Exception ex)
+    {
+        const string write = " Write the cell's door A code to choose one.";
+        if (ex is not WcsApiException api)
+            return $"The cells could not be read from the host because {DrawioFailureWords.Why(ex)}.{write}";
+        if (api.StatusCode == HttpStatusCode.NotFound)
+            return $"The cells could not be listed: {asked.LoadUnit} is no longer active on the host (it ended or was removed).";
+        switch (DrawioSelectionCoordinator.UnavailableReason(api.Body))
+        {
+            case ServiceUnavailableProblems.WarehouseUnreachable:
+                return $"The cells could not be listed: the warehouse system does not answer.{write}";
+            case ServiceUnavailableProblems.EngineNotLoaded:
+                return $"The cells could not be listed: the engine is not ready (it is not loaded on the host).{write}";
+        }
+
+        var why = Refusal.Of(api.Body)?.Title switch
+        {
+            StorageCellCandidatesProblems.DeviceNotFoundTitle => $"the host does not know {asked.Target} as a device",
+            StorageCellCandidatesProblems.NotAStorageTitle => $"{asked.Target} has no cells - it is not a warehouse, a group of warehouses or a relocator",
+            StorageCellCandidatesProblems.NoStorageCellTitle => $"there is nothing to ask the warehouse system for this load unit in {asked.Target} (the host says why)",
+            _ => null,
+        };
+        return why is null
+            ? $"The cells could not be read from the host because {DrawioFailureWords.Why(ex)}.{write}"
+            : $"The cells could not be listed: {why}.{write}";
+    }
+
+    /// <summary>The line over the list: how many cells the warehouse system proposes, or that it proposes none.</summary>
+    private static string CellsLine(PendingDestination asked, int count) => count switch
+    {
+        0 => $"The warehouse system proposes no cell for {asked.LoadUnit} in {asked.Target}. Write the cell's door A code to choose one.",
+        1 => $"The warehouse system proposes 1 cell for {asked.LoadUnit} in {asked.Target}, or write another one's door A code.",
+        _ => $"The warehouse system proposes {count} cells for {asked.LoadUnit} in {asked.Target}, in its order, or write another one's door A code.",
+    };
+
+    /// <summary>A proposed cell as the list names it: its door A code, where it is, and how full it is.</summary>
+    private static string CellName(StorageCellCandidateDto cell) =>
+        $"{cell.DoorCode} - {cell.AreaDescription}, column {cell.Column}, floor {cell.Floor}"
+        + (cell.Description is { Length: > 0 } description ? $", {description}" : "")
+        + (cell.LoadUnitsInCell == 1 ? ", 1 load unit in it" : $", {cell.LoadUnitsInCell} load units in it");
+
+    /// <summary>One choice on the gateway: a radio button with its label.</summary>
+    private RenderFragment GatewayOption(string value, string label, GatewayChoice choice) =>
+        @<label class="drawio-mission-destination-option">
+            <input type="radio" id="@($"drawio-mission-destination-gateway-{value}")" name="drawio-mission-destination-gateway"
+                   value="@value" checked="@(_gatewayChoice == choice)" @onchange="() => _gatewayChoice = choice" />
+            @label
+        </label>;
+
+    private void GatewayPicked(ChangeEventArgs e) =>
+        _gateway = Guid.TryParse(e.Value as string, out var id) ? id : null;
+
+    /// <summary>The second step: the change sent with the choice on the gateway as the operator left it.</summary>
+    private Task ConfirmDestinationAsync()
+    {
+        if (_pendingDestination is not { } asked || _sending is not null) return Task.CompletedTask;
+        if (!CanConfirmDestination(asked)) return Task.CompletedTask;
+        var request = _gatewayChoice switch
+        {
+            GatewayChoice.Clear => new DestinationRequest(asked, MissionGatewayUpdate.Clear, null),
+            GatewayChoice.Change when _gateway is { } through => new DestinationRequest(asked, MissionGatewayUpdate.Set(through), DeviceName(through)),
+            GatewayChoice.Change => null,
+            _ => new DestinationRequest(asked, MissionGatewayUpdate.Keep, null),
+        };
+        if (request is null) return Task.CompletedTask;
+        // Item 54: a precise cell goes alone - through a relocator it is the relocator that deposits it
+        // (the host refuses the two together); otherwise what the relocator does, when it is one.
+        request = PreciseCell(asked) is { } cell
+            ? request with { CellCode = cell }
+            : request with { Arrival = asked.TargetIsRelocator ? _arrival : null };
+
+        _pendingDestination = null;
+        return SendDestinationAsync(request);
+    }
+
+    /// <summary>The offer after a route the gateway blocked: the same change again, with the gateway cleared.</summary>
+    private Task ClearTheGatewayAndSetAsync() =>
+        _withoutTheGateway is { } blocked && _sending is null
+            ? SendDestinationAsync(blocked with { Gateway = MissionGatewayUpdate.Clear, NewGatewayName = null })
+            : Task.CompletedTask;
+
+    /// <summary>
+    /// The change asked of the host, and its answer told - see the file's own remarks. Never throws:
+    /// it runs from a click.
+    /// </summary>
+    private async Task SendDestinationAsync(DestinationRequest request)
+    {
+        var asked = request.Asked;
+        _sending = request.CellCode is { } asking
+            ? $"Asking the host to send {asked.LoadUnit} into the cell {asking}..."
+            : $"Asking the host to send {asked.LoadUnit} to {asked.Target}...";
+        _outcome = null;
+        _went = false;
+        _withoutTheGateway = null;
+        var readAgain = true;
+        var took = false;
+        try
+        {
+            var applied = await Session.Client.SetMissionDestinationAsync(asked.MissionId,
+                new MissionDestinationUpdate(asked.TargetId, request.Gateway, request.Arrival, request.CellCode));
+            _went = true;
+            // Item 54, decision 4: with a step of the mission in flight the change waits for its end
+            // (202), and the row read again shows it waiting; the gateway is said when it is applied.
+            took = applied == MissionChangeApplied.Now;
+            _outcome = took
+                ? TookLine(request, null)
+                : $"{asked.LoadUnitFirst} is moving: it is sent {(request.CellCode is { } into ? $"into the cell {into}" : $"to {asked.Target}")} at the end of the movement - the change is applied at the end of the movement.";
+        }
+        catch (WcsApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            _outcome = DrawioSaid.Failed($"{asked.LoadUnitFirst} was NOT sent to {asked.Target}: it is no longer active on the host (it ended or was removed).", ex);
+        }
+        catch (WcsApiException ex) when (ex.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Conflict
+                                             or HttpStatusCode.UnprocessableEntity or HttpStatusCode.ServiceUnavailable)
+        {
+            // A refusal: these four come BEFORE the arm below, which would call a 422 or a 503 "not known".
+            // Most leave the row as it was. Two say what changed on the way, and the host says so in
+            // the refusal: a lost storage cell, which the channel announces; and a change of cell
+            // refused after the warehouse system was told that the load unit leaves its order, which
+            // closes the mission (task 4 of voce 39) - the list is read again to drop its row. Until
+            // the final review the host did not carry the closure, and the page guessed it from the
+            // row being gone after a read that could be an older one.
+            var refusal = Refusal.Of(ex.Body);
+            readAgain = request.ChangeOfCell || refusal is { MissionClosed: true };
+            var refused = $"{asked.LoadUnitFirst} was NOT sent to {asked.Target}: {Why(request, refusal, ex.Body)}.";
+            _outcome = DrawioSaid.Failed(refusal is { MissionClosed: true }
+                ? $"{refused} The mission was closed: the warehouse system had already been told that it leaves its order, so the load unit stays in its cell with no order."
+                : $"{refused} {asked.Still}"
+                  + (refusal is { LostTheCell: true }
+                      ? $" Its cell was given back to the warehouse system on the way, so it has no cell now: the engine is reserving another one in {asked.Current ?? "its warehouse"}."
+                      : ""), ex);
+            // Offered only if the row and the target asked for are still the ones chosen: a row can be
+            // chosen while the answer is on its way (towards a warehouse the engine asks the warehouse
+            // system first), and the button would then send the change of a mission the page no longer
+            // shows as chosen (fix round 2). The target cannot change meanwhile - its controls are
+            // disabled while Asking - but the offer promises both.
+            if (refusal is { Title: MissionDestinationProblems.NoRouteTitle, Gateway: not null, WouldRouteWithoutGateway: true, MissionClosed: false }
+                && _chosen == asked.MissionId && _target == asked.TargetId)
+                _withoutTheGateway = request;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // NOT known, as for a move (ConfirmMoveAsync): the request may have reached the host.
+            var notKnown = DrawioSaid.Failed(
+                $"It is NOT known whether {asked.LoadUnit} was sent to {asked.Target}, because {DrawioFailureWords.Why(ex)}. The list is read again from the host." + AskingAgain(asked), ex);
+            _outcome = notKnown;
+            _readBeforeAsking = new NotKnown(asked, notKnown);
+        }
+        finally
+        {
+            _sending = null;
+        }
+
+        if (readAgain && !_disposed) await ReadAsync();
+
+        // The gateway is said from the row the host gives back, not from what was asked: the engine
+        // drops a gateway the load unit has already reached (its position, or the position's group),
+        // and the outcome must not promise a passage the route does not make. A read that failed says
+        // nothing of it.
+        if (took && !_disposed)
+            _outcome = TookLine(request, _readError is null ? _board.Find(asked.MissionId) : null);
+    }
+
+    /// <summary>
+    /// The outcome of a change the host took: where the load unit is bound, with the gateway from the
+    /// row read again (<paramref name="row"/>, null: not read, and the gateway is not said). Item 54: a
+    /// precise cell is said by its code, in the warehouse the row has (the engine writes the warehouse of
+    /// the cell, also when a relocator or a group was chosen); what the relocator does is said after.
+    /// </summary>
+    private string TookLine(DestinationRequest request, MissionDto? row)
+    {
+        var asked = request.Asked;
+        var bound = request.CellCode is { } code
+            ? $"{asked.LoadUnitFirst} is now bound for the cell {code}"
+              + (row?.DestinationItemId is { } storage && storage != Guid.Empty ? $" in {DeviceName(storage)}" : "")
+            : $"{asked.LoadUnitFirst} is now bound for {asked.Target}";
+        var arrival = request.Arrival switch
+        {
+            MissionRelocatorArrival.Stay => ", where it stays",
+            MissionRelocatorArrival.Deposit => $", where it is deposited in a cell the warehouse system gives",
+            _ => "",
+        };
+        return $"{bound}{GatewayClause(request, row)}{arrival}: the host took it.";
+    }
+
+    /// <summary>
+    /// What the outcome says of the gateway, from the mission as the host has it after the change:
+    /// the gateway it passes through (kept, or the one set), none when the operator cleared it, and
+    /// none with the reason when the gateway asked for or kept is one the load unit has already
+    /// reached.
+    /// </summary>
+    private string GatewayClause(DestinationRequest request, MissionDto? row)
+    {
+        if (row is null) return "";
+        var now = row.GatewayItemId is { } through && through != Guid.Empty ? DeviceName(through) : null;
+        return (request.Gateway.Mode, now) switch
+        {
+            (MissionGatewayUpdateMode.Keep, { } kept) => $", still passing through {kept}",
+            (_, { } set) => $", passing through {set}",
+            (MissionGatewayUpdateMode.Clear, null) => ", with no gateway",
+            (MissionGatewayUpdateMode.Set, null) => $", with no gateway (it has already reached {request.NewGatewayName})",
+            (MissionGatewayUpdateMode.Keep, null) when request.Asked.GatewayName is { } reached => $", with no gateway (it has already reached {reached})",
+            _ => "",
+        };
+    }
+
+    /// <summary>
+    /// A change whose answer never came may have happened (the engine finishes it without anybody
+    /// waiting): towards a warehouse, the same change again is a request for a cell there again -
+    /// also after a change of the gateway alone, which then finds the gateway already written. The next
+    /// request waits for the list read again (<see cref="_readBeforeAsking"/>).
+    /// </summary>
+    private static string AskingAgain(PendingDestination asked) => asked.TargetIsStorage
+        ? " A new request waits for that read, which shows the gateway as it is now:"
+          + $" if this change went through, the same request again asks the warehouse system for another cell in {asked.Target}."
+        : "";
+
+    /// <summary>
+    /// Why the host refused, in plain words, from the problem's title and fields; for a refusal this
+    /// page does not know, that the host refused it - its own words are behind the line's "?" with the
+    /// rest of its answer (row 37 of the queue, extended to the whole page on 10/10), where they used to
+    /// be quoted in the sentence.
+    /// </summary>
+    private string Why(DestinationRequest request, Refusal? refusal, string body)
+    {
+        var asked = request.Asked;
+        const string hostWords = "the host refused it";
+        if (refusal is null) return hostWords;
+        // Which of the host's two 503s it is, from the field the host writes for it (row 34 of the
+        // queue), not from the title: the warehouse system that does not answer, or the engine not loaded.
+        switch (DrawioSelectionCoordinator.UnavailableReason(body))
+        {
+            case ServiceUnavailableProblems.WarehouseUnreachable: return "the warehouse system does not answer";
+            case ServiceUnavailableProblems.EngineNotLoaded: return "the engine is not ready (it is not loaded on the host)";
+        }
+        return refusal.Title switch
+        {
+            // Since item 54 a step in flight makes the change wait (202): what is left of this 409 is the
+            // mission moved while the change was being made.
+            MissionDestinationProblems.StepInFlightTitle => "it moved while the change was being made - try again when its step ends",
+            // Not this mission: another one of its group that copied its door (the same cell) cannot be
+            // stopped right now, and the change touched nothing (owner's answer 4 of 9/10).
+            MissionDestinationProblems.CopyInFlightTitle => "another load unit sharing its cell is moving: try again in a moment",
+            MissionDestinationProblems.CellSearchInFlightTitle =>
+                "a search for its storage cell, or another change of its destination, is under way - try again when it ends",
+            MissionDestinationProblems.AlreadyThereTitle => "it is already there",
+            MissionDestinationProblems.DeviceNotFoundTitle => $"the host does not know {asked.Target} as a device",
+            MissionDestinationProblems.GatewayNotFoundTitle => $"the host does not know {request.NewGatewayName} as a device to pass through",
+            MissionDestinationProblems.NoRouteTitle => refusal.Gateway is { } gateway
+                ? $"there is no route from {asked.Position} to {asked.Target} passing through {DeviceName(gateway)}"
+                  + (refusal.WouldRouteWithoutGateway ? "; without the gateway there is one" : ", nor without it")
+                : $"there is no route from {asked.Position} to {asked.Target}",
+            MissionDestinationProblems.NoStorageCellTitle => refusal.NoOtherFreeCell
+                ? $"there is no other free cell in {asked.Target} - the cell it has stays reserved for it"
+                : $"the warehouse system has no cell to give it in {asked.Target} (the engine's log says why)",
+            // A no from the warehouse system, not a silence: it got the first report of the change of cell and
+            // did not apply it, so the extraction stays as it was (owner's answer 4 of 8/10, evening).
+            MissionDestinationProblems.WarehouseRefusedTitle => "the warehouse system refused the change",
+            // Item 54, decision 5: the page asks it only of a relocator, so the plant changed meanwhile.
+            MissionDestinationProblems.NotARelocatorTitle =>
+                $"{asked.Target} is not the relocator of any warehouse, so it cannot be told to deposit it or to keep it",
+            MissionDestinationProblems.InvalidDestinationChoiceTitle => "the choice sent with it is not valid",
+            // Item 54, decision 6: the precise cell, refused by the WCS or by the warehouse system, from the field.
+            MissionDestinationProblems.CellRefusedTitle => refusal.CellRefusal switch
+            {
+                "unknownDoor" => $"no cell has the door code {request.CellCode}",
+                "notADoorA" => $"{request.CellCode} is the code of a door B: a cell is chosen by its door A code",
+                "cellNotAvailable" => $"the warehouse system says the cell {request.CellCode} is not free, or does not suit the load unit",
+                "unknownLoadUnit" => "the warehouse system does not know its load unit",
+                "notInTheChoice" => asked.TargetIsRelocator
+                    ? $"the cell {request.CellCode} is not one {asked.Target} serves"
+                    : $"the cell {request.CellCode} is not in {asked.Target}",
+                _ => $"the cell {request.CellCode} was refused",
+            },
+            _ => hostWords,
+        };
+    }
+
+    /// <summary>A refusal of the destination's route as the page reads it: the title, and the fields some titles carry.</summary>
+    private sealed record Refusal(string? Title, Guid? Gateway, bool WouldRouteWithoutGateway, bool NoOtherFreeCell, bool LostTheCell,
+        bool MissionClosed, string? CellRefusal = null)
+    {
+        /// <summary>The problem document of a refusal; null for a body that is not one.</summary>
+        public static Refusal? Of(string body)
+        {
+            if (string.IsNullOrWhiteSpace(body)) return null;
+            try
+            {
+                using var problem = JsonDocument.Parse(body);
+                var root = problem.RootElement;
+                if (root.ValueKind != JsonValueKind.Object) return null;
+                return new Refusal(
+                    root.TryGetProperty("title", out var title) && title.ValueKind == JsonValueKind.String ? title.GetString() : null,
+                    root.TryGetProperty(MissionDestinationProblems.GatewayExtension, out var gateway)
+                        && gateway.ValueKind == JsonValueKind.String && gateway.TryGetGuid(out var id) ? id : null,
+                    root.TryGetProperty(MissionDestinationProblems.WouldRouteWithoutGatewayExtension, out var without)
+                        && without.ValueKind == JsonValueKind.True,
+                    root.TryGetProperty(MissionDestinationProblems.NoOtherFreeCellExtension, out var other)
+                        && other.ValueKind == JsonValueKind.True,
+                    root.TryGetProperty(MissionDestinationProblems.LostTheCellExtension, out var lost)
+                        && lost.ValueKind == JsonValueKind.True,
+                    root.TryGetProperty(MissionDestinationProblems.MissionClosedExtension, out var closed)
+                        && closed.ValueKind == JsonValueKind.True,
+                    root.TryGetProperty(MissionDestinationProblems.CellRefusalExtension, out var cell)
+                        && cell.ValueKind == JsonValueKind.String ? cell.GetString() : null);
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+    }
+
+    // ---- The live channel -------------------------------------------------------------------------
+
+    /// <summary>A mission changed. On the channel's thread: only InvokeAsync from here, and nothing thrown back.</summary>
+    private void OnMissionChanged(MissionDto mission, MissionChange change) => OnTheRenderer(() =>
+    {
+        if (!Open)
+        {
+            _stale = true;
+            return;
+        }
+
+        if (_board.Apply(mission, change))
+        {
+            NormalizePage();
+            StateHasChanged();
+        }
+    });
+
+    /// <summary>Events may have gone by unseen (the channel came back, or the host signalled a gap): read again - now if open, at the opening if shut.</summary>
+    private void OnResynced() => OnTheRenderer(() =>
+    {
+        if (!Open)
+        {
+            _stale = true;
+            return;
+        }
+
+        _ = ReadAsync();
+    });
+
+    private void OnTheRenderer(Action work)
+    {
+        if (_disposed) return;
+        try
+        {
+            _ = InvokeAsync(() =>
+            {
+                if (!_disposed) work();
+            });
+        }
+        catch (ObjectDisposedException)
+        {
+            // The renderer is gone: there is no list left to update.
+        }
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        if (_subscribedFeed is not null)
+        {
+            _subscribedFeed.MissionChanged -= OnMissionChanged;
+            _subscribedFeed.Resynced -= OnResynced;
+        }
+    }
+}

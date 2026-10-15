@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!-- A sample WMS that speaks the WCS -> WMS contract (Wcs.Wms.Contracts). It keeps its warehouse in
+       memory and is meant to be read and copied: the template of a real adapter in front of your
+       own WMS. See README.md next to this file. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Wcs.SampleWms</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The routes (WarehouseRoutes) and the request/response records come from the contract the
+         WCS itself is built against: if the contract changes, this sample stops compiling instead
+         of answering the WCS in a shape it no longer reads. -->
+    <ProjectReference Include="..\..\WCS\Wcs.Wms.Contracts\src\Wcs.Wms.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" />
+  </ItemGroup>
+</Project>

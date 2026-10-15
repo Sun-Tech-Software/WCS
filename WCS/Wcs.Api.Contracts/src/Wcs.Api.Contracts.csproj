@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Solo gli enum: nessun pacchetto. La serializzazione binaria e' uscita da Wcs.Common nel compito 12. -->
+    <ProjectReference Include="..\..\Wcs.Common\src\Wcs.Common.csproj" />
+  </ItemGroup>
+</Project>

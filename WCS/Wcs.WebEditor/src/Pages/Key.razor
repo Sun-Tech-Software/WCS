@@ -1,0 +1,79 @@
+@using Wcs.Api.Client
+@inject EditorSessionState State
+
+<div class="key-page">
+    <div class="key-card">
+        <h2>WCS Web Editor</h2>
+        <p>The API key is needed to talk to the host.</p>
+
+        @* A <form> with @onsubmit, not just a button with @onclick (review B1): the card reads as a
+           sign-in form - full-width field, primary button underneath - and whoever sees it presses
+           Enter without checking whether a handler is there. Before there was none: Enter did
+           nothing. preventDefault avoids the browser's default navigation for a submit with no
+           action. The button is still the one cut.Find("button") locates in KeyTest/
+           EditorEditLockTest: type="submit" does not change which element they find, it only moves
+           the click's path onto the form's submit, which TryConnectAsync handles all the same. *@
+        <form @onsubmit="TryConnectAsync" @onsubmit:preventDefault="true">
+            <input type="password" class="key-field" @bind="_apiKey" @bind:event="oninput" placeholder="API key" disabled="@_isConnecting" />
+            <button type="submit" class="key-button" disabled="@(_isConnecting || string.IsNullOrWhiteSpace(_apiKey))">Connect</button>
+        </form>
+
+        @if (_error is not null)
+        {
+            <p class="key-error">@_error</p>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>Raised once the key has been accepted: whoever shows this component decides what to show in its place.</summary>
+    [Parameter]
+    public EventCallback OnKeyAccepted { get; set; }
+
+    private string _apiKey = string.Empty;
+    private string? _error;
+
+    /// <summary>
+    /// True while an attempt is in flight: it holds the button (and the keyboard) still until the
+    /// answer arrives. Without it, a second click before the first one finishes would call
+    /// <c>State.UseKey</c> a second time while the first <c>await</c> is still using the client
+    /// that has just been replaced - <c>UseKey</c> disposes it - and that call still in flight
+    /// would throw an exception that nobody catches here.
+    /// </summary>
+    private bool _isConnecting;
+
+    /// <summary>
+    /// Tries the key right away with a call to the status route: a wrong key is found out here,
+    /// and not at the first action on the plant.
+    /// </summary>
+    private async Task TryConnectAsync()
+    {
+        // The disabled button should already be enough: this is a second guard, not the first.
+        if (_isConnecting) return;
+
+        _isConnecting = true;
+        _error = null;
+        try
+        {
+            State.UseKey(_apiKey);
+            await State.Client.GetStatusAsync();
+            await OnKeyAccepted.InvokeAsync();
+        }
+        catch (WcsApiException)
+        {
+            State.Forget();
+            _error = "Key rejected by the host";
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            // Host down or restarting: it is not the key that is wrong, it is the host that is not
+            // answering - two different problems, with two different actions for whoever reads.
+            State.Forget();
+            _error = "The host is not answering: check that it is running and reachable";
+        }
+        finally
+        {
+            _isConnecting = false;
+        }
+    }
+}

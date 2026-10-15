@@ -1,0 +1,173 @@
+@* The frame a section of the draw.io page opens in (spec 2026-09-29): a non-modal window floating
+   over the canvas, so that opening one never takes height from the drawing. Shut, it is HIDDEN, not
+   removed: the section inside keeps its state (a pending import, a half-typed grid) and decides for
+   itself what to render while shut - the lists still render nothing and read nothing. The gestures
+   (move, resize, bring to front, keep on screen, Esc) and the memory are drawio-windows.js's; this
+   component only tells it when the window is there, when it opens and when it shuts. The X and Esc
+   (which the module turns into a press on the X) both ask OnClose, which the page makes a close that
+   does nothing on a window already shut: a fast double click on the X must not open it again.
+
+   The title bar (passata grafica, 2026-09-29; the pop-out of 14/10): the section's icon, its name,
+   the count it has (a list's rows), the "?" with the section's long explanation behind it, the
+   pop-out's status line (empty, and not shown, until a separate window is refused - by the
+   browser, or while an import waits for its confirmation), the
+   pop-out button that opens the window in a separate browser window and brings it back, and the X -
+   the icon, the count and the "?" only when there is something to put in them; the status, the
+   pop-out and the X always. The module drags the window from any point of the title bar that is not
+   a button, and the "?"'s note keeps its presses to itself (drawio-help.js), so a press on the
+   note's text never moves the window. Detaching and returning are the module's too (togglePopout):
+   the pop-out button has no Blazor handler. *@
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<section id="@Id" class="drawio-window @FixedSizeClass @Class" role="dialog" aria-modal="false" aria-label="@Title"
+         tabindex="-1" hidden="@(!Open)" @ref="_element">
+    <header class="drawio-window-title">
+        @if (Icon is not null)
+        {
+            <DrawioIcon Name="@Icon" />
+        }
+        <span class="drawio-window-name">@Title</span>
+        @if (Count is not null)
+        {
+            <span class="drawio-window-count drawio-pill drawio-pill-neutral">@Count</span>
+        }
+        @if (Help is not null)
+        {
+            <DrawioHelp Id="@($"{Id}-help")" Label="@($"About {Title}")">@Help</DrawioHelp>
+        }
+        <span id="@($"{Id}-popout-status")" class="drawio-window-popout-status" role="status" aria-live="polite"></span>
+        <button type="button" id="@($"{Id}-popout")" class="drawio-btn-icon drawio-window-popout"
+                data-window-title="@Title" aria-label="@($"Open {Title} in a separate window")"
+                title="@($"Open {Title} in a separate window")"><DrawioIcon Name="popout" /></button>
+        <button type="button" id="@($"{Id}-close")" class="drawio-btn-icon drawio-window-close"
+                aria-label="@($"Close {Title}")" @onclick="() => OnClose.InvokeAsync()"><DrawioIcon Name="close" /></button>
+    </header>
+    <div class="drawio-window-content">@ChildContent</div>
+    @if (Resizable)
+    {
+        <div class="drawio-window-grip" aria-hidden="true"></div>
+    }
+</section>
+
+@code {
+    public const string ModulePath = "./_content/Wcs.WebEditor/drawio-windows.js";
+
+    [Parameter, EditorRequired] public string Id { get; set; } = "";
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter, EditorRequired] public DrawioWindowPlace Place { get; set; } = null!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Whether the window has the in-page resize grip. Moving it by the title stays available.</summary>
+    [Parameter] public bool Resizable { get; set; } = true;
+
+    /// <summary>Whether JavaScript measures the rendered body instead of restoring a manually saved size.</summary>
+    [Parameter] public bool AutoSize { get; set; }
+
+    /// <summary>The preferred width and useful height ceiling used when <see cref="AutoSize"/> is enabled.</summary>
+    [Parameter] public DrawioWindowSize? PreferredSize { get; set; }
+
+    /// <summary>The name of the section's icon (DrawioIcon), the one its button in the bar wears; none when null.</summary>
+    [Parameter] public string? Icon { get; set; }
+
+    /// <summary>What the section counts - a list's rows as it shows them - after the name; nothing when null.</summary>
+    [Parameter] public string? Count { get; set; }
+
+    /// <summary>The section's long explanation, behind a "?" before the X (<c>{Id}-help</c>); no "?" when null.</summary>
+    [Parameter] public RenderFragment? Help { get; set; }
+
+    private ElementReference _element;
+    private IJSObjectReference? _module;
+    private Task? _attach;
+    private bool _shownOpen;
+    private string? FixedSizeClass => Resizable ? null : "drawio-window-fixed";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Blazor does not serialize after-render calls: while the first one awaits the import, a
+        // second one (the window opened meanwhile) runs. Every call waits for the same attach, so
+        // none of them looks at _module before it is known - and a window already open when the
+        // module arrives is shown then.
+        _attach ??= AttachAsync();
+        await _attach;
+
+        // Shown at every opening, not at every render: the page renders often, and each show()
+        // brings the window to the front - a live frame must not pull it over the one being used.
+        // _shownOpen is set before the first await: the calls that were waiting run one after the
+        // other, and only the first of them opens it. And told at every shutting of a window it had
+        // shown, so that the focus goes back to the strip's button (the module's shut()).
+        if (_module is null) return;
+        if (Open && !_shownOpen)
+        {
+            _shownOpen = true;
+            await CallTheModuleAsync("show");
+            if (AutoSize) await SizeToContentAsync();
+        }
+        else if (!Open && _shownOpen)
+        {
+            _shownOpen = false;
+            await CallTheModuleAsync("shut");
+        }
+        else if (Open && AutoSize)
+        {
+            // Import status and operation outcomes can change the natural height without opening the
+            // window again. Re-measuring is side-effect free and keeps the content reachable.
+            await SizeToContentAsync();
+        }
+    }
+
+    private async Task CallTheModuleAsync(string identifier)
+    {
+        try { await _module!.InvokeVoidAsync(identifier, _element); }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            // The window is open or shut as the page says: only bringing it to the front and inside,
+            // or the focus going back to its button, is lost.
+        }
+    }
+
+    private async Task SizeToContentAsync()
+    {
+        try { await _module!.InvokeVoidAsync("sizeToContent", _element, PreferredSize); }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            // The CSS/default place remains a usable fallback when measurement is unavailable.
+        }
+    }
+
+    private async Task AttachAsync()
+    {
+        try
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference?>("import", ModulePath);
+            if (_module is not null)
+            {
+                await _module.InvokeVoidAsync("attach", _element, Id, Place, new { Resizable, AutoSize });
+            }
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            // Without the module the window still opens and closes where the stylesheet puts
+            // it: only moving, resizing and remembering are missing.
+            _module = null;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is null) return;
+        try
+        {
+            await _module.InvokeVoidAsync("detach", _element);
+            await _module.DisposeAsync();
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            // Disposal must not throw: at worst the listeners stay on an element that is gone.
+        }
+    }
+}

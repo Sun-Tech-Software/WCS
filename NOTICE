@@ -1,0 +1,38 @@
+Sun Tech WCS
+Copyright 2026 Sun Tech Srl
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes third-party software, fonts and images, copied into the repository in source
+or minified form. THIRD-PARTY-NOTICES.md lists each of them with its version, location, licence
+and copyright notice, and says where each licence text comes from; the full licence texts are in
+the licenses/ folder; sbom/wcs.cdx.json is the CycloneDX SBOM, which also lists the NuGet packages
+the projects restore (not stored in the repository, distributed under their own licences).
+
+In short:
+
+- WCS/Wcs.WebEditor/src/wwwroot/drawio: draw.io 31.1.2 and mxGraph,
+  Copyright (c) 2006-2025, JGraph Holdings Ltd and draw.io AG, Apache License 2.0. Its bundles
+  embed DOMPurify 3.4.12 (Apache-2.0 OR MPL-2.0, (c) Cure53 and other contributors), pako 2.2.0
+  (MIT AND Zlib, Vitaly Puzrin and Andrei Tuputcyn; Jean-loup Gailly and Mark Adler), CryptoJS
+  3.1.2 (BSD-3-Clause, (c) 2009-2013 Jeff Mott), spin.js 2.0.0 (MIT, Felix Gnass), Rough.js (MIT,
+  Preet Shihn), JSZip 3.10.0 (MIT OR GPL-3.0, Stuart Knightley and others), the Eclipse Layout
+  Kernel in @drawio/elk 0.1.0 (EPL-2.0, Kiel University and others; source at
+  https://github.com/eclipse/elk), @drawio/mermaid 0.1.0 with dagre and graphlib (MIT, Chris
+  Pettitt), parts of lodash (MIT, OpenJS Foundation and other contributors), layout-base and
+  cose-base (MIT, iVis@Bilkent), Bridge.NET 15.6.0 (Apache-2.0, Object.NET, Inc.), OrgChart.Layout
+  (licence not stated), libavoid of Adaptagrams compiled to JavaScript (LGPL-2.1-or-later, Monash
+  University; source at https://github.com/mjwybrow/adaptagrams), and WebCola (MIT, Tim Dwyer).
+  The font styles/fonts/ArchitectsDaughter-Regular.ttf is Copyright (c) 2010, Kimberly Geswein,
+  SIL Open Font License 1.1.
+  The icon sets and stencil libraries of draw.io carry an additional restriction, kept unchanged in
+  WCS/Wcs.WebEditor/src/wwwroot/drawio/img/LICENSE (no use in or for Atlassian products without
+  written permission; diagrams created with the software are not affected).
+  plugins/kazam.js was written by Sun Tech Srl, and js/bootstrap.js was modified by Sun Tech Srl
+  (it registers that plugin); both are covered by this product's licence.
+
+- Common/Helper (ObjectExtensions.cs, ArrayExtensions.cs, ArrayTraverse.cs,
+  ReferenceEqualityComparer.cs): derived from net-object-deep-copy,
+  https://github.com/Burtsev-Alexey/net-object-deep-copy, Copyright (c) 2014 Burtsev Alexey, MIT
+  License (licenses/net-object-deep-copy-LICENSE.txt). Modified by Sun Tech Srl: namespaces,
+  nullable annotations, layout.

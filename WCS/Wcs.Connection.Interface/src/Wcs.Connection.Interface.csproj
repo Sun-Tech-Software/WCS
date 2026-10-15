@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\Wcs.Common\src\Wcs.Common.csproj" />
+	</ItemGroup>
+
+	<!-- I testi degli errori che il campo restituisce alla fine di un movimento. Stavano in due
+	     copie identiche al byte, una nel driver e una nel simulatore, e andavano modificati in
+	     coppia senza che niente lo imponesse: adesso sono qui, nel progetto che tutti e due
+	     referenziano. -->
+	<ItemGroup>
+		<Compile Update="FieldErrorTexts.Designer.cs">
+			<DependentUpon>FieldErrorTexts.resx</DependentUpon>
+			<DesignTime>True</DesignTime>
+			<AutoGen>True</AutoGen>
+		</Compile>
+	</ItemGroup>
+
+	<ItemGroup>
+		<EmbeddedResource Update="FieldErrorTexts.resx">
+			<LastGenOutput>FieldErrorTexts.Designer.cs</LastGenOutput>
+			<Generator>PublicResXFileCodeGenerator</Generator>
+		</EmbeddedResource>
+	</ItemGroup>
+
+
+</Project>

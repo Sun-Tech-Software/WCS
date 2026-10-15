@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Wcs.DbTool</RootNamespace>
+    <AssemblyName>Wcs.DbTool</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Wcs.DbTool.Test" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The SQLite Online Backup API (SqliteConnection.BackupDatabase). Same version as the EF Core provider of Wcs.Engine. -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- For the list of schema migrations this build knows (WcsDbContext, WcsHistoryDbContext, WcsPlcLogDbContext). -->
+    <ProjectReference Include="..\..\Wcs.Engine\src\Wcs.Engine.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="tests\**\*.cs" />
+  </ItemGroup>
+
+</Project>

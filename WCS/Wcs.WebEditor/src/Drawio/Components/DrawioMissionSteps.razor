@@ -1,0 +1,301 @@
+@* Compito 3, row 61: the mission steps that touch the device selected on the drawing, READ-ONLY, in
+   the dedicated contextual window - the WinForms FrmMISSION_STEPS (opened from a node's context menu,
+   FrmEDITOR.Private.cs:995), whose rule is reproduced as it is (FrmMISSION_STEPS.cs:43-45): every
+   step of every active mission (GET /missions/steps, one request) whose RunningNode, FromNodeId or
+   ToNodeId is this device - running on it, leaving from it, arriving at it. Its columns are the
+   grid's (:48, AddColumnsToGrid): every property of the step, the Guid columns by device name except
+   GroupedMovementId, MissionId and StepId.
+   <para>
+   <b>Which selections have it.</b> FrmMISSION_STEPS.cs:36 returns at once unless the node's diagram
+   type is Automation - and in the WinForms that is every PLANT DEVICE, whatever its device type
+   (DiagramManager.ReadDiagramType: "ITEM" -> Automation, "JUNCTION" -> Junction, anything else None),
+   not DeviceTypes.Automation. Here the same set is the cell the selection coordinator knows as a device
+   (DrawioSelectionCoordinator.DeviceOf, whose ItemId is DrawioSelectionState.ConfigItemId): the page
+   renders this section only then, so a junction's arrow or a drawing-only shape has none.
+   </para>
+   <para>
+   <b>When it is read.</b> The page renders one of these per selected device, keyed on it: a new
+   selection is a new component and a new read, and the answer for a device no longer selected
+   lands on a component that is gone. Then it is read again when the channel may have made it stale:
+   <list type="bullet">
+   <item>a MissionChanged that touches this device - the mission has a step shown here, or it is on,
+   comes from or goes to this device - and every StepChanged, whatever the mission: a new step's ends
+   are not in the event, only in the read;</item>
+   <item>the feed's resync (the channel came back, or the host signalled a gap);</item>
+   <item>a change of this device's live status, seen on the feed's frames. The channel says when a
+   step is ADDED (MissionSteps.Add raises StepChanged) and when a mission moves or ends, but not when
+   a step starts or finishes (the engine sets StepStatus/StartStep/EndStep without an event): the
+   device's own status, which does move then, is the signal that is there.</item>
+   </list>
+   One read at a time: what asks for another during one makes exactly one more after it. With no
+   device selected there is no component, and nothing is read. *@
+@using Wcs.Api.Contracts
+@using Wcs.Api.Contracts.Dtos
+@using Wcs.WebEditor.Drawio.Coordination
+@using Wcs.WebEditor.Live
+@using Wcs.WebEditor.Session
+@using static Wcs.Common.Enums
+@implements IDisposable
+@inject EditorSessionState Session
+
+<section id="drawio-mission-steps" class="drawio-mission-steps" tabindex="-1">
+    <div class="drawio-context-window-tools">
+        <span class="drawio-filter">
+            <DrawioIcon Name="search" />
+            <input type="search" id="drawio-mission-steps-filter" class="drawio-device-list-filter"
+                   aria-label="Filter mission steps" placeholder="Filter on any mission-step field"
+                   value="@_filter" @oninput="FilterTyped" />
+        </span>
+        @if (_steps is { } counted)
+        {
+            var visibleCount = VisibleSteps(counted).Count();
+            <span id="drawio-mission-steps-count" class="drawio-device-list-count">@CountLine(visibleCount, counted.Count)</span>
+        }
+    </div>
+    @if (_readError is { } readError)
+    {
+        <DrawioFailureLine Id="drawio-mission-steps-error" Class="drawio-property-error" Text="@readError.Text" Detail="@readError.Detail" />
+    }
+    @if (_steps is null)
+    {
+        @if (_readError is null)
+        {
+            <p id="drawio-mission-steps-reading" class="drawio-property-loading">Reading the mission steps from the host...</p>
+        }
+    }
+    else if (_steps.Count == 0)
+    {
+        <p id="drawio-mission-steps-none" class="drawio-mission-steps-none">No step of an active mission touches this device.</p>
+    }
+    else
+    {
+        var visible = VisibleSteps(_steps).ToList();
+        @if (visible.Count == 0)
+        {
+            <p id="drawio-mission-steps-no-match" class="drawio-mission-steps-none">No mission step matches this filter.</p>
+        }
+        else
+        {
+            <div class="drawio-mission-steps-scroll">
+                <table id="drawio-mission-steps-table" class="drawio-list-table">
+                    <thead>
+                        <tr>
+                            @foreach (var column in Columns)
+                            {
+                                <th data-column="@column.Key">@column.Label</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var step in visible)
+                        {
+                            <tr data-step-id="@step.StepId">
+                                @foreach (var column in Columns)
+                                {
+                                    <td data-column="@column.Key">@column.TextOf(step, DeviceName)</td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+</section>
+
+@code {
+    /// <summary>The device selected on the drawing. The page keys this component on it: it never changes on one instance.</summary>
+    [Parameter, EditorRequired] public Guid ItemId { get; set; }
+
+    /// <summary>The plant's devices, for the names of the steps' ends.</summary>
+    [Parameter] public IReadOnlyList<PlantItemDto> Items { get; set; } = [];
+
+    [Parameter] public PlantLiveFeed? Feed { get; set; }
+
+    /// <summary>FrmMISSION_STEPS.cs:48: every property of the step; the Guid columns are devices, except these three.</summary>
+    private static readonly IReadOnlyList<DrawioDtoColumn<MissionStepDto>> Columns =
+        DrawioDtoColumn<MissionStepDto>.Of(nameof(MissionStepDto.GroupedMovementId), nameof(MissionStepDto.MissionId), nameof(MissionStepDto.StepId));
+
+    private List<MissionStepDto>? _steps;
+    private string _filter = "";
+    private DrawioSaid? _readError;
+    private bool _reading;
+    private bool _readAgain;
+    /// <summary>The device's live status when it was last looked at: a frame that moves it reads the steps again.</summary>
+    private DeviceStatusTypes? _lastStatus;
+    private PlantLiveFeed? _subscribedFeed;
+    private bool _disposed;
+
+    protected override void OnInitialized() => _ = ReadAsync();
+
+    /// <summary>
+    /// The render rule, as the lists' (DrawioListSection): the page renders often - every live frame
+    /// that moves the selected device, every change of its coordinators - and hands this panel its
+    /// parameters each time. What it shows from them is the plant's devices (their names: PlantGraph
+    /// replaces <see cref="Items"/> at every change) and the feed; when neither changed, the render
+    /// those parameters would cause is skipped. Its own reads always render. The flag is also cleared
+    /// after every render, for the reason DrawioListSection gives.
+    /// </summary>
+    private bool _inputsUnchanged;
+
+    private (IReadOnlyList<PlantItemDto> Items, PlantLiveFeed? Feed)? _shownInputs;
+
+    protected override bool ShouldRender()
+    {
+        var skip = _inputsUnchanged;
+        _inputsUnchanged = false;
+        return !skip;
+    }
+
+    protected override void OnAfterRender(bool firstRender) => _inputsUnchanged = false;
+
+    protected override void OnParametersSet()
+    {
+        var inputs = (Items, Feed);
+        _inputsUnchanged = _shownInputs is { } shown && ReferenceEquals(shown.Items, Items) && ReferenceEquals(shown.Feed, Feed);
+        _shownInputs = inputs;
+
+        if (ReferenceEquals(Feed, _subscribedFeed)) return;
+        Unsubscribe();
+        _subscribedFeed = Feed;
+        if (Feed is null) return;
+        // The status now is the one the read already under way covers; each change after it reads again.
+        _lastStatus = Feed.StatusOf(ItemId)?.Status;
+        Feed.MissionChanged += OnMissionChanged;
+        Feed.Resynced += OnResynced;
+        Feed.FrameReady += OnFrameReady;
+    }
+
+    /// <summary>Reads the steps and keeps the ones that touch this device (FrmMISSION_STEPS.cs:43-45). Never throws: it runs unobserved.</summary>
+    private async Task ReadAsync()
+    {
+        if (_reading)
+        {
+            _readAgain = true;
+            return;
+        }
+
+        _reading = true;
+        try
+        {
+            do
+            {
+                _readAgain = false;
+                try
+                {
+                    var all = await Session.Client.GetAllMissionStepsAsync();
+                    if (_disposed) return;
+                    _steps =
+                    [
+                        .. all.Where(step => step.RunningNode == ItemId || step.FromNodeId == ItemId || step.ToNodeId == ItemId)
+                            .OrderBy(step => step.Date).ThenBy(step => step.MissionId).ThenBy(step => step.StepId),
+                    ];
+                    _readError = null;
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    if (_disposed) return;
+                    // Row 37 of the queue: the why in words, what came back behind the "?" (DrawioFailureWords).
+                    var why = DrawioFailureWords.Why(ex);
+                    _readError = DrawioSaid.Failed(_steps is null
+                        ? $"The mission steps could not be read from the host because {why}."
+                        : $"The mission steps could not be read again from the host because {why}, so the rows below are how they were at the last read.", ex);
+                }
+            }
+            while (_readAgain && !_disposed);
+        }
+        finally
+        {
+            _reading = false;
+        }
+
+        if (!_disposed) StateHasChanged();
+    }
+
+    /// <summary>Whether a mission event may have changed what this panel shows - see the file's own remarks.</summary>
+    private bool Touches(MissionDto mission, MissionChange change) =>
+        change == MissionChange.StepChanged
+        || mission.PositionItemId == ItemId || mission.SourceItemId == ItemId || mission.DestinationItemId == ItemId
+        || (_steps?.Any(step => step.MissionId == mission.MissionId) ?? false);
+
+    private void OnMissionChanged(MissionDto mission, MissionChange change) => OnTheRenderer(() =>
+    {
+        if (Touches(mission, change)) _ = ReadAsync();
+    });
+
+    private void OnResynced() => OnTheRenderer(() => _ = ReadAsync());
+
+    /// <summary>A live frame: only this device's status is looked at, and only a change of it reads the steps again.</summary>
+    private void OnFrameReady() => OnTheRenderer(() =>
+    {
+        var now = _subscribedFeed?.StatusOf(ItemId)?.Status;
+        if (now == _lastStatus) return;
+        _lastStatus = now;
+        _ = ReadAsync();
+    });
+
+    /// <summary>The channel's events come on its threads: only InvokeAsync from there, and nothing thrown back.</summary>
+    private void OnTheRenderer(Action work)
+    {
+        if (_disposed) return;
+        try
+        {
+            _ = InvokeAsync(() =>
+            {
+                if (!_disposed) work();
+            });
+        }
+        catch (ObjectDisposedException)
+        {
+            // The renderer is gone: there is no panel left to update.
+        }
+    }
+
+    private string DeviceName(Guid itemId) =>
+        Names().TryGetValue(itemId, out var item)
+            ? item.Name is { Length: > 0 } name ? name : item.ItemId.ToString()
+            : $"{itemId} (not on the plant)";
+
+    /// <summary>The plant's devices by identifier, built again only when <see cref="Items"/> is another list: every device cell asks it.</summary>
+    private Dictionary<Guid, PlantItemDto> Names()
+    {
+        if (_names is null || !ReferenceEquals(_namesOf, Items))
+        {
+            _names = Items.GroupBy(item => item.ItemId).ToDictionary(group => group.Key, group => group.First());
+            _namesOf = Items;
+        }
+
+        return _names;
+    }
+
+    private Dictionary<Guid, PlantItemDto>? _names;
+    private IReadOnlyList<PlantItemDto>? _namesOf;
+
+    private void FilterTyped(ChangeEventArgs args) => _filter = args.Value?.ToString() ?? "";
+
+    private IEnumerable<MissionStepDto> VisibleSteps(IEnumerable<MissionStepDto> steps)
+    {
+        var wanted = _filter.Trim();
+        return wanted.Length == 0
+            ? steps
+            : steps.Where(step => Columns.Any(column =>
+                column.TextOf(step, DeviceName).Contains(wanted, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private string CountLine(int visible, int all) =>
+        _filter.Trim().Length == 0 ? $"{all} {(all == 1 ? "step" : "steps")}" : $"{visible} of {all} steps";
+
+    private void Unsubscribe()
+    {
+        if (_subscribedFeed is null) return;
+        _subscribedFeed.MissionChanged -= OnMissionChanged;
+        _subscribedFeed.Resynced -= OnResynced;
+        _subscribedFeed.FrameReady -= OnFrameReady;
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        Unsubscribe();
+    }
+}

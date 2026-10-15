@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Common\Helper\Helper.csproj" />
+    <!-- Il registro eventi, la stessa via dell'Editor: si veda Connector.LogWriter. -->
+    <ProjectReference Include="..\..\..\Common\Log.Windows\Log.Windows.csproj" />
+    <ProjectReference Include="..\..\Wcs.Common\src\Wcs.Common.csproj" />
+    <ProjectReference Include="..\..\Wcs.Api.Client\src\Wcs.Api.Client.csproj" />
+  </ItemGroup>
+
+
+</Project>

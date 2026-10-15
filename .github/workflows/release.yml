@@ -1,0 +1,110 @@
+# Release of the WCS, started by pushing a tag vX.Y.Z or vX.Y.Z-preview.N (docs/release-process.md).
+#
+# It builds and tests the tagged commit, publishes the host, Wcs.DbTool and the sample WMS
+# (framework-dependent: they need the .NET 10 runtime, ASP.NET Core included, on the machine), zips
+# each one with the licence files, adds the SBOM, writes SHA256SUMS.txt and attaches everything to a
+# DRAFT GitHub release whose text is the version's section of CHANGELOG.md. A maintainer reviews the
+# draft and publishes it by hand. Nothing is pushed to NuGet: the preview is distributed as source.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  release:
+    name: Build, test, package, draft release
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Install pinned gitleaks
+        shell: pwsh -NoProfile -Command ". '{0}'"
+        run: |
+          $version = '8.29.1'
+          $asset = "gitleaks_${version}_windows_x64.zip"
+          $gitleaksArchiveSha256 = 'e4b7d556f0cddbe23d10d8fac2ab0f29f68f019091c6599ffbeaa8a4fb71ac78'
+          $base = "https://github.com/gitleaks/gitleaks/releases/download/v$version"
+          $tool = Join-Path $env:RUNNER_TEMP 'gitleaks'
+          New-Item -ItemType Directory -Force -Path $tool | Out-Null
+          Invoke-WebRequest -Uri "$base/$asset" -OutFile (Join-Path $tool $asset)
+          $actual = (Get-FileHash -Algorithm SHA256 (Join-Path $tool $asset)).Hash.ToLowerInvariant()
+          if ($actual -cne $gitleaksArchiveSha256) { throw "Wrong checksum for $asset" }
+          Expand-Archive -LiteralPath (Join-Path $tool $asset) -DestinationPath $tool
+          "GITLEAKS_PATH=$(Join-Path $tool 'gitleaks.exe')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      # Gitleaks must see the complete history, not checkout's default single commit.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: "**/packages.lock.json"
+      # The version lives in Directory.Build.props only; the tag must name it.
+      - name: The tag matches the version of the repository
+        run: |
+          [xml]$props = Get-Content -LiteralPath Directory.Build.props -Raw
+          $version = $props.SelectSingleNode('/Project/PropertyGroup/Version').InnerText
+          if ($version -notmatch '^\d+\.\d+\.\d+(-preview\.\d+)?$') { throw "Directory.Build.props: '$version' is not X.Y.Z or X.Y.Z-preview.N" }
+          if ($env:GITHUB_REF_NAME -cne "v$version") { throw "Tag '$env:GITHUB_REF_NAME' does not match the version of Directory.Build.props (v$version)" }
+          "WCS_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      # The release text is the version's section of CHANGELOG.md, dated: an undated section means
+      # the CHANGELOG was not brought up to date before tagging.
+      - name: Release notes from CHANGELOG.md
+        run: |
+          $lines = Get-Content -LiteralPath CHANGELOG.md
+          $start = -1
+          for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i].StartsWith("## [$env:WCS_VERSION]")) { $start = $i; break } }
+          if ($start -lt 0) { throw "CHANGELOG.md has no section '## [$env:WCS_VERSION]'" }
+          if ($lines[$start] -notmatch '^## \[[^\]]+\] - \d{4}-\d{2}-\d{2}\s*$') { throw "The CHANGELOG.md section is not dated: '$($lines[$start])'" }
+          $end = $lines.Count
+          for ($i = $start + 1; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^## \[' -or $lines[$i] -match '^\[[^\]]+\]: ') { $end = $i; break } }
+          $notes = ($lines[($start + 1)..($end - 1)] -join "`n").Trim()
+          if (-not $notes) { throw "The CHANGELOG.md section of $env:WCS_VERSION is empty" }
+          # A release page does not resolve the repository's relative links: they point to the tag
+          $base = "https://github.com/$env:GITHUB_REPOSITORY/blob/$env:GITHUB_REF_NAME/"
+          $notes = [regex]::Replace($notes, '\]\((?![a-zA-Z][a-zA-Z0-9+.-]*:|#)([^)\s]+)\)', { param($m) "](" + $base + $m.Groups[1].Value + ")" })
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Set-Content -LiteralPath release/notes.md -Value $notes -Encoding utf8
+      # Every check a release depends on, as tools/Test-PublicRelease.ps1 runs them locally: SDK,
+      # clean tree, locked restore, Release build, every test suite but the browser tests, links,
+      # contracts and examples, SBOM, vulnerable packages, characters of the docs, one version
+      # everywhere, community files, placeholders, secrets, local paths, the tag against the dated
+      # CHANGELOG section, the repository URL, and a tree still clean at the end. The browser tests
+      # run in browser.yml on the same commit; the release process checks that both workflows were
+      # green before the tag was pushed.
+      # With -ReleaseTag, Test-PublicRelease invokes tools/New-WcsReleaseArtifacts.ps1 and smoke-tests
+      # the exact archives that the following steps upload.
+      - name: Release checks, package and smoke test
+        shell: pwsh -NoProfile -Command ". '{0}'"
+        run: ./tools/Test-PublicRelease.ps1 -ReleaseTag $env:GITHUB_REF_NAME -RepositoryUrl "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY" -ReleaseArtifactsDirectory release/dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-${{ github.ref_name }}
+          path: release/dist
+          if-no-files-found: error
+      - name: Draft GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $prerelease = if ($env:WCS_VERSION.Contains('-')) { @('--prerelease') } else { @() }
+          $files = Get-ChildItem -LiteralPath release/dist -File | ForEach-Object FullName
+          gh release create $env:GITHUB_REF_NAME @files --draft --verify-tag --title "WCS $env:WCS_VERSION" --notes-file release/notes.md @prerelease

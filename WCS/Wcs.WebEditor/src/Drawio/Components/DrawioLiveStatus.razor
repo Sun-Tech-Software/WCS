@@ -1,0 +1,99 @@
+@* The live link in the page's bar (passata grafica, 2026-09-29): a pill with a dot and a word. Up and
+   well, a grey "Live" with a green dot - until then the page said nothing at all in that case. Not
+   well, the pill takes the tone of what is wrong (orange while it connects, or when the canvas
+   cannot draw it or a part of it stopped working; red when the link is down or could not even be
+   built), and the sentence the page used to show as a line is inside it, word for word, behind a
+   tip that the mouse or the keyboard's focus opens - and the pill's description for a screen reader
+   (aria-describedby: hidden, the tip is out of the accessibility tree, and the pill would say its
+   word and never why). What a failure on this side threw - its type and message - is in the tip too,
+   under the sentence and apart from it (row 37 of the queue, extended to the whole page on 10/10):
+   the pill has no room for a "?", and its tip is already what opens on demand. The one case that asks the operator to act - a channel that could not be
+   built, which only a reload tries again - is also a red line of the row of outcomes under the bar
+   (UnavailableNoticeOf): a tip nobody opens tells nobody to reload. *@
+@using Wcs.WebEditor.Live
+
+@if (Look is { } look)
+{
+    if (Line is { } line)
+    {
+        <span id="drawio-live-status" class="drawio-pill @look.Tone drawio-has-tip" tabindex="0" aria-describedby="drawio-live-status-tip"><DrawioIcon Name="live" />@look.Word<span id="drawio-live-status-tip" class="drawio-tip" role="tooltip"><span id="drawio-live-status-sentence">@line</span>@if (Detail is { } detail)
+        {
+            <span id="drawio-live-status-detail" class="drawio-failure-detail">@detail</span>
+        }</span></span>
+    }
+    else
+    {
+        <span id="drawio-live-status" class="drawio-pill @look.Tone drawio-live-on"><DrawioIcon Name="live" />@look.Word</span>
+    }
+}
+
+@code {
+    [Parameter] public LiveConnection? Connection { get; set; }
+    [Parameter] public bool DrawFailed { get; set; }
+
+    /// <summary>What was thrown, when the failure was on the page's side and the browser console cannot say it.</summary>
+    [Parameter] public string? DrawFailedReason { get; set; }
+
+    /// <summary>What was thrown when the page could not even build its channel to the host, if it could not: then there is no Connection at all.</summary>
+    [Parameter] public string? Unavailable { get; set; }
+
+    /// <summary>A part of the live status that stopped working (the hover toggle, for one), already worded by the page.</summary>
+    [Parameter] public string? Trouble { get; set; }
+
+    /// <summary>What was thrown behind <see cref="Trouble"/>, if anything: in the tip under the sentence.</summary>
+    [Parameter] public string? TroubleDetail { get; set; }
+
+    private string? Line => Connection switch
+    {
+        _ when Unavailable is not null => UnavailableSentence,
+        LiveConnection.Interrupted =>
+            "Live status is not being updated: the connection to the host is interrupted, and the colours and arrows on the drawing are the last ones received. The page tries again by itself.",
+        LiveConnection.Connecting => "Live status: connecting to the host...",
+        _ when DrawFailed => DrawFailedReason is null
+            ? "Live status cannot be drawn on this canvas (the browser console says why): the drawing and the save work as before."
+            : "Live status cannot be drawn on this canvas: the drawing and the save work as before.",
+        _ => Trouble,
+    };
+
+    /// <summary>What was thrown behind <see cref="Line"/>, in the order of its cases; null when the line says no failure of this side.</summary>
+    private string? Detail => Connection switch
+    {
+        _ when Unavailable is { } thrown => thrown,
+        LiveConnection.Interrupted or LiveConnection.Connecting => null,
+        _ when DrawFailed => DrawFailedReason,
+        _ => TroubleDetail,
+    };
+
+    /// <summary>The pill's word and tone, in the order of <see cref="Line"/>'s cases: there is a pill whenever there is a line, and a quiet one when the link is up and nothing is wrong.</summary>
+    private (string Word, string Tone)? Look => Connection switch
+    {
+        _ when Unavailable is not null => ("Live off", "drawio-pill-bad"),
+        LiveConnection.Interrupted => ("Offline", "drawio-pill-bad"),
+        LiveConnection.Connecting => ("Connecting", "drawio-pill-warn"),
+        _ when DrawFailed => ("Live off", "drawio-pill-warn"),
+        _ when Trouble is not null => ("Live", "drawio-pill-warn"),
+        LiveConnection.Live => ("Live", "drawio-pill-neutral"),
+        _ => null,
+    };
+
+    /// <summary>
+    /// The channel that could not be built, as a line of the row under the bar: red, and it stays - the
+    /// page never tries again by itself, a reload does, and that is the operator's to do. The pill's
+    /// sentence whole, as the drawing out of reach is: its end is why it is in the row. What was thrown
+    /// is behind the "?" after it (row 37 of the queue, extended to the whole page on 10/10). The link's
+    /// other troubles stay behind the pill's tip alone - they mend by themselves (connecting,
+    /// interrupted) or leave the drawing and the save as they were (not drawn, a piece that stopped) -
+    /// and ask nothing.
+    /// </summary>
+    public static DrawioNoticeLine? UnavailableNoticeOf(string? unavailable) =>
+        unavailable is { } thrown
+            ? new DrawioNoticeLine("drawio-live", DrawioNoticeTone.Bad, UnavailableSentence, Dismissable: false, null)
+            {
+                LineDetail = thrown,
+            }
+            : null;
+
+    /// <summary>The page's own sentence in English; the exception's text, in whatever language it comes, is apart from it.</summary>
+    private const string UnavailableSentence =
+        "Live status is not available on this page: the channel to the host could not be opened. The drawing and the save work as before; reload the page to try again.";
+}

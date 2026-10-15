@@ -1,0 +1,1 @@
+{"title":"Nessuno tiene il permesso di modifica","status":423,"detail":"Questa scrittura cambia la forma dell'impianto ed esige il permesso di modifica, che al momento non tiene nessuno. Chiedilo con POST /plant/edit-lock prima di riprovare."}

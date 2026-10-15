@@ -1,0 +1,68 @@
+@* L'elenco dei dispositivi (compito 10): ordina, filtra per testo, e selezionando una riga
+   evidenzia il nodo sulla tela - lo stesso _selection che il clic su un nodo gia' usa
+   (PlantCanvas), non un secondo insieme scelto. Componente "muto" come Palette e PropertyPanel: non
+   parla con l'host, non possiede la selezione - solo la mostra e invoca OnSelect quando l'utente
+   sceglie una riga. *@
+@using Wcs.Api.Contracts.Dtos
+
+<div class="item-list">
+    <input type="text" id="item-list-filter" placeholder="Filtra per nome o identificativo"
+           value="@_filterText" @oninput="e => _filterText = e.Value as string ?? string.Empty" />
+    <table id="item-list">
+        <thead>
+            <tr>
+                <th>Nome</th>
+                <th>Tipo</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in FilteredItems())
+            {
+                var isSelected = item.ItemId == SelectedItemId;
+                @* bUnit non applica il foglio di stile della libreria (come per la tela: si veda il
+                   commento di PlantCanvas.NodeCssClass): lo sfondo che segnala la riga scelta resta
+                   uno stile in linea, non una classe che da sola non proverebbe niente in un test.
+                   La classe resta come aggancio per i test. *@
+                @* "true"/"false" esplicito, non il bool nudo: Blazor tratta come booleano HTML solo
+                   un elenco fisso di attributi (disabled, checked...) - aria-selected non ne fa
+                   parte, quindi un bool nudo qui renderebbe l'attributo vuoto quando vero e assente
+                   quando falso, non il testo "true"/"false" che ARIA si aspetta. *@
+                <tr class="item-list-row" data-item-id="@item.ItemId" aria-selected="@(isSelected ? "true" : "false")"
+                    style="@(isSelected ? "background-color:#dbeafe;" : "")"
+                    @onclick="() => OnSelect.InvokeAsync(item.ItemId)">
+                    <td>@(item.Name ?? item.ItemId.ToString())</td>
+                    <td>@item.DeviceType</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<PlantItemDto> Items { get; set; } = [];
+
+    [Parameter]
+    public Guid? SelectedItemId { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid> OnSelect { get; set; }
+
+    private string _filterText = string.Empty;
+
+    /// <summary>
+    /// Per nome (o identificativo nudo se senza nome), poi per identificativo a parita' di nome:
+    /// lo stesso ordine arbitrario ma stabile di PropertyPanel.SortedItems. Il filtro cerca nel
+    /// nome e nell'identificativo - un dispositivo senza nome resterebbe altrimenti irraggiungibile
+    /// da questa casella.
+    /// </summary>
+    private IEnumerable<PlantItemDto> FilteredItems()
+    {
+        var query = Items.OrderBy(i => i.Name, StringComparer.Ordinal).ThenBy(i => i.ItemId);
+        if (string.IsNullOrWhiteSpace(_filterText)) return query;
+
+        return query.Where(i =>
+            (i.Name?.Contains(_filterText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            i.ItemId.ToString().Contains(_filterText, StringComparison.OrdinalIgnoreCase));
+    }
+}

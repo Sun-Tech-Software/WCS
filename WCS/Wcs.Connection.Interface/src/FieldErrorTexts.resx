@@ -1,0 +1,468 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!-- 
+    Microsoft ResX Schema 
+    
+    Version 2.0
+    
+    The primary goals of this format is to allow a simple XML format 
+    that is mostly human readable. The generation and parsing of the 
+    various data types are done through the TypeConverter classes 
+    associated with the data types.
+    
+    Example:
+    
+    ... ado.net/XML headers & schema ...
+    <resheader name="resmimetype">text/microsoft-resx</resheader>
+    <resheader name="version">2.0</resheader>
+    <resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
+    <resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
+    <data name="Name1"><value>this is my long string</value><comment>this is a comment</comment></data>
+    <data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
+    <data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
+        <value>[base64 mime encoded serialized .NET Framework object]</value>
+    </data>
+    <data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+        <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
+        <comment>This is a comment</comment>
+    </data>
+                
+    There are any number of "resheader" rows that contain simple 
+    name/value pairs.
+    
+    Each data row contains a name, and value. The row also contains a 
+    type or mimetype. Type corresponds to a .NET class that support 
+    text/value conversion through the TypeConverter architecture. 
+    Classes that don't support this are serialized and stored with the 
+    mimetype set.
+    
+    The mimetype is used for serialized objects, and tells the 
+    ResXResourceReader how to depersist the object. This is currently not 
+    extensible. For a given mimetype the value must be set accordingly:
+    
+    Note - application/x-microsoft.net.object.binary.base64 is the format 
+    that the ResXResourceWriter will generate, however the reader can 
+    read any of the formats listed below.
+    
+    mimetype: application/x-microsoft.net.object.binary.base64
+    value   : The object must be serialized with 
+            : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
+            : and then encoded with base64 encoding.
+    
+    mimetype: application/x-microsoft.net.object.soap.base64
+    value   : The object must be serialized with 
+            : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.bytearray.base64
+    value   : The object must be serialized into a byte array 
+            : using a System.ComponentModel.TypeConverter
+            : and then encoded with base64 encoding.
+    -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="D129" xml:space="preserve">
+    <value>Lack of mission start conditions (disabled area, alarms, etc.)</value>
+  </data>
+  <data name="D130" xml:space="preserve">
+    <value>Lack of security conditions (start mission)</value>
+  </data>
+  <data name="D131" xml:space="preserve">
+    <value>Mother Vehicle Not Present</value>
+  </data>
+  <data name="D132" xml:space="preserve">
+    <value>End Storing Mission State with Error: Phonic Wheel Alarm Activated</value>
+  </data>
+  <data name="D133" xml:space="preserve">
+    <value>Aisle is full</value>
+  </data>
+  <data name="D134" xml:space="preserve">
+    <value>Mother Vehicle Security Sensor Not Present</value>
+  </data>
+  <data name="D135" xml:space="preserve">
+    <value>Retrieving on Board after an External Emergency Signal</value>
+  </data>
+  <data name="D137" xml:space="preserve">
+    <value>Lack of mission abort conditions (area, alarms, etc.)</value>
+  </data>
+  <data name="D15" xml:space="preserve">
+    <value>Aisle not enabled</value>
+  </data>
+  <data name="D16" xml:space="preserve">
+    <value>Load Cell Error</value>
+  </data>
+  <data name="D168886272" xml:space="preserve">
+    <value>Data inconsistency, SOURCE position does not exist.</value>
+  </data>
+  <data name="D168951808" xml:space="preserve">
+    <value>Data inconsistency, DEST position does not exist.</value>
+  </data>
+  <data name="D169017344" xml:space="preserve">
+    <value>Data inconsistency, incorrect LU ID.</value>
+  </data>
+  <data name="D169082880" xml:space="preserve">
+    <value>Data inconsistency between destinations and sources. (e.g. 99)</value>
+  </data>
+  <data name="D169148416" xml:space="preserve">
+    <value>Satellite is not in centering position</value>
+  </data>
+  <data name="D169213952" xml:space="preserve">
+    <value>Data inconsistency, incorrect HandlingMode</value>
+  </data>
+  <data name="D169934848" xml:space="preserve">
+    <value>Pending mission (start mission)</value>
+  </data>
+  <data name="D17" xml:space="preserve">
+    <value>Data inconsistency, SOURCE position does not exist.</value>
+  </data>
+  <data name="D170000384" xml:space="preserve">
+    <value>Aborted mission, LU removed from the system</value>
+  </data>
+  <data name="D170065920" xml:space="preserve">
+    <value>Aborted mission, LU in SOURCE position</value>
+  </data>
+  <data name="D170131456" xml:space="preserve">
+    <value>Aborted mission, LU in DEST position</value>
+  </data>
+  <data name="D170196992" xml:space="preserve">
+    <value>Aborted mission, LU in not established position</value>
+  </data>
+  <data name="D170459136" xml:space="preserve">
+    <value>Mission NOT pending</value>
+  </data>
+  <data name="D171048960" xml:space="preserve">
+    <value>Data inconsistency, LU ID does not correspond with the reading (QLD)</value>
+  </data>
+  <data name="D171114496" xml:space="preserve">
+    <value>Data inconsistency, ITEM not aligned (QLD)</value>
+  </data>
+  <data name="D172032000" xml:space="preserve">
+    <value>LU not present in SOURCE location (start mission)</value>
+  </data>
+  <data name="D172097536" xml:space="preserve">
+    <value>LU already present in DEST location (start mission)</value>
+  </data>
+  <data name="D172163072" xml:space="preserve">
+    <value>the LU present in SOURCE location cannot be collected, occupied adjacent partitions</value>
+  </data>
+  <data name="D172228608" xml:space="preserve">
+    <value>the LU present in DEST location cannot be deposited, occupied adjacent partitions</value>
+  </data>
+  <data name="D172294144" xml:space="preserve">
+    <value>the LU was not deposited (end of mission)</value>
+  </data>
+  <data name="D172359680" xml:space="preserve">
+    <value>the LU was not collected (end of mission)</value>
+  </data>
+  <data name="D172425216" xml:space="preserve">
+    <value>the LU just collected is outside the template (end of mission) STOP</value>
+  </data>
+  <data name="D172490752" xml:space="preserve">
+    <value>the LU just collected is outside the template (end of mission) RETRY</value>
+  </data>
+  <data name="D172556288" xml:space="preserve">
+    <value>LU present, but inconsistent sizes/content/shape</value>
+  </data>
+  <data name="D173080576" xml:space="preserve">
+    <value>Position that cannot be reached, (start mission)</value>
+  </data>
+  <data name="D173146112" xml:space="preserve">
+    <value>Position not reached, (end of mission)</value>
+  </data>
+  <data name="D176226304" xml:space="preserve">
+    <value>Lack of mission start conditions (disabled area, alarms, etc.)</value>
+  </data>
+  <data name="D176291840" xml:space="preserve">
+    <value>Lack of security conditions (start mission)</value>
+  </data>
+  <data name="D176750592" xml:space="preserve">
+    <value>Lack of mission abort conditions (area, alarms, etc.)</value>
+  </data>
+  <data name="D18" xml:space="preserve">
+    <value>Data inconsistency, DEST position does not exist.</value>
+  </data>
+  <data name="D185663488" xml:space="preserve">
+    <value>Data inconsistency, SOURCE position does not exist.</value>
+  </data>
+  <data name="D185729024" xml:space="preserve">
+    <value>Data inconsistency, DEST position does not exist.</value>
+  </data>
+  <data name="D185794560" xml:space="preserve">
+    <value>Data inconsistency, incorrect LU ID.</value>
+  </data>
+  <data name="D185860096" xml:space="preserve">
+    <value>Data inconsistency between destinations and sources. (e.g. 99)</value>
+  </data>
+  <data name="D185925632" xml:space="preserve">
+    <value>Satellite is not in centering position</value>
+  </data>
+  <data name="D185991168" xml:space="preserve">
+    <value>Data inconsistency, incorrect HandlingMode</value>
+  </data>
+  <data name="D186712064" xml:space="preserve">
+    <value>Pending mission (start mission)</value>
+  </data>
+  <data name="D186777600" xml:space="preserve">
+    <value>Aborted mission, LU removed from the system</value>
+  </data>
+  <data name="D186843136" xml:space="preserve">
+    <value>Aborted mission, LU in SOURCE position</value>
+  </data>
+  <data name="D186908672" xml:space="preserve">
+    <value>Aborted mission, LU in DEST position</value>
+  </data>
+  <data name="D186974208" xml:space="preserve">
+    <value>Aborted mission, LU in not established position</value>
+  </data>
+  <data name="D187236352" xml:space="preserve">
+    <value>Mission NOT pending</value>
+  </data>
+  <data name="D187826176" xml:space="preserve">
+    <value>Data inconsistency, LU ID does not correspond with the reading (QLD)</value>
+  </data>
+  <data name="D187891712" xml:space="preserve">
+    <value>Data inconsistency, ITEM not aligned (QLD)</value>
+  </data>
+  <data name="D188809216" xml:space="preserve">
+    <value>LU not present in SOURCE location (start mission)</value>
+  </data>
+  <data name="D188874752" xml:space="preserve">
+    <value>LU already present in DEST location (start mission)</value>
+  </data>
+  <data name="D188940288" xml:space="preserve">
+    <value>the LU present in SOURCE location cannot be collected, occupied adjacent partitions</value>
+  </data>
+  <data name="D189005824" xml:space="preserve">
+    <value>the LU present in DEST location cannot be deposited, occupied adjacent partitions</value>
+  </data>
+  <data name="D189071360" xml:space="preserve">
+    <value>the LU was not deposited (end of mission)</value>
+  </data>
+  <data name="D189136896" xml:space="preserve">
+    <value>the LU was not collected (end of mission)</value>
+  </data>
+  <data name="D189202432" xml:space="preserve">
+    <value>the LU just collected is outside the template (end of mission) STOP</value>
+  </data>
+  <data name="D189267968" xml:space="preserve">
+    <value>the LU just collected is outside the template (end of mission) RETRY</value>
+  </data>
+  <data name="D189333504" xml:space="preserve">
+    <value>LU present, but inconsistent sizes/content/shape</value>
+  </data>
+  <data name="D189857792" xml:space="preserve">
+    <value>Position that cannot be reached, (start mission)</value>
+  </data>
+  <data name="D189923328" xml:space="preserve">
+    <value>Position not reached, (end of mission)</value>
+  </data>
+  <data name="D19" xml:space="preserve">
+    <value>Data inconsistency, incorrect LU ID.</value>
+  </data>
+  <data name="D193003520" xml:space="preserve">
+    <value>Lack of mission start conditions (disabled area, alarms, etc.)</value>
+  </data>
+  <data name="D193069056" xml:space="preserve">
+    <value>Lack of security conditions (start mission)</value>
+  </data>
+  <data name="D193527808" xml:space="preserve">
+    <value>Lack of mission abort conditions (area, alarms, etc.)</value>
+  </data>
+  <data name="D20" xml:space="preserve">
+    <value>Data inconsistency between destinations and sources. (e.g. 99)</value>
+  </data>
+  <data name="D207683585" xml:space="preserve">
+    <value>Unload:</value>
+  </data>
+  <data name="D207683586" xml:space="preserve">
+    <value>Unload:</value>
+  </data>
+  <data name="D207683587" xml:space="preserve">
+    <value>Unload: Aisle not enabled</value>
+  </data>
+  <data name="D207683588" xml:space="preserve">
+    <value>Unload:</value>
+  </data>
+  <data name="D207683589" xml:space="preserve">
+    <value>Unload: Channel full</value>
+  </data>
+  <data name="D207683590" xml:space="preserve">
+    <value>Unload:</value>
+  </data>
+  <data name="D207683591" xml:space="preserve">
+    <value>Unload: Channel end reached while deposit</value>
+  </data>
+  <data name="D207683592" xml:space="preserve">
+    <value>Unload:</value>
+  </data>
+  <data name="D207683593" xml:space="preserve">
+    <value>Unload:</value>
+  </data>
+  <data name="D207749121" xml:space="preserve">
+    <value>Load:</value>
+  </data>
+  <data name="D207749122" xml:space="preserve">
+    <value>Load: LU not found </value>
+  </data>
+  <data name="D207749123" xml:space="preserve">
+    <value>Load: Aisle not enabled</value>
+  </data>
+  <data name="D207749124" xml:space="preserve">
+    <value>Load: Pallet position inconsistent</value>
+  </data>
+  <data name="D207749125" xml:space="preserve">
+    <value>Load:</value>
+  </data>
+  <data name="D207749126" xml:space="preserve">
+    <value>Load:</value>
+  </data>
+  <data name="D207749127" xml:space="preserve">
+    <value>Load:</value>
+  </data>
+  <data name="D207749128" xml:space="preserve">
+    <value>Load:</value>
+  </data>
+  <data name="D207749129" xml:space="preserve">
+    <value>Load:</value>
+  </data>
+  <data name="D208207873" xml:space="preserve">
+    <value>Auto Reset: Mission competed unsuccessfully by Supercap fault</value>
+  </data>
+  <data name="D21" xml:space="preserve">
+    <value>Satellite is not in centering position</value>
+  </data>
+  <data name="D25" xml:space="preserve">
+    <value>Mission Aborted</value>
+  </data>
+  <data name="D33" xml:space="preserve">
+    <value>Pending mission (start mission)</value>
+  </data>
+  <data name="D34" xml:space="preserve">
+    <value>Aborted mission, LU removed from the system</value>
+  </data>
+  <data name="D35" xml:space="preserve">
+    <value>Aborted mission, LU in SOURCE position</value>
+  </data>
+  <data name="D36" xml:space="preserve">
+    <value>Aborted mission, LU in DEST position</value>
+  </data>
+  <data name="D37" xml:space="preserve">
+    <value>Aborted mission, LU in not established position</value>
+  </data>
+  <data name="D41" xml:space="preserve">
+    <value>Mission NOT pending</value>
+  </data>
+  <data name="D42" xml:space="preserve">
+    <value>LU already existing into lease DEST</value>
+  </data>
+  <data name="D46" xml:space="preserve">
+    <value>LU not present in DEST at the end of mission</value>
+  </data>
+  <data name="D49" xml:space="preserve">
+    <value>LU not found</value>
+  </data>
+  <data name="D50" xml:space="preserve">
+    <value>Data inconsistency, LU ID does not correspond with the reading (QLD)</value>
+  </data>
+  <data name="D51" xml:space="preserve">
+    <value>Data inconsistency, ITEM not aligned (QLD)</value>
+  </data>
+  <data name="D65" xml:space="preserve">
+    <value>LU not present in SOURCE location (start mission)</value>
+  </data>
+  <data name="D66" xml:space="preserve">
+    <value>LU already present in DEST location (start mission)</value>
+  </data>
+  <data name="D67" xml:space="preserve">
+    <value>the LU present in SOURCE location cannot be collected, occupied adjacent partitions</value>
+  </data>
+  <data name="D68" xml:space="preserve">
+    <value>the LU present in DEST location cannot be deposited, occupied adjacent partitions</value>
+  </data>
+  <data name="D69" xml:space="preserve">
+    <value>the LU was not deposited (end of mission)</value>
+  </data>
+  <data name="D70" xml:space="preserve">
+    <value>the LU was not collected (end of mission)</value>
+  </data>
+  <data name="D71" xml:space="preserve">
+    <value>the LU just collected is outside the template (end of mission) STOP</value>
+  </data>
+  <data name="D72" xml:space="preserve">
+    <value>the LU just collected is outside the template (end of mission) RETRY</value>
+  </data>
+  <data name="D73" xml:space="preserve">
+    <value>LU present, but inconsistent sizes/content/shape</value>
+  </data>
+  <data name="D81" xml:space="preserve">
+    <value>Position that cannot be reached, (start mission)</value>
+  </data>
+  <data name="D82" xml:space="preserve">
+    <value>Position not reached, (end of mission)</value>
+  </data>
+  <data name="D84" xml:space="preserve">
+    <value>Mission completed unsuccessfully</value>
+  </data>
+  <data name="D85" xml:space="preserve">
+    <value>Channel Full</value>
+  </data>
+  <data name="D87" xml:space="preserve">
+    <value>Channel end reached while deposit</value>
+  </data>
+</root>

@@ -1,0 +1,39 @@
+<Solution>
+  <Folder Name="/Common/">
+    <Project Path="Common/Helper/Helper.csproj" />
+    <Project Path="Common/Log.Interface/Log.Interface.csproj" />
+    <Project Path="Common/Log.Windows/Log.Windows.csproj" />
+  </Folder>
+  <Folder Name="/WCS/">
+    <Project Path="WCS/Wcs.Common/src/Wcs.Common.csproj" />
+    <Project Path="WCS/Wcs.Api.Contracts/src/Wcs.Api.Contracts.csproj" />
+    <Project Path="WCS/Wcs.Api.Client/src/Wcs.Api.Client.csproj" />
+    <Project Path="WCS/Wcs.Api.Client/tests/Wcs.Api.Client.Test/Wcs.Api.Client.Test.csproj" />
+    <Project Path="WCS/Wcs.Wms.Contracts/src/Wcs.Wms.Contracts.csproj" />
+    <Project Path="WCS/Wcs.Wms.Contracts/tests/Wcs.Wms.Contracts.Test/Wcs.Wms.Contracts.Test.csproj" />
+    <Project Path="WCS/Wcs.Wms.Client/src/Wcs.Wms.Client.csproj" />
+    <Project Path="WCS/Wcs.Wms.Client/tests/Wcs.Wms.Client.Test/Wcs.Wms.Client.Test.csproj" />
+    <Project Path="WCS/Wcs.Connection.Interface/src/Wcs.Connection.Interface.csproj" />
+    <Project Path="WCS/Wcs.Connection.Test/src/Wcs.Connection.Test.csproj" />
+    <Project Path="WCS/Wcs.Engine/src/Wcs.Engine.csproj" />
+    <Project Path="WCS/Wcs.Engine/tests/Wcs.Engine.Test/Wcs.Engine.Test.csproj" />
+    <Project Path="WCS/Wcs.Host/src/Wcs.Host.csproj" />
+    <Project Path="WCS/Wcs.Host/tests/Wcs.Host.Test/Wcs.Host.Test.csproj" />
+    <Project Path="WCS/Wcs.WebEditor/src/Wcs.WebEditor.csproj" />
+    <Project Path="WCS/Wcs.WebEditor/tests/Wcs.WebEditor.Test/Wcs.WebEditor.Test.csproj" />
+    <Project Path="WCS/Wcs.WebEditor/tests/Wcs.WebEditor.Browser.Test/Wcs.WebEditor.Browser.Test.csproj" />
+    <Project Path="WCS/Wcs.Viewer/src/Wcs.Viewer.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/Wcs.SampleWms/Wcs.SampleWms.csproj" />
+    <Project Path="samples/Wcs.SampleWms.Test/Wcs.SampleWms.Test.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Wcs.LinkCheck/src/Wcs.LinkCheck.csproj" />
+    <Project Path="tools/Wcs.LinkCheck/tests/Wcs.LinkCheck.Test/Wcs.LinkCheck.Test.csproj" />
+    <Project Path="tools/Wcs.ContractCheck/src/Wcs.ContractCheck.csproj" />
+    <Project Path="tools/Wcs.ContractCheck/tests/Wcs.ContractCheck.Test/Wcs.ContractCheck.Test.csproj" />
+    <Project Path="WCS/tools/Wcs.DbTool/Wcs.DbTool.csproj" />
+    <Project Path="WCS/tools/Wcs.DbTool/tests/Wcs.DbTool.Test/Wcs.DbTool.Test.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,242 @@
+@* Compito 2, row 59: the junction list, READ-ONLY like the WinForms one (FrmJUNCTIONS_LIST calls
+   AddColumnsToGrid with editable false). Its rows are the plant as this page holds it
+   (<see cref="Graph"/>.Junctions): no read of its own - the page rereads the plant after every save,
+   and a junction exists on the plant only once a save has written it. The two ends are shown by the
+   devices' names, as the WinForms grid's device drop-down showed them; a row chosen selects the
+   junction's arrow on the drawing. Shut (the page opens and shuts its window), nothing is rendered
+   inside the window; open, a render of the page renders it again only when what it shows from its
+   parameters changed (DrawioListSection). *@
+@using System.Globalization
+@using Wcs.Api.Contracts.Dtos
+@using Wcs.WebEditor.Drawio.Coordination
+@using Wcs.WebEditor.Model
+@inherits DrawioListSection
+
+<button type="button" id="drawio-junction-list-toggle" class="drawio-section-toggle" aria-label="Junctions"
+        aria-pressed="@(Open ? "true" : "false")" @onclick="ToggleAsync">
+    <DrawioIcon Name="junctions" />
+    <span class="drawio-toggle-label">Junctions</span>
+</button>
+@{
+    // Once per render, before the window: its title bar counts the rows the list shows.
+    var rows = Open ? VisibleRows().ToList() : null;
+}
+<DrawioWindow Id="drawio-junction-list" Class="drawio-junction-list" Title="Junctions" Icon="junctions"
+              Count="@(Graph is null || rows is null ? null : rows.Count.ToString(CultureInfo.InvariantCulture))"
+              Help="@(Open ? ScopeNote : null)" Open="Open" OnClose="CloseAsync" Place="Place">
+    @if (rows is not null)
+    {
+        var pageCount = PageCount(rows.Count);
+        var currentPage = Math.Min(_page, pageCount);
+        var pageRows = rows.Skip((currentPage - 1) * PageSize).Take(PageSize).ToList();
+        <div class="drawio-junction-list-body">
+            <div class="drawio-device-list-tools">
+                <span class="drawio-filter">
+                    <DrawioIcon Name="search" />
+                    <input type="search" id="drawio-junction-list-filter" class="drawio-device-list-filter"
+                           aria-label="Filter junctions" placeholder="Filter junctions on any column"
+                           value="@Filter" @oninput="FilterJunctionsTyped" />
+                </span>
+                <span id="drawio-junction-list-count" class="drawio-device-list-count">@CountLine(rows.Count)</span>
+            </div>
+            @if (GoToOutcome is { } goTo)
+            {
+                <DrawioFailureLine Id="drawio-junction-list-goto" LineClass="drawio-operations-outcome" Text="@goTo.Text" Detail="@goTo.Detail" />
+            }
+            @if (Graph is null)
+            {
+                <p id="drawio-junction-list-not-loaded" class="drawio-operations-outcome">The plant is not loaded yet.</p>
+            }
+            else
+            {
+                <section id="drawio-junction-list-grid" class="drawio-data-grid drawio-junction-grid">
+                    <div class="drawio-list-scroll drawio-data-grid-scroll">
+                        <table id="drawio-junction-list-table" class="drawio-list-table drawio-data-table drawio-junction-table">
+                            <thead>
+                                <tr>
+                                    @foreach (var column in Columns)
+                                    {
+                                        <th data-column="@column" aria-sort="@AriaSort(column)" @onclick="() => SortJunctionsBy(column)">@column</th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var junction in pageRows)
+                                {
+                                    var selected = junction.JunctionId == SelectedJunctionId;
+                                    <tr data-junction-id="@junction.JunctionId" aria-selected="@(selected ? "true" : "false")"
+                                        class="@(selected ? "drawio-list-row drawio-list-row-selected" : "drawio-list-row")"
+                                        @onclick="() => OnSelect.InvokeAsync(junction.JunctionId)">
+                                        @foreach (var column in Columns)
+                                        {
+                                            <td data-column="@column">@TextOf(junction, column)</td>
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <footer class="drawio-data-pager drawio-junction-pager" aria-label="Junction pages">
+                        <span id="drawio-junction-list-page-summary" aria-live="polite">@PageLine(rows.Count, currentPage, "junctions")</span>
+                        <div class="drawio-data-page-buttons">
+                            <button type="button" id="drawio-junction-list-previous" aria-label="Previous page"
+                                    disabled="@(currentPage == 1)" @onclick="() => GoToPage(currentPage - 1, pageCount)">‹</button>
+                            @foreach (var pageNumber in PageChoices(currentPage, pageCount))
+                            {
+                                <button type="button" class="@(pageNumber == currentPage ? "drawio-data-page-active" : null)"
+                                        aria-label="Page @pageNumber" aria-current="@(pageNumber == currentPage ? "page" : null)"
+                                        @onclick="() => GoToPage(pageNumber, pageCount)">@pageNumber</button>
+                            }
+                            <button type="button" id="drawio-junction-list-next" aria-label="Next page"
+                                    disabled="@(currentPage == pageCount)" @onclick="() => GoToPage(currentPage + 1, pageCount)">›</button>
+                        </div>
+                    </footer>
+                </section>
+            }
+        </div>
+    }
+</DrawioWindow>
+
+@code {
+    /// <summary>What the list is: the paragraph that opened the window until the passata grafica, word for word, behind the "?" of its title bar while the window is open.</summary>
+    private static readonly RenderFragment ScopeNote =
+        @<p class="drawio-junction-list-scope">
+            Every junction of the plant as it was last read - saved arrows only, not the ones drawn since.
+            Read-only, as in the WinForms list: click a row to select its arrow on the drawing.
+        </p>;
+
+    [Parameter] public PlantGraph? Graph { get; set; }
+
+    /// <summary>The junction whose arrow is selected on the drawing, if one is: its row is marked.</summary>
+    [Parameter] public Guid? SelectedJunctionId { get; set; }
+
+    /// <summary>What the drawing answered to the last row chosen here, worded by the page; what its script threw, if it did not answer, is behind the line's "?".</summary>
+    [Parameter] public DrawioSaid? GoToOutcome { get; set; }
+
+    /// <summary>A row was chosen: the page selects that junction's arrow on the drawing.</summary>
+    [Parameter] public EventCallback<Guid> OnSelect { get; set; }
+
+    private static readonly string[] Columns = ["Source", "Destination", "Priority", "Junction"];
+    private const int PageSize = 10;
+    private int _page = 1;
+    private PlantGraph? _pagedGraph;
+    private int? _pagedGraphRevision;
+    private Guid? _pagedSelectedJunctionId;
+    private bool _wasOpen;
+
+    /// <summary>
+    /// What this list shows from its parameters: the plant (the same object is refilled in place, so
+    /// its <see cref="PlantGraph.Revision"/> too - junctions, their priorities and the devices' names
+    /// all move it), the arrow selected and the drawing's last answer.
+    /// </summary>
+    protected override void OnParametersSet()
+    {
+        var opened = Open && !_wasOpen;
+        _wasOpen = Open;
+        var graphChanged = !ReferenceEquals(Graph, _pagedGraph) || Graph?.Revision != _pagedGraphRevision;
+        var selectionChanged = SelectedJunctionId != _pagedSelectedJunctionId;
+        _pagedGraph = Graph;
+        _pagedGraphRevision = Graph?.Revision;
+        _pagedSelectedJunctionId = SelectedJunctionId;
+
+        if (Open && (opened || selectionChanged)) RevealSelectedPageOrNormalize();
+        else if (Open && graphChanged) NormalizePage();
+        ParametersArrived((Graph, Graph?.Revision, SelectedJunctionId, GoToOutcome));
+    }
+
+    private string CountLine(int visible) => Graph is not { } graph
+        ? ""
+        : string.IsNullOrWhiteSpace(Filter)
+            ? $"{graph.Junctions.Count} junctions."
+            : $"{visible} of {graph.Junctions.Count} junctions.";
+
+    /// <summary>By source, then destination by name (the order a reader follows a route in), unless a column is chosen; priority sorts as a number. Called once per render.</summary>
+    private IEnumerable<JunctionDto> VisibleRows()
+    {
+        var rows = Filtered<JunctionDto>(Graph?.Junctions ?? [], Columns, TextOf);
+        var ordered = SortKey switch
+        {
+            "Priority" => Sorted(rows, j => j.Priority, Comparer<int>.Default),
+            { } column => Sorted(rows, j => TextOf(j, column), StringComparer.OrdinalIgnoreCase),
+            null => rows.OrderBy(j => NameOf(j.SourceItemId), StringComparer.OrdinalIgnoreCase),
+        };
+        return ordered.ThenBy(j => NameOf(j.DestinationItemId), StringComparer.OrdinalIgnoreCase).ThenBy(j => j.JunctionId);
+    }
+
+    private void FilterJunctionsTyped(ChangeEventArgs e)
+    {
+        FilterTyped(e);
+        _page = 1;
+    }
+
+    private void SortJunctionsBy(string key)
+    {
+        SortBy(key);
+        _page = 1;
+    }
+
+    private static int PageCount(int rowCount) => DataGridPagination.PageCount(rowCount, PageSize);
+
+    private void GoToPage(int page, int pageCount) => _page = Math.Clamp(page, 1, pageCount);
+
+    private static string PageLine(int rowCount, int page, string emptyLabel) =>
+        DataGridPagination.PageLine(rowCount, page, PageSize, emptyLabel);
+
+    private static IEnumerable<int> PageChoices(int currentPage, int pageCount) =>
+        DataGridPagination.PageChoices(currentPage, pageCount);
+
+    private int VisibleRowCount() => Filtered<JunctionDto>(Graph?.Junctions ?? [], Columns, TextOf).Count();
+
+    private void NormalizePage() => _page = Math.Min(_page, PageCount(VisibleRowCount()));
+
+    private void RevealSelectedPageOrNormalize()
+    {
+        if (SelectedJunctionId is { } selected)
+        {
+            var position = 0;
+            foreach (var row in VisibleRows())
+            {
+                if (row.JunctionId == selected)
+                {
+                    _page = (position / PageSize) + 1;
+                    return;
+                }
+                position++;
+            }
+        }
+
+        NormalizePage();
+    }
+
+    private string TextOf(JunctionDto junction, string column) => column switch
+    {
+        "Source" => NameOf(junction.SourceItemId),
+        "Destination" => NameOf(junction.DestinationItemId),
+        "Priority" => junction.Priority.ToString(CultureInfo.InvariantCulture),
+        _ => junction.JunctionId.ToString(),
+    };
+
+    /// <summary>The device's name, or its bare identifier - with "not on the plant" when the plant has no such device, the same unstitched junction the plant checks report.</summary>
+    private string NameOf(Guid itemId) =>
+        Names().TryGetValue(itemId, out var item)
+            ? item.Name is { Length: > 0 } name ? name : itemId.ToString()
+            : $"{itemId} (not on the plant)";
+
+    /// <summary>The plant's devices by identifier, built again only when the plant moved: every cell of every row asks it.</summary>
+    private Dictionary<Guid, PlantItemDto> Names()
+    {
+        if (Graph is not { } graph) return [];
+        if (_names is null || !ReferenceEquals(_namesOf, graph) || _namesRevision != graph.Revision)
+        {
+            _names = graph.Items.GroupBy(item => item.ItemId).ToDictionary(group => group.Key, group => group.First());
+            _namesOf = graph;
+            _namesRevision = graph.Revision;
+        }
+
+        return _names;
+    }
+
+    private Dictionary<Guid, PlantItemDto>? _names;
+    private PlantGraph? _namesOf;
+    private int _namesRevision;
+}

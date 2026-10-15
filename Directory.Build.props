@@ -1,0 +1,36 @@
+<Project>
+  <!--
+    Settings shared by every project of the public repository.
+
+    The version of the WCS lives here and only here (docs/versioning-and-compatibility.md). It is the
+    version of the release being prepared: the release workflow refuses a tag vX.Y.Z[-preview.N]
+    that does not match it. AssemblyVersion and FileVersion follow from it (0.1.0.0), and so does
+    the "version" field of GET /api/v1/status.
+  -->
+  <PropertyGroup>
+    <Version>0.1.0-preview.1</Version>
+    <Authors>Sun Tech Srl</Authors>
+    <Company>Sun Tech Srl</Company>
+    <Copyright>Copyright 2026 Sun Tech Srl</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Sun-Tech-Software/WCS</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Sun-Tech-Software/WCS</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <!--
+    Reproducible restores: every project has a packages.lock.json next to it, committed. A local
+    restore updates a lock file when a package reference changes (commit it with the change); in CI
+    (the CI variable, set by GitHub Actions) a restore that would change a lock file fails instead.
+    To regenerate them all, restore the solution with the force-evaluate option (CONTRIBUTING.md).
+  -->
+  <PropertyGroup>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
+  </PropertyGroup>
+  <!--
+    ContinuousIntegrationBuild is deliberately not set: it maps the source paths to /_/, and the
+    browser tests find the web editor's sources through the compile-time path of their own files
+    (ProductBinary), which then points nowhere (measured: 260 of 277 browser tests failed).
+  -->
+</Project>

@@ -1,0 +1,20 @@
+# gitleaks configuration of the repository: the default rules, minus the false positives that are
+# part of the repository by design. tools/Test-PublicRelease.ps1 runs gitleaks with it when gitleaks
+# is installed (gitleaks reads this file from the folder it scans).
+title = "Sun Tech WCS"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "The bundled draw.io, third-party code copied verbatim (THIRD-PARTY-NOTICES.md): its minified sources and stencils look like keys"
+paths = ['''^WCS/Wcs\.WebEditor/src/wwwroot/drawio/''']
+
+[[allowlists]]
+description = "Documented demo and example values: the quick start's keys, the historical notes' test key, a local-storage key name and a SignalR negotiation token shown in an example response"
+regexTarget = "secret"
+regexes = [
+  '''^(my-wcs-key|sample-wms-key|chiave-di-prova)$''',
+  '''^wcs\.drawio\.[A-Za-z.]+\.v\d+$''',
+  '''^qZzNNo4pB8umwnM8nt2cUQ$''',
+]

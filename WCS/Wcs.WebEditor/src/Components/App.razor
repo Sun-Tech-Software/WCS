@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    @* Il foglio di stile della libreria (compito B1): vive in wwwroot/wcs-webeditor.css dentro
+       Wcs.WebEditor, e questo e' il percorso con cui una libreria di componenti Razor lo serve
+       all'host che la ospita - "_content/{nome del progetto}/...", la stessa convenzione delle
+       risorse statiche di ASP.NET Core. Non e' teorico: verificato misurando una richiesta vera
+       contro l'host pubblicato (dotnet publish -c Release), non solo letto sulla documentazione -
+       la voce D200 del registro e' nata esattamente da un file statico che sembrava servito e non
+       lo era (mancava /_content/Wcs.WebEditor nell'elenco anonimo di ApiKeyMiddleware, corretto in
+       questo stesso compito). Il nome del file non e' "editor.css": durante la verifica di questo
+       compito, chiedere "editor.css" falliva lato client (ERR_BLOCKED_BY_CLIENT, non una risposta
+       del server - una richiesta diretta alla stessa istanza tornava 200 con il corpo vero), e il
+       guasto spariva rinominando il file. L'ipotesi piu' verosimile e' un blocco generico da
+       ad-blocker su un nome comune per gli script degli editor visuali di pagine/annunci - non
+       confermata isolando la causa con un'estensione vera, quindi resta un'ipotesi, non un fatto
+       osservato. Il rimedio ("wcs-webeditor.css", un nome piu' specifico) costa comunque zero ed
+       e' rimasto anche se l'ipotesi si rivelasse sbagliata. *@
+    <link rel="stylesheet" href="_content/Wcs.WebEditor/wcs-webeditor.css" />
+    <HeadOutlet />
+</head>
+<body>
+    <Routes />
+    <script src="_framework/blazor.web.js"></script>
+    @* Il modulo dei componenti web di Fluent UI Blazor: definisce i custom element (<fluent-button>,
+       <fluent-menu>, ...) che i componenti rendono. Senza, la pagina mostra elementi sconosciuti e
+       inerti - e non lo dice: e' la stessa famiglia della voce D200 del registro.
+       "reboot.css" del pacchetto NON e' incluso: e' facoltativo e ristilerebbe tutta la pagina,
+       compresa la tela dell'impianto, che ha gia' il proprio foglio.
+       Il percorso sta sotto /_content/Microsoft.FluentUI.AspNetCore.Components: quel prefisso e'
+       stato aggiunto di proposito all'elenco anonimo di ApiKeyMiddleware, perche' un browser non
+       manda X-Api-Key su un <script src> piu' di quanto la mandi su blazor.web.js. *@
+    <script src="_content/Microsoft.FluentUI.AspNetCore.Components/Microsoft.FluentUI.AspNetCore.Components.lib.module.js" type="module" async></script>
+</body>
+</html>

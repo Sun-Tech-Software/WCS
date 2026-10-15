@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UserSecretsId>wcs-host</UserSecretsId>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.12" />
+    <!-- blazor.web.js viene da qui. Sui progetti Sdk.Web piu' semplici il ripristino di questo
+         pacchetto e' implicito (lo si e' visto in una prova a parte); in questo grafo di
+         dipendenze - piu' affollato, con EF Core nel mezzo - resta fuori dal ripristino se non lo
+         si chiede esplicitamente, e senza /_framework/blazor.web.js risponde 404 anche con la
+         chiave giusta: non e' una questione del middleware. -->
+    <PackageReference Include="Microsoft.AspNetCore.App.Internal.Assets" Version="10.0.12" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Wcs.Api.Contracts\src\Wcs.Api.Contracts.csproj" />
+    <ProjectReference Include="..\..\Wcs.Engine\src\Wcs.Engine.csproj" />
+    <ProjectReference Include="..\..\Wcs.Wms.Client\src\Wcs.Wms.Client.csproj" />
+    <ProjectReference Include="..\..\Wcs.WebEditor\src\Wcs.WebEditor.csproj" />
+  </ItemGroup>
+  <!-- Field drivers that plug themselves into the host build: every Wcs.Connection.*\src\*.Host.props
+       adds its driver project and may name the default Wcs:ConnectionFactory of this build (see
+       Engine\ConnectionFactoryLoader.cs). None matching is fine: the host then ships with the
+       loopback driver only, and a driver can still be dropped in the host folder and named in
+       the configuration. -->
+  <Import Project="..\..\Wcs.Connection.*\src\*.Host.props" />
+  <ItemGroup>
+    <InternalsVisibleTo Include="Wcs.Host.Test" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Il file dei segreti non finisce nel pacchetto pubblicato. L'SDK Web include
+         appsettings*.json come Content: senza questa riga un dotnet publish si porterebbe dietro
+         la chiave vera dentro il pacchetto che si consegna, che e' esattamente il modo in cui un
+         segreto esce da un repository ordinato.
+         Nella cartella di compilazione invece ci va, come gli altri appsettings*.json: bin\ e' la
+         cartella da cui si lancia l'host in sviluppo (dotnet Wcs.Host.dll, ed e' quello che fa
+         ripristina-demo.ps1), li' il ContentRoot e' la cartella dell'eseguibile e AddSecretsFile
+         cerca il file accanto. Con CopyToOutputDirectory="Never" il file c'era nella cartella del
+         progetto e non dove l'host lo legge, cioe' la strada che appsettings.json propone non
+         funzionava. Il file resta non tracciato: in bin\ ci arriva la copia di chi sviluppa. -->
+    <Content Update="appsettings.Secrets.json" CopyToPublishDirectory="Never" />
+  </ItemGroup>
+</Project>

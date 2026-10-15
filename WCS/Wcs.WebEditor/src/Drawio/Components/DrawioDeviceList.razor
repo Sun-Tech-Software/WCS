@@ -1,0 +1,682 @@
+@* Compito 2, row 58: the device list, EDITABLE like the WinForms grid (FrmAUTOMATION_ITEMS_LIST:
+   every configuration column, each changed cell saves that device).
+   <para>
+   <b>Built for a plant of a few hundred devices.</b> The configurations are read with ONE request
+   (GET /plant/items/config) the first time the section is opened, never one device at a time and
+   never while rendering; filter and sort run in memory on what was read; only the cell being changed
+   renders an editor - the rest is text - so the device drop-downs are not multiplied by every row;
+   and a render of the page that changes nothing this list shows does not render the list again
+   (DrawioListSection).
+   </para>
+   <para>
+   <b>Shut, the list does nothing.</b> The page opens and shuts its window (any number of windows
+   open together), and while it is shut nothing is rendered inside the window, nothing is read,
+   nothing is read again and no live frame is followed. A plant that moved meanwhile is read again
+   when the section is opened.
+   </para>
+   <para>
+   <b>The live columns.</b> Status and load unit are the only two things this list shows from the
+   live channel, and they are kept as the TEXT shown (<see cref="_live"/>): a frame renders the list
+   only when one of those texts changed - not when any other field of a device's live record did.
+   </para>
+   <para>
+   <b>Writing a cell</b> is the properties panel's own write, not a copy of it: <see cref="Write"/> is
+   DrawioSelectionCoordinator.WriteConfigFromListAsync - the page's write gate with the list's own
+   writer and refusals, the edit permit taken at the moment, the same configuration command, the
+   drawing told of a new name, the panel read again when it shows the same device. A cell changed is
+   not written until "Write" is pressed, and the row never shows a value the host has not taken: it
+   is the host's copy until the list reads the plant again.
+   </para>
+   <para>
+   <b>Coherence the other way.</b> Every configuration write of the page - the panel, the cells of
+   the selected device, the connection mode of the whole plant, a creation, a save of the drawing -
+   ends in PlantGraph.AddItem or in a whole reread of the plant, and both move
+   <see cref="PlantGraph.TopologyRevision"/>: when it moves, the list reads the plant again. A value
+   typed here and not confirmed survives that reread if its row did not change; if it did, it is
+   thrown away and the list says so.
+   </para> *@
+@using System.Globalization
+@using System.Text.Json
+@using Wcs.Api.Client
+@using Wcs.Api.Contracts.Dtos
+@using Wcs.WebEditor.Drawio.Coordination
+@using Wcs.WebEditor.Live
+@using Wcs.WebEditor.Model
+@using Wcs.WebEditor.Properties
+@using Wcs.WebEditor.Session
+@inherits DrawioListSection
+@implements IDisposable
+@inject EditorSessionState Session
+
+<button type="button" id="drawio-device-list-toggle" class="drawio-section-toggle" aria-label="Devices"
+        aria-pressed="@(Open ? "true" : "false")" @onclick="ToggleAsync">
+    <DrawioIcon Name="devices" />
+    <span class="drawio-toggle-label">Devices</span>
+</button>
+@{
+    // Once per render, before the window: its title bar counts the rows the list shows.
+    var rows = Open ? VisibleRows().ToList() : null;
+}
+<DrawioWindow Id="drawio-device-list" Class="drawio-device-list" Title="Devices" Icon="devices"
+              Count="@(_configs is null || rows is null ? null : rows.Count.ToString(CultureInfo.InvariantCulture))"
+              Help="@(Open ? ScopeNote : null)" Open="Open" OnClose="CloseAsync" Place="Place">
+    @if (rows is not null)
+    {
+        var pageCount = PageCount(rows.Count);
+        var currentPage = Math.Min(_page, pageCount);
+        var pageRows = rows.Skip((currentPage - 1) * PageSize).Take(PageSize).ToList();
+        <div class="drawio-device-list-body">
+            <div class="drawio-device-list-tools">
+                <span class="drawio-filter">
+                    <DrawioIcon Name="search" />
+                    <input type="search" id="drawio-device-list-filter" class="drawio-device-list-filter"
+                           aria-label="Filter devices" placeholder="Filter devices on any column"
+                           value="@Filter" @oninput="FilterDevicesTyped" />
+                </span>
+                <span id="drawio-device-list-count" class="drawio-device-list-count">@CountLine(rows.Count)</span>
+                <button type="button" id="drawio-device-list-reread" disabled="@_reading" @onclick="ReadAgainPressedAsync">Read again</button>
+            </div>
+            @if (_reading)
+            {
+                <p id="drawio-device-list-reading" class="drawio-operations-outcome">Reading the devices from the host...</p>
+            }
+            @if (_readError is { } readError)
+            {
+                <DrawioFailureLine Id="drawio-device-list-read-error" Class="drawio-operations-error" Text="@readError.Text" Detail="@readError.Detail" />
+            }
+            @if (_outcome is { } outcome)
+            {
+                <DrawioFailureLine Id="drawio-device-list-outcome" LineClass="drawio-operations-outcome"
+                                   Class="@(_outcomeWritten ? "drawio-device-list-written" : "drawio-device-list-not-written")"
+                                   Text="@outcome.Text" Detail="@outcome.Detail" />
+            }
+            @if (_discarded is { } discarded)
+            {
+                <p id="drawio-device-list-discarded" class="drawio-operations-error">@discarded</p>
+            }
+            @if (GoToOutcome is { } goTo)
+            {
+                <DrawioFailureLine Id="drawio-device-list-goto" LineClass="drawio-operations-outcome" Text="@goTo.Text" Detail="@goTo.Detail" />
+            }
+            @if (_configs is not null)
+            {
+                <section id="drawio-device-list-grid" class="drawio-data-grid drawio-device-grid">
+                    <div class="drawio-list-scroll drawio-data-grid-scroll">
+                        <table id="drawio-device-list-table" class="drawio-list-table drawio-data-table drawio-device-table">
+                            <thead>
+                                <tr>
+                                    @foreach (var column in DeviceListColumn.All)
+                                    {
+                                        <th data-property="@column.Key" title="@column.Help" aria-sort="@AriaSort(column.Key)"
+                                            @onclick="() => SortDevicesBy(column.Key)">@column.Label</th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var config in pageRows)
+                                {
+                                    var selected = config.ItemId == SelectedItemId;
+                                    @* "true"/"false" spelled out: aria-selected is not one of the attributes Blazor treats as an HTML boolean. *@
+                                    <tr data-item-id="@config.ItemId" aria-selected="@(selected ? "true" : "false")"
+                                        class="@(selected ? "drawio-list-row drawio-list-row-selected" : "drawio-list-row")"
+                                        @onclick="() => Chosen(config.ItemId)">
+                                        @foreach (var column in DeviceListColumn.All)
+                                        {
+                                            <td data-property="@column.Key" @ondblclick="() => OpenEditor(config, column)">
+                                                @if (_editing is { } editing && editing.ItemId == config.ItemId && editing.Column == column)
+                                                {
+                                                    @Editor(config, column)
+                                                }
+                                                else
+                                                {
+                                                    @TextOf(config, column)
+                                                }
+                                            </td>
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <footer class="drawio-data-pager drawio-device-pager" aria-label="Device pages">
+                        <span id="drawio-device-list-page-summary" aria-live="polite">@PageLine(rows.Count, currentPage, "devices")</span>
+                        <div class="drawio-data-page-buttons">
+                            <button type="button" id="drawio-device-list-previous" aria-label="Previous page"
+                                    disabled="@(currentPage == 1)" @onclick="() => GoToPage(currentPage - 1, pageCount)">‹</button>
+                            @foreach (var pageNumber in PageChoices(currentPage, pageCount))
+                            {
+                                <button type="button" class="@(pageNumber == currentPage ? "drawio-data-page-active" : null)"
+                                        aria-label="Page @pageNumber" aria-current="@(pageNumber == currentPage ? "page" : null)"
+                                        @onclick="() => GoToPage(pageNumber, pageCount)">@pageNumber</button>
+                            }
+                            <button type="button" id="drawio-device-list-next" aria-label="Next page"
+                                    disabled="@(currentPage == pageCount)" @onclick="() => GoToPage(currentPage + 1, pageCount)">›</button>
+                        </div>
+                    </footer>
+                </section>
+            }
+        </div>
+    }
+</DrawioWindow>
+
+@code {
+    /// <summary>
+    /// What the list is and how a cell is written: the paragraph that opened the window until the
+    /// passata grafica, word for word, behind the "?" of its title bar - there only while the window is
+    /// open, as the paragraph was.
+    /// </summary>
+    private static readonly RenderFragment ScopeNote =
+        @<p class="drawio-device-list-scope">
+            Every device of the plant with its configuration, as the host has it. Click a row to select the
+            device on the drawing. Double-click a cell to change it and press "Write": the edit permit is asked
+            for then, and only that device is written.
+        </p>;
+
+    /// <summary>The plant as the page holds it: only its <see cref="PlantGraph.TopologyRevision"/> is read here, to know when to read the configurations again.</summary>
+    [Parameter] public PlantGraph? Graph { get; set; }
+
+    [Parameter] public PlantLiveFeed? Feed { get; set; }
+
+    /// <summary>The device selected on the drawing (DrawioSelectionState.ConfigItemId): its row is marked.</summary>
+    [Parameter] public Guid? SelectedItemId { get; set; }
+
+    /// <summary>What the drawing answered to the last row chosen here, worded by the page; what its script threw, if it did not answer, is behind the line's "?".</summary>
+    [Parameter] public DrawioSaid? GoToOutcome { get; set; }
+
+    /// <summary>A row was chosen: the page selects that device on the drawing.</summary>
+    [Parameter] public EventCallback<Guid> OnSelect { get; set; }
+
+    /// <summary>
+    /// Writes one device: the configuration as the host had it, the same with the one cell changed,
+    /// and the words that name the change. DrawioSelectionCoordinator.WriteConfigFromListAsync - see
+    /// the file's own remarks.
+    /// </summary>
+    [Parameter] public Func<PlantItemConfigDto, PlantItemConfigDto, string, Task<DrawioListWriteOutcome>>? Write { get; set; }
+
+    private sealed record CellEdit(Guid ItemId, DeviceListColumn Column);
+
+    private static readonly IReadOnlyList<string> ColumnKeys = [.. DeviceListColumn.All.Select(column => column.Key)];
+    private static readonly Dictionary<string, DeviceListColumn> ColumnByKey = DeviceListColumn.All.ToDictionary(column => column.Key);
+    private const int PageSize = 10;
+    private int _page = 1;
+    private Guid? _pagedSelectedItemId;
+    private bool _revealSelectionAfterRead;
+
+    private List<PlantItemConfigDto>? _configs;
+    private Dictionary<Guid, PlantItemConfigDto> _byId = [];
+    private bool _reading;
+    private DrawioSaid? _readError;
+    private int _readGeneration;
+
+    /// <summary>The plant's <see cref="PlantGraph.TopologyRevision"/> when the last read STARTED: a read that begins after a change sees it.</summary>
+    private int? _seenTopology;
+
+    /// <summary>A read was due while the section was shut (the reread after a write that ended then): it is made when the section is opened.</summary>
+    private bool _readOnOpening;
+
+    private bool _wasOpen;
+
+    private CellEdit? _editing;
+    private string _editText = "";
+    private bool _editCheck;
+    private bool _writing;
+
+    private DrawioSaid? _outcome;
+    private bool _outcomeWritten;
+    private string? _discarded;
+
+    /// <summary>The device a "no longer on the plant" line of <see cref="_discarded"/> is about: the line goes when a read finds it again.</summary>
+    private Guid? _discardedGoneItemId;
+
+    private PlantLiveFeed? _subscribedFeed;
+
+    /// <summary>The live texts the rows show - status name and load unit - by device: what a frame is compared against.</summary>
+    private Dictionary<Guid, (string Status, string LoadUnit)> _live = [];
+
+    private bool _disposed;
+
+    private string CountLine(int visible) => _configs is null
+        ? "Not read yet."
+        : string.IsNullOrWhiteSpace(Filter)
+            ? $"{_configs.Count} devices."
+            : $"{visible} of {_configs.Count} devices.";
+
+    protected override void OnParametersSet()
+    {
+        var feedChanged = false;
+        if (!ReferenceEquals(Feed, _subscribedFeed))
+        {
+            if (_subscribedFeed is not null) _subscribedFeed.FrameReady -= OnFrameReady;
+            _subscribedFeed = Feed;
+            if (Feed is not null) Feed.FrameReady += OnFrameReady;
+            feedChanged = true;
+        }
+
+        var opened = Open && !_wasOpen;
+        _wasOpen = Open;
+        var selectionChanged = SelectedItemId != _pagedSelectedItemId;
+        _pagedSelectedItemId = SelectedItemId;
+
+        // Shut, the list reads nothing. Open: the first read when it is opened (not again on every
+        // render of the page if that read failed - "Read again" is there for that); afterwards, again
+        // whenever the plant moved on this page (see the file's own remarks) or a read was left due
+        // while it was shut - unless a write of this list is on its way, which reads it again anyway
+        // once its outcome is in.
+        var readNow = Open && (_configs is null
+            ? opened && !_reading
+            : !_writing && (_readOnOpening || Graph?.TopologyRevision != _seenTopology));
+        if (readNow) ReadInTheBackground();
+        if (Open && (opened || feedChanged) && _configs is not null)
+        {
+            _live = LiveTexts(_configs);
+            NormalizePage();
+        }
+        if (Open && (opened || selectionChanged))
+        {
+            if (_configs is not null) RevealSelectedPageOrNormalize();
+            if (_reading || _configs is null) _revealSelectionAfterRead = true;
+        }
+
+        ParametersArrived((SelectedItemId, GoToOutcome), renderAnyway: readNow || feedChanged);
+    }
+
+    /// <summary>Started from <see cref="OnParametersSet"/> and not awaited: <see cref="ReadAsync"/> never throws, whatever goes wrong.</summary>
+    private void ReadInTheBackground() => _ = ReadAsync();
+
+    private Task ReadAgainPressedAsync()
+    {
+        // The operator asked for the plant as it is now: a line about a value thrown away by an
+        // earlier read is behind them.
+        _discarded = null;
+        _discardedGoneItemId = null;
+        return ReadAsync();
+    }
+
+    /// <summary>
+    /// Reads every configuration. It always ends - with the rows, or with a line that says they could
+    /// not be read - and never throws: it runs unobserved from <see cref="OnParametersSet"/>, where an
+    /// exception would leave "Reading..." up for good and the "Read again" button disabled with it.
+    /// </summary>
+    private async Task ReadAsync()
+    {
+        var generation = ++_readGeneration;
+        _seenTopology = Graph?.TopologyRevision;
+        _readOnOpening = false;
+        _reading = true;
+        _readError = null;
+        try
+        {
+            var read = await Session.Client.GetItemConfigurationsAsync();
+            if (generation != _readGeneration || _disposed) return;
+            var byId = read.ToDictionary(config => config.ItemId);
+            ThrowAwayTheEditIfItsRowChanged(read);
+            if (_discardedGoneItemId is { } gone && byId.ContainsKey(gone))
+            {
+                _discarded = null;
+                _discardedGoneItemId = null;
+            }
+
+            _configs = read;
+            _byId = byId;
+            _live = LiveTexts(read);
+            if (_revealSelectionAfterRead)
+            {
+                RevealSelectedPageOrNormalize();
+                _revealSelectionAfterRead = false;
+            }
+            else
+            {
+                NormalizePage();
+            }
+        }
+        catch (Exception ex)
+        {
+            // Whatever it is - the host's answer, no answer, or the unforeseen (the host naming one
+            // device twice, say) - the read still ends, and says so: why in the page's words, and what
+            // came back behind the line's "?" (row 37 of the queue, extended to the whole page on 10/10).
+            if (generation != _readGeneration || _disposed) return;
+            _readError = DrawioSaid.Failed(ReadFailure(DrawioFailureWords.Why(ex)), ex);
+        }
+
+        _reading = false;
+        StateHasChanged();
+    }
+
+    private string ReadFailure(string why) => _configs is null
+        ? $"The devices could not be read from the host because {why}."
+        : $"The devices could not be read again from the host because {why}: the rows below are how they were at the last read - press \"Read again\" before changing them.";
+
+    /// <summary>
+    /// A value typed into a cell and not confirmed, when the list reads the plant again: it stays if
+    /// its row is exactly as it was, because what was typed is still a change of the same row; if
+    /// the row changed under it - another writer of this page wrote that device - it is thrown away,
+    /// and said so with the words the codebase already uses for a reread that discards.
+    /// </summary>
+    private void ThrowAwayTheEditIfItsRowChanged(IReadOnlyList<PlantItemConfigDto> read)
+    {
+        if (_editing is not { } editing || !_byId.TryGetValue(editing.ItemId, out var before)) return;
+        var after = read.FirstOrDefault(config => config.ItemId == editing.ItemId);
+        if (after is not null && Same(before, after)) return;
+
+        _editing = null;
+        _discardedGoneItemId = after is null ? editing.ItemId : null;
+        _discarded = after is null
+            ? $"{NameOf(before)} is no longer on the plant: the list has been read again from the host, so what was typed into {editing.Column.Label} and not confirmed is gone."
+            : $"{NameOf(before)} was written elsewhere on this page and the list has been read again from the host, so what was typed into {editing.Column.Label} and not confirmed is gone.";
+    }
+
+    private static bool Same(PlantItemConfigDto a, PlantItemConfigDto b) =>
+        typeof(PlantItemConfigDto).GetProperties().All(property => Equals(property.GetValue(a), property.GetValue(b)));
+
+    private Task Chosen(Guid itemId) => OnSelect.InvokeAsync(itemId);
+
+    private void FilterDevicesTyped(ChangeEventArgs e)
+    {
+        FilterTyped(e);
+        _page = 1;
+    }
+
+    private void SortDevicesBy(string key)
+    {
+        SortBy(key);
+        _page = 1;
+    }
+
+    private static int PageCount(int rowCount) => DataGridPagination.PageCount(rowCount, PageSize);
+
+    private void GoToPage(int page, int pageCount) => _page = Math.Clamp(page, 1, pageCount);
+
+    private static string PageLine(int rowCount, int page, string emptyLabel) =>
+        DataGridPagination.PageLine(rowCount, page, PageSize, emptyLabel);
+
+    private static IEnumerable<int> PageChoices(int currentPage, int pageCount) =>
+        DataGridPagination.PageChoices(currentPage, pageCount);
+
+    private int VisibleRowCount() =>
+        Filtered<PlantItemConfigDto>(_configs ?? [], ColumnKeys, (config, key) => TextOf(config, ColumnByKey[key])).Count();
+
+    private void NormalizePage() => _page = Math.Min(_page, PageCount(VisibleRowCount()));
+
+    private void RevealSelectedPageOrNormalize()
+    {
+        if (SelectedItemId is { } selected)
+        {
+            var position = 0;
+            foreach (var row in VisibleRows())
+            {
+                if (row.ItemId == selected)
+                {
+                    _page = (position / PageSize) + 1;
+                    return;
+                }
+                position++;
+            }
+        }
+
+        NormalizePage();
+    }
+
+    /// <summary>
+    /// The rows as filtered and sorted now: by the chosen column (a device column and a code by the
+    /// text shown, everything else by its value), then by name and identifier - the stable order of
+    /// the other lists of this Editor - which is also the order when no column is chosen. Called once
+    /// per render.
+    /// </summary>
+    private IEnumerable<PlantItemConfigDto> VisibleRows()
+    {
+        var rows = Filtered<PlantItemConfigDto>(_configs ?? [], ColumnKeys, (config, key) => TextOf(config, ColumnByKey[key]));
+        if (SortKey is not { } key || !ColumnByKey.TryGetValue(key, out var by))
+            return rows.OrderBy(config => config.Name, StringComparer.Ordinal).ThenBy(config => config.ItemId);
+
+        return Sorted(rows, config => SortValue(config, by), Comparer<object?>.Create(CompareKeys))
+            .ThenBy(config => config.Name, StringComparer.Ordinal).ThenBy(config => config.ItemId);
+    }
+
+    private object? SortValue(PlantItemConfigDto config, DeviceListColumn column) => column.Kind switch
+    {
+        DeviceListColumnKind.Bool or DeviceListColumnKind.Typed or DeviceListColumnKind.ReadOnly => column.Field!.GetValue(config),
+        _ => TextOf(config, column),
+    };
+
+    private static int CompareKeys(object? a, object? b)
+    {
+        if (a is null) return b is null ? 0 : -1;
+        if (b is null) return 1;
+        if (a is string left && b is string right) return StringComparer.OrdinalIgnoreCase.Compare(left, right);
+        return a is IComparable comparable && a.GetType() == b.GetType()
+            ? comparable.CompareTo(b)
+            : StringComparer.Ordinal.Compare(a.ToString(), b.ToString());
+    }
+
+    private string TextOf(PlantItemConfigDto config, DeviceListColumn column)
+    {
+        switch (column.Kind)
+        {
+            case DeviceListColumnKind.LiveStatus:
+                return _live.TryGetValue(config.ItemId, out var status) ? status.Status : "";
+            case DeviceListColumnKind.LiveLoadUnit:
+                return _live.TryGetValue(config.ItemId, out var loaded) ? loaded.LoadUnit : "";
+            case DeviceListColumnKind.Device:
+                return column.Field!.GetValue(config) is Guid device && device != Guid.Empty ? DeviceText(device) : "";
+            case DeviceListColumnKind.Bool:
+                return column.Field!.GetValue(config) is true ? "Yes" : "No";
+            default:
+                return column.TextOf(column.Field!.GetValue(config));
+        }
+    }
+
+    private string DeviceText(Guid device) =>
+        _byId.TryGetValue(device, out var named) ? NameOf(named) : $"{device} (not on the plant)";
+
+    private static string NameOf(PlantItemConfigDto config) => config.Name is { Length: > 0 } name ? name : config.ItemId.ToString();
+
+    // ---- The one cell being changed ---------------------------------------------------------------
+
+    private void OpenEditor(PlantItemConfigDto config, DeviceListColumn column)
+    {
+        if (!column.IsEditable || _writing) return;
+        _editing = new CellEdit(config.ItemId, column);
+        _discarded = null;
+        _discardedGoneItemId = null;
+        var value = column.Field!.GetValue(config);
+        _editCheck = value is true;
+        _editText = column.Kind switch
+        {
+            DeviceListColumnKind.Device => value is Guid device && device != Guid.Empty ? device.ToString() : "",
+            DeviceListColumnKind.EnumCode => Convert.ToInt16(value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture),
+            _ => column.TextOf(value),
+        };
+    }
+
+    private void CancelEdit() => _editing = null;
+
+    private bool EditIsValid => _editing is { } editing && editing.Column.TryRead(_editText, _editCheck, out _);
+
+    private RenderFragment Editor(PlantItemConfigDto config, DeviceListColumn column) => __builder =>
+    {
+        <div class="drawio-device-list-editor" @onclick:stopPropagation="true" @ondblclick:stopPropagation="true">
+            @switch (column.Kind)
+            {
+                case DeviceListColumnKind.Device:
+                    <select id="drawio-device-list-editor-value" value="@_editText" @onchange="e => _editText = e.Value as string ?? string.Empty">
+                        <option value="">(none)</option>
+                        @if (Guid.TryParse(_editText, out var chosen) && !_byId.ContainsKey(chosen))
+                        {
+                            <option value="@chosen">@chosen (not on the plant)</option>
+                        }
+                        @foreach (var device in (_configs ?? []).OrderBy(c => c.Name, StringComparer.Ordinal).ThenBy(c => c.ItemId))
+                        {
+                            <option value="@device.ItemId">@NameOf(device)</option>
+                        }
+                    </select>
+                    break;
+                case DeviceListColumnKind.EnumCode:
+                    <select id="drawio-device-list-editor-value" value="@_editText" @onchange="e => _editText = e.Value as string ?? string.Empty">
+                        @if (!column.Codes().Any(candidate => candidate.Code.ToString(CultureInfo.InvariantCulture) == _editText))
+                        {
+                            <option value="@_editText">@_editText</option>
+                        }
+                        @foreach (var (enumCode, enumText) in column.Codes())
+                        {
+                            <option value="@(enumCode.ToString(CultureInfo.InvariantCulture))">@enumText</option>
+                        }
+                    </select>
+                    break;
+                case DeviceListColumnKind.Bool:
+                    <input type="checkbox" id="drawio-device-list-editor-value" checked="@_editCheck"
+                           @onchange="e => _editCheck = e.Value is true" />
+                    break;
+                default:
+                    <input type="@(column.IsNumeric ? "number" : "text")" id="drawio-device-list-editor-value"
+                           step="@(column.Field!.Descriptor.PropertyType == typeof(decimal) ? "any" : null)"
+                           value="@_editText" @oninput="e => _editText = e.Value as string ?? string.Empty" />
+                    break;
+            }
+            <button type="button" id="drawio-device-list-editor-write" class="drawio-btn-primary" disabled="@(!EditIsValid || _writing || _reading)"
+                    @onclick="() => WriteAsync(config.ItemId, column)">Write</button>
+            <button type="button" id="drawio-device-list-editor-cancel" @onclick="CancelEdit">Cancel</button>
+            @if (Preview(config, column) is { } preview)
+            {
+                <span id="drawio-device-list-editor-preview" class="drawio-device-list-editor-preview">@preview</span>
+            }
+            else
+            {
+                <span id="drawio-device-list-editor-invalid" class="drawio-operations-error">Not a valid value.</span>
+            }
+        </div>
+    };
+
+    /// <summary>
+    /// The confirmation of a changed cell: one device written, the one the row is - through
+    /// <see cref="Write"/>, see the file's own remarks - and the list read again afterwards, whatever
+    /// the outcome, so the row shows what the plant holds and never what was only asked for.
+    /// </summary>
+    private async Task WriteAsync(Guid itemId, DeviceListColumn column)
+    {
+        if (_editing is not { } editing || editing.ItemId != itemId || editing.Column != column || Write is null) return;
+        if (!_byId.TryGetValue(itemId, out var before) || !column.TryRead(_editText, _editCheck, out var value)) return;
+
+        if (Graph is { } graph && graph.TopologyRevision != _seenTopology)
+        {
+            // The plant moved on this page after the last read and the page has not rendered this list
+            // since: the row may be stale, and a write built on it would put old values back. Read
+            // first; the cell stays open, and is thrown away only if its row turns out to have changed.
+            _outcome = "The plant changed on this page since the list was read: it is being read again, and nothing was written. Press \"Write\" again once it is read.";
+            _outcomeWritten = false;
+            await ReadAsync();
+            return;
+        }
+
+        var old = column.Field!.GetValue(before);
+        if (Equals(old, value))
+        {
+            _editing = null;
+            _outcome = $"Nothing was written: the {column.Label} of {NameOf(before)} already holds that value.";
+            _outcomeWritten = false;
+            return;
+        }
+
+        var edited = PropertyModel.Copy(before);
+        column.Field.SetValue(edited, value);
+        var change = $"the {column.Label} of {NameOf(before)} ({Shown(column, old)} -> {Shown(column, value)})";
+
+        _editing = null;
+        _discarded = null;
+        _discardedGoneItemId = null;
+        _outcome = null;
+        _writing = true;
+        try
+        {
+            var outcome = await Write(before, edited, change);
+            _outcome = new DrawioSaid(outcome.Line, outcome.Detail);
+            _outcomeWritten = outcome.Written;
+        }
+        finally
+        {
+            _writing = false;
+        }
+
+        // Shut while the write was on its way: the reread waits for the section to be opened again.
+        if (Open) await ReadAsync();
+        else _readOnOpening = true;
+    }
+
+    /// <summary>
+    /// What pressing "Write" would send for the cell being changed, next to the button: "Label: old
+    /// -> new". The new value is read from what is typed with the SAME <see cref="DeviceListColumn.TryRead"/>
+    /// <see cref="WriteAsync"/> uses, against the SAME row, and worded by the same <see cref="Shown"/>
+    /// as the outcome line - so what is previewed is what is written. Null when what is typed is not a
+    /// value (nothing would be written).
+    /// </summary>
+    private string? Preview(PlantItemConfigDto config, DeviceListColumn column)
+    {
+        if (!column.TryRead(_editText, _editCheck, out var value)) return null;
+        var old = column.Field!.GetValue(config);
+        return Equals(old, value)
+            ? $"{column.Label}: {Shown(column, old)} (unchanged: nothing would be written)"
+            : $"{column.Label}: {Shown(column, old)} \u2192 {Shown(column, value)}";
+    }
+
+    /// <summary>A value as the preview and the outcome line name it: a device by its name ("(none)" when there is none), a code by its text, a flag by its checked state.</summary>
+    private string Shown(DeviceListColumn column, object? value) => column.Kind switch
+    {
+        DeviceListColumnKind.Device => value is Guid device && device != Guid.Empty ? DeviceText(device) : "(none)",
+        DeviceListColumnKind.Bool => value is true ? "checked" : "unchecked",
+        _ => column.TextOf(value) is { Length: > 0 } text ? text : "(empty)",
+    };
+
+    // ---- The live status --------------------------------------------------------------------------
+
+    /// <summary>The two live texts of every row that has a live record: what the rows show, and what a frame is compared against.</summary>
+    private Dictionary<Guid, (string Status, string LoadUnit)> LiveTexts(IEnumerable<PlantItemConfigDto> configs)
+    {
+        var texts = new Dictionary<Guid, (string Status, string LoadUnit)>();
+        if (Feed is not { } feed) return texts;
+        foreach (var config in configs)
+        {
+            if (feed.StatusOf(config.ItemId) is { } status)
+                texts[config.ItemId] = (PlantLiveState.NameOf(status.Status), PlantLiveState.ViewOf(status).LoadUnit ?? "");
+        }
+
+        return texts;
+    }
+
+    private static bool SameTexts(Dictionary<Guid, (string Status, string LoadUnit)> a, Dictionary<Guid, (string Status, string LoadUnit)> b) =>
+        a.Count == b.Count && a.All(pair => b.TryGetValue(pair.Key, out var other) && other == pair.Value);
+
+    /// <summary>
+    /// A live frame is ready. It comes on a timer thread of the feed: only InvokeAsync from here. The
+    /// frame itself is the page's to take (it hands it to the drawing). Shut, the list ignores it; open,
+    /// it renders only when a text it shows changed (see the file's own remarks).
+    /// </summary>
+    private void OnFrameReady()
+    {
+        // Open is read off the feed's thread here only to skip the hop; it is asked again on the
+        // renderer's own, below.
+        if (_disposed || !Open || _configs is null) return;
+        try
+        {
+            _ = InvokeAsync(FollowTheFrame);
+        }
+        catch (ObjectDisposedException)
+        {
+            // The renderer is gone: there is no list left to update.
+        }
+    }
+
+    private void FollowTheFrame()
+    {
+        if (_disposed || !Open || _configs is not { } configs) return;
+        var now = LiveTexts(configs);
+        if (SameTexts(now, _live)) return;
+        _live = now;
+        NormalizePage();
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        if (_subscribedFeed is not null) _subscribedFeed.FrameReady -= OnFrameReady;
+    }
+}

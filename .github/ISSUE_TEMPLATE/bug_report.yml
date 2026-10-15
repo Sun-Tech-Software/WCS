@@ -1,0 +1,168 @@
+name: Bug report
+description: Something in the WCS does not work as documented.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to report a problem. Issues are public and are answered on a
+        best-effort basis, with no guaranteed response time ([SUPPORT.md](https://github.com/Sun-Tech-Software/WCS/blob/main/SUPPORT.md)).
+
+        **Do not report a vulnerability here.** Security problems are reported privately through
+        GitHub's private vulnerability reporting (the **Security** tab, **Report a vulnerability**),
+        as described in [SECURITY.md](https://github.com/Sun-Tech-Software/WCS/blob/main/SECURITY.md).
+
+        **This is not a channel for safety incidents on a plant.** Those belong to the plant's own
+        organisation and its suppliers ([SAFETY.md](https://github.com/Sun-Tech-Software/WCS/blob/main/SAFETY.md)).
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: The release (for example `0.1.0-preview.1`), or the commit you built from (`git rev-parse --short HEAD`).
+      placeholder: 0.1.0-preview.1 or a1b2c3d
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and architecture
+      description: For example Windows 11 x64, Windows Server 2022 x64. Linux has not been verified.
+      placeholder: Windows 11 23H2, x64
+    validations:
+      required: true
+
+  - type: input
+    id: dotnet
+    attributes:
+      label: .NET SDK or runtime version
+      description: The output of `dotnet --version`, or the runtime the published binaries ran on.
+      placeholder: 10.0.402
+    validations:
+      required: false
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected component
+      options:
+        - Engine (Wcs.Engine)
+        - Host, HTTP API or SignalR hub (Wcs.Host)
+        - Web editor (Wcs.WebEditor)
+        - WMS contract or client (Wcs.Wms.Contracts, Wcs.Wms.Client)
+        - Host API contract or client (Wcs.Api.Contracts, Wcs.Api.Client)
+        - Driver contract (Wcs.Connection.Interface)
+        - Loopback driver (Wcs.Connection.Test)
+        - Sample WMS or sample plant (samples/)
+        - Wcs.DbTool (backup, verify, restore)
+        - Documentation
+        - Build, CI or release tooling
+        - Other or not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Where did it happen?
+      options:
+        - Demo (loopback driver, no real machines)
+        - Test bench or commissioning (real machines, not in production)
+        - Production plant
+        - Development or automated tests only
+    validations:
+      required: true
+
+  - type: input
+    id: driver
+    attributes:
+      label: Field driver used
+      description: >-
+        The loopback driver (connection type Test), your own driver (say which `IConnectionFactory`
+        and its version, if you can), or Sun Tech's proprietary driver. Problems with Sun Tech's
+        proprietary driver are handled through Sun Tech, not here (SUPPORT.md).
+      placeholder: loopback driver
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: >-
+        What you did, in order: commands sent (with their codes), API calls, settings that matter.
+        For routing problems, attach a minimal plant exported from the web editor that reproduces it,
+        with invented names.
+      placeholder: |
+        1. Start the host with ...
+        2. Load the plant ...
+        3. Send command 3002 on ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What you expected to happen, and where it is documented if you know.
+    validations:
+      required: true
+
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behaviour
+      description: What happened instead, including error messages and HTTP status codes.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitised logs
+      description: >-
+        The relevant host log lines. Remove API keys, connection strings, host names, IP addresses,
+        customer data, plant and site names, and personal data before pasting.
+      render: text
+    validations:
+      required: false
+
+  - type: dropdown
+    id: safety
+    attributes:
+      label: Impact on physical safety
+      description: >-
+        The WCS is not a functional-safety system and must never be relied upon for the safety of
+        people (SAFETY.md). Tell us whether the problem made a machine move, or fail to stop, when it
+        should not have.
+      options:
+        - None, no real machines involved
+        - None, real machines involved but nothing moved unexpectedly
+        - A real machine moved, or did not stop, unexpectedly
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+      description: Workarounds you found, how often it happens, what changed recently.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: >-
+            This report contains no API keys, passwords, tokens, connection strings, personal data,
+            customer or plant names, or other confidential information.
+          required: true
+        - label: This is not a security vulnerability (those go through private vulnerability reporting, SECURITY.md).
+          required: true
+        - label: I searched the existing issues and the documentation (troubleshooting, known limitations).
+          required: true

@@ -1,0 +1,69 @@
+@* L'elenco delle giunzioni (compito 10): come ItemList, ordina, filtra per testo, e selezionando
+   una riga evidenzia l'arco sulla tela - lo stesso _selectedJunctionId che il clic su un arco gia'
+   usa (PlantCanvas), non un secondo insieme scelto. Componente "muto": non parla con l'host. *@
+@using Wcs.Api.Contracts.Dtos
+
+<div class="junction-list">
+    <input type="text" id="junction-list-filter" placeholder="Filtra per dispositivo di origine o destinazione"
+           value="@_filterText" @oninput="e => _filterText = e.Value as string ?? string.Empty" />
+    <table id="junction-list">
+        <thead>
+            <tr>
+                <th>Origine</th>
+                <th>Destinazione</th>
+                <th>Priorità</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var junction in FilteredJunctions())
+            {
+                var isSelected = junction.JunctionId == SelectedJunctionId;
+                @* "true"/"false" esplicito: stessa ragione di ItemList (aria-selected non e' fra gli attributi che Blazor tratta come booleani HTML). *@
+                <tr class="junction-list-row" data-junction-id="@junction.JunctionId" aria-selected="@(isSelected ? "true" : "false")"
+                    style="@(isSelected ? "background-color:#dbeafe;" : "")"
+                    @onclick="() => OnSelect.InvokeAsync(junction.JunctionId)">
+                    <td>@DisplayName(junction.SourceItemId)</td>
+                    <td>@DisplayName(junction.DestinationItemId)</td>
+                    <td>@junction.Priority</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<JunctionDto> Junctions { get; set; } = [];
+
+    /// <summary>I dispositivi dell'impianto: la sola fonte dei nomi di origine/destinazione mostrati (<see cref="DisplayName"/>) - lo stesso ruolo che PropertyPanel.Items ha per le quattro caselle a elenco.</summary>
+    [Parameter]
+    public IReadOnlyList<PlantItemDto> Items { get; set; } = [];
+
+    [Parameter]
+    public Guid? SelectedJunctionId { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid> OnSelect { get; set; }
+
+    private string _filterText = string.Empty;
+
+    /// <summary>
+    /// Il nome del dispositivo all'estremo di una giunzione, o l'identificativo nudo se il
+    /// dispositivo non ha un nome - o se non e' (piu') nell'impianto: lo stesso caso che
+    /// JunctionChecks.ComputeWarnings segnala come giunzione scucita, qui mostrato invece di far
+    /// sollevare un'eccezione sulla riga.
+    /// </summary>
+    private string DisplayName(Guid itemId) =>
+        Items.FirstOrDefault(i => i.ItemId == itemId) is { } item ? item.Name ?? itemId.ToString() : itemId.ToString();
+
+    /// <summary>Per priorita', poi per identificativo a parita' di priorita': lo stesso ordine stabile e arbitrario di ItemList.FilteredItems, applicato all'unico campo ordinabile di JunctionDto che non e' un Guid.</summary>
+    private IEnumerable<JunctionDto> FilteredJunctions()
+    {
+        var query = Junctions.OrderBy(j => j.Priority).ThenBy(j => j.JunctionId);
+        if (string.IsNullOrWhiteSpace(_filterText)) return query;
+
+        return query.Where(j =>
+            DisplayName(j.SourceItemId).Contains(_filterText, StringComparison.OrdinalIgnoreCase) ||
+            DisplayName(j.DestinationItemId).Contains(_filterText, StringComparison.OrdinalIgnoreCase));
+    }
+}

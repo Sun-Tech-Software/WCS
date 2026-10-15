@@ -1,0 +1,317 @@
+@* Le due verifiche della barra dell'Editor WinForms (compito 10): "Check Configurazione" e
+   "Check Junctions". Sono letture, non scritture - niente permesso di modifica, niente pila
+   dell'annulla (decisione del compito): un pulsante spento da CanEdit non avrebbe senso qui, i due
+   pulsanti sotto restano sempre accesi. *@
+@using Wcs.Api.Client
+@using Wcs.Api.Contracts.Dtos
+@using Wcs.WebEditor.Drawio.Components
+@using Wcs.WebEditor.Drawio.Coordination
+@using Wcs.WebEditor.Model
+@using Wcs.WebEditor.Session
+@inject EditorSessionState State
+
+<div class="checks-panel">
+    @* "Check Junctions" resta in inglese apposta: e' il nome del pulsante che l'Editor WinForms porta
+       oggi in barra (btnCheckJunctions), non una svista rispetto al resto dei testi a schermo in
+       italiano - la parita' col nome che chi usa gia' l'Editor di oggi riconosce vale piu' della
+       coerenza linguistica su questo solo pulsante. *@
+    <button type="button" id="check-junctions-button" @onclick="RunJunctionCheck">Check Junctions</button>
+    @* Spento mentre la richiesta e' in volo (fino a 30 s, il timeout del client): senza questo, due
+       clic ravvicinati partono come due richieste concorrenti senza ordine garantito, e la piu' lenta
+       puo' sovrascrivere l'esito della piu' recente.
+
+       Senza collaudo automatico, e dichiarato invece che finto: per osservare lo schermo mentre la
+       richiesta e' ancora in volo bisogna lasciare in sospeso il gestore dell'evento Blazor, e in
+       questo banco di prova quella forma **fa crollare il processo host dei test** - provata in
+       quattro varianti, il motore dei test indica proprio quel test come origine, e il crollo si
+       porta via l'intera classe: sette test non venivano eseguiti mentre il riepilogo diceva
+       «Superato!» sui sopravvissuti. La variante che osserva da dentro la richiesta non crolla ma
+       dipende dai tempi - passa da sola e fallisce nella suite intera, dove le classi girano in
+       parallelo. Meglio nessun test che uno instabile o uno che nasconde sette assenze. *@
+    <button type="button" id="check-config-button" disabled="@_configCheckRunning" @onclick="RunConfigCheckAsync">Check Configuration</button>
+
+    @* Nessuno zero che finga un dato: _junctionWarnings nullo (mai premuto) e' un caso diverso da
+       una lista vuota (premuto, nessun problema trovato) - solo il secondo mostra "nessun problema". *@
+    @if (_junctionWarnings is not null)
+    {
+        <div id="junction-check-result">
+            @if (_junctionWarnings.Count == 0)
+            {
+                <p>No problem found in the junctions or in the devices.</p>
+            }
+            else
+            {
+                <ul>
+                    @foreach (var warning in _junctionWarnings)
+                    {
+                        <li data-kind="@warning.Kind">@warning.Message</li>
+                    }
+                </ul>
+            }
+        </div>
+    }
+
+    @* Come sopra: _configCheckError non nullo (l'ultima chiamata e' fallita) resta distinto da
+       _configWarnings vuoto (la chiamata e' riuscita, la procedura non ha trovato niente da
+       segnalare) - la stessa lezione "zero non e' una prova" applicata alla chiamata all'host
+       invece che al grafo locale. Un fallimento non lascia in vista l'esito della chiamata
+       precedente: RunConfigCheckAsync azzera l'altro campo a ogni tentativo. Il fallimento e' una
+       frase sola con il perche' nelle parole della pagina, e la risposta dell'host cosi' come e'
+       arrivata sta dietro la «?» accanto (voce 37 della coda, estesa a tutta la pagina il 10/10). *@
+    @if (_configCheckError is { } configCheckError)
+    {
+        <DrawioFailureLine Id="config-check-error" Text="@configCheckError.Text" Detail="@configCheckError.Detail" />
+    }
+    else if (_configWarnings is not null)
+    {
+        <div id="config-check-result">
+            @if (_configWarnings.Count == 0)
+            {
+                <p>Configuration checked successfully: no warnings.</p>
+            }
+            else
+            {
+                @* Le colonne le decide la procedura SQL, non questo componente: l'unione delle chiavi
+                   di tutte le righe, non solo della prima (a differenza di WmsCellTable.BuildWarnings
+                   nell'Editor WinForms) - se la prima riga avesse il dizionario vuoto, prendere solo
+                   le sue chiavi renderebbe una tabella con righe ma senza colonne, uno schermo che
+                   sembra dire "nessun problema" quando le segnalazioni ci sono. Ogni riga legge le
+                   colonne per nome, non per posizione, quindi l'ordine con cui le righe contribuiscono
+                   alle colonne non cambia cosa viene mostrato. *@
+                var columns = _configWarnings.SelectMany(w => w.Values.Keys).Distinct().ToList();
+                <table id="config-check-table">
+                    <thead>
+                        <tr>
+                            @foreach (var column in columns)
+                            {
+                                <th>@column</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var warning in _configWarnings)
+                        {
+                            <tr>
+                                @foreach (var column in columns)
+                                {
+                                    <td>@warning.Values.GetValueOrDefault(column)</td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public PlantGraph Graph { get; set; } = null!;
+
+    /// <summary>
+    /// Riporta a <c>PlantCanvas</c> quali dispositivi "Check Junctions" ha appena segnalato come
+    /// isolati (compito B2b), cosi' la tela puo' colorarli - come fa l'Editor WinForms per le sue
+    /// giunzioni scucite (<c>FrmEDITOR.Private.cs:86-89</c>: rosso, spessore, visibilita' forzata).
+    /// Invocato con l'insieme nuovo a ogni <see cref="RunJunctionCheck"/> e con l'insieme vuoto
+    /// quando l'esito si invalida (<see cref="OnParametersSetAsync"/>); <c>PlantCanvas</c> lega
+    /// comunque l'insieme ricevuto alla revisione del grafo con cui e' stato calcolato
+    /// (<c>PlantCanvas.HighlightedItemIds</c>), quindi l'evidenziazione non resta accesa per un
+    /// problema che non c'e' piu' nemmeno quando questo pannello e' chiuso e non puo' piu' invocare
+    /// questo evento - correzione, misurata in rosso prima di questa correzione
+    /// proprio chiudendo il pannello prima di sistemare l'impianto.
+    /// </summary>
+    /// <remarks>
+    /// Solo <see cref="JunctionCheckWarningKind.IsolatedItem"/> contribuisce all'insieme evidenziato -
+    /// due esclusive, entrambe contate qui:
+    /// <list type="bullet">
+    /// <item>un <see cref="JunctionCheckWarningKind.UnplacedItem"/> non ha una posizione su cui essere
+    /// disegnato - e' gia' nell'elenco "non collocati" della tela, evidenziarlo di nuovo sarebbe
+    /// ridondante con niente da colorare davvero;</item>
+    /// <item>un <see cref="JunctionCheckWarningKind.DanglingJunction"/> i cui estremi non sono nemmeno
+    /// nell'impianto non ha un dispositivo vero da cui partire, quindi nessuna coordinata a cui
+    /// appendere una linea (a differenza dell'Editor WinForms, dove il nodo del diagramma esiste
+    /// comunque anche senza un dispositivo associato: qui l'esistenza del dispositivo e' l'unica fonte
+    /// di una posizione) - <b>e questo vale anche quando almeno uno dei due estremi esiste ma non e'
+    /// collocato</b>: quella giunzione non e' un <see cref="JunctionCheckWarningKind.DanglingJunction"/>
+    /// (gli identificativi ci sono, <see cref="JunctionChecks.ComputeWarnings"/> non la segnala affatto
+    /// come giunzione scucita), eppure resta invisibile sulla tela per la stessa ragione
+    /// (<c>PlantCanvas.TryBuildEdge</c> scarta un estremo non collocato). E' il caso piu' vicino a
+    /// quello che l'Editor WinForms risolve con <c>line.Visible = true</c>, e questo compito non lo
+    /// risolve: dare una posizione dichiarata ai dispositivi non collocati sposterebbe l'inquadratura e
+    /// introdurrebbe una geometria inventata, una decisione che non spetta a una correzione di bug.
+    /// Dichiarato qui, non implementato - non un'esclusiva taciuta.</item>
+    /// </list>
+    /// </remarks>
+    [Parameter]
+    public EventCallback<IReadOnlySet<Guid>> OnHighlightedItemIdsChanged { get; set; }
+
+    /// <summary>
+    /// I due token dei comandi "Check Junctions"/"Check Configuration" spostati nella barra
+    /// (compito B3b, si veda <c>Toolbar.razor</c> e <c>PlantCanvas.RequestJunctionCheckFromToolbar</c>/
+    /// <c>RequestConfigCheckFromToolbar</c>): un contatore, non un booleano - deve rilanciare la
+    /// stessa verifica anche quando il pannello e' gia' aperto sullo stesso valore (un secondo clic
+    /// dopo aver sistemato l'impianto), e un parametro che passa da vero a vero non farebbe scattare
+    /// <see cref="OnParametersSetAsync"/> una seconda volta. Zero (il predefinito, sia del parametro
+    /// che dei due campi <c>_handled*</c> sotto) significa "nessun comando dalla barra ancora
+    /// arrivato": aprire il pannello con "Verifiche" (che non tocca questi due parametri) continua a
+    /// non far partire niente da sola, come prima di questo compito - <c>ChecksTest</c>, che rende
+    /// questo componente senza mai impostarli, resta verde percio' senza modifiche.
+    /// </summary>
+    [Parameter]
+    public int JunctionCheckRequestToken { get; set; }
+
+    [Parameter]
+    public int ConfigCheckRequestToken { get; set; }
+
+    private int _handledJunctionCheckRequestToken;
+    private int _handledConfigCheckRequestToken;
+
+    /// <summary>
+    /// Specchia <see cref="_configCheckRunning"/> verso <c>PlantCanvas</c> (compito B3b): serve solo a
+    /// spegnere il pulsante "Check Configuration" duplicato nella barra durante l'attesa - lo stesso
+    /// pulsante dentro questo pannello si spegne gia' da solo, leggendo il campo direttamente.
+    /// </summary>
+    [Parameter]
+    public EventCallback<bool> ConfigCheckRunningChanged { get; set; }
+
+    /// <summary>
+    /// How many problems the two checks are showing now, together: the lines of "Check Junctions"
+    /// plus the rows of "Check Configuration" (passata grafica, 2026-09-29: the number on the Plant
+    /// checks button of the draw.io page). Invoked only when that number changes - a check run again
+    /// with the same outcome says nothing - and zero both when nothing has been checked and when a
+    /// result has been dropped: a failed configuration check counts no rows, its line says it failed.
+    /// </summary>
+    [Parameter]
+    public EventCallback<int> OnProblemCountChanged { get; set; }
+
+    /// <summary>The number last handed to <see cref="OnProblemCountChanged"/>; zero is what the page assumes before the first.</summary>
+    private int _reportedProblemCount;
+
+    private static readonly IReadOnlySet<Guid> NoHighlights = new HashSet<Guid>();
+
+    private List<JunctionCheckWarning>? _junctionWarnings;
+    private int? _junctionWarningsRevision;
+    private List<WmsConfigurationWarning>? _configWarnings;
+    private DrawioSaid? _configCheckError;
+    private bool _configCheckRunning;
+
+    /// <summary>
+    /// Locale (compito 10): non chiama l'host, a differenza del controllo di oggi che nemmeno lui
+    /// lo fa - <see cref="Wcs.WebEditor.Checks.JunctionChecks.ComputeWarnings"/> legge
+    /// <see cref="Graph"/>, gia' caricato nella pagina. Non puo' fallire, quindi non serve un ramo
+    /// d'errore come quello del controllo di configurazione sotto - <c>async</c> solo per
+    /// <see cref="OnHighlightedItemIdsChanged"/> (compito B2b), non per una chiamata all'host. Il
+    /// risultato porta con se' la <see cref="PlantGraph.TopologyRevision"/> del grafo con cui e' stato
+    /// calcolato - <see cref="OnParametersSetAsync"/> la confronta con quella corrente per accorgersi
+    /// quando non e' piu' fresco.
+    /// </summary>
+    private async Task RunJunctionCheck()
+    {
+        var warnings = JunctionChecks.ComputeWarnings(Graph).ToList();
+        _junctionWarnings = warnings;
+        _junctionWarningsRevision = Graph.TopologyRevision;
+        await ReportProblemCountAsync();
+
+        var highlighted = warnings
+            .Where(w => w.Kind == JunctionCheckWarningKind.IsolatedItem && w.TargetId is not null)
+            .Select(w => w.TargetId!.Value)
+            .ToHashSet();
+        await OnHighlightedItemIdsChanged.InvokeAsync(highlighted);
+    }
+
+    /// <summary>
+    /// Il grafo puo' cambiare mentre questo pannello resta aperto - una decisione di questo stesso
+    /// compito - e <see cref="Graph"/> e' lo stesso oggetto mutato sul posto (ogni mutatore ne
+    /// sostituisce solo <c>Items</c>/<c>Junctions</c>, non l'istanza): un confronto per riferimento
+    /// non vedrebbe mai la differenza. Se il risultato di "Check Junctions" e' stato calcolato su una
+    /// topologia precedente del grafo, non e' piu' vero e si torna allo stato "mai premuto" - onesto,
+    /// a differenza di un elenco scaduto lasciato a schermo come se fosse ancora attuale (lo stesso
+    /// difetto registrato nell'Editor WinForms come D199, applicato qui al momento in cui il dato
+    /// invecchia invece che a quando nasce). "Check Configuration" non partecipa: parla del
+    /// gestionale, non del grafo locale, e una mutazione della tela non lo rende piu' o meno vero.
+    /// L'evidenziazione sulla tela (compito B2b) segue la stessa sorte del testo del pannello - si
+    /// invalida insieme a lui, con lo stesso confronto.
+    /// <para>
+    /// <see cref="PlantGraph.TopologyRevision"/>, non <see cref="PlantGraph.Revision"/> (correzione
+    /// minore: prima di questa correzione un trascinamento qualunque - che fa crescere
+    /// <see cref="PlantGraph.Revision"/> senza cambiare ne' i dispositivi ne' le giunzioni - invalidava
+    /// il testo e spegneva ogni evidenziazione sulla tela, anche quella di un dispositivo ancora
+    /// isolato davvero: il primo gesto per sistemare l'impianto cancellava l'elenco di che cosa c'era
+    /// ancora da fare, per chi guardava il pannello o la tela). Si veda il commento di quel contatore.
+    /// </para>
+    /// </summary>
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_junctionWarningsRevision is not null && _junctionWarningsRevision != Graph.TopologyRevision)
+        {
+            _junctionWarnings = null;
+            _junctionWarningsRevision = null;
+            await ReportProblemCountAsync();
+            await OnHighlightedItemIdsChanged.InvokeAsync(NoHighlights);
+        }
+
+        // I due comandi della barra (compito B3b): un token diverso dall'ultimo gestito, in
+        // qualunque verso (anche su una prima resa dove il token arriva gia' a 1 mentre il campo
+        // "gestito" nasce a zero), rilancia la verifica corrispondente - si veda il commento sui due
+        // parametri sopra.
+        if (JunctionCheckRequestToken != _handledJunctionCheckRequestToken)
+        {
+            _handledJunctionCheckRequestToken = JunctionCheckRequestToken;
+            await RunJunctionCheck();
+        }
+
+        if (ConfigCheckRequestToken != _handledConfigCheckRequestToken)
+        {
+            _handledConfigCheckRequestToken = ConfigCheckRequestToken;
+            await RunConfigCheckAsync();
+        }
+    }
+
+    /// <summary>
+    /// <c>GET /wms/configuration-check</c> (compito 10): la sola delle due verifiche che parla
+    /// davvero con l'host, come nell'Editor WinForms (<c>btnCheckConfig_ItemClick</c>). La chiamata
+    /// sta dentro il <c>try</c>, non fuori (regola del compito): un 500/503
+    /// (<see cref="WcsApiException"/>), un host irraggiungibile (<see cref="HttpRequestException"/>)
+    /// o un host appeso oltre il timeout di 30 s del client (<see cref="TaskCanceledException"/>)
+    /// non deve abbattere il circuito Blazor - si mostra come fallimento della verifica, non come
+    /// zero problemi. <c>_configCheckRunning</c> spegne il pulsante per tutta la durata della
+    /// chiamata: senza di lui due clic ravvicinati partirebbero come due richieste senza ordine
+    /// garantito, e l'esito precedente - che nessuno sta piu' sostenendo appena la richiesta nuova
+    /// parte - resterebbe a schermo durante l'attesa invece di sparire subito.
+    /// </summary>
+    private async Task RunConfigCheckAsync()
+    {
+        _configCheckRunning = true;
+        await ConfigCheckRunningChanged.InvokeAsync(true);
+        _configWarnings = null;
+        _configCheckError = null;
+        await ReportProblemCountAsync();
+        try
+        {
+            _configWarnings = await State.Client.GetWmsConfigurationCheckAsync(0);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or WcsApiException or TaskCanceledException)
+        {
+            _configCheckError = DrawioSaid.Failed($"The configuration check failed because {DrawioFailureWords.Why(ex)}.", ex);
+            // Un tentativo fallito non lascia in vista l'esito di un tentativo precedente riuscito -
+            // sarebbe un dato non piu' vero mostrato come se lo fosse ancora.
+            _configWarnings = null;
+        }
+        finally
+        {
+            _configCheckRunning = false;
+            await ReportProblemCountAsync();
+            await ConfigCheckRunningChanged.InvokeAsync(false);
+        }
+    }
+
+    /// <summary>Tells <see cref="OnProblemCountChanged"/> the number the two results add up to now, if it is not the one it was last told.</summary>
+    private async Task ReportProblemCountAsync()
+    {
+        var count = (_junctionWarnings?.Count ?? 0) + (_configWarnings?.Count ?? 0);
+        if (count == _reportedProblemCount) return;
+        _reportedProblemCount = count;
+        await OnProblemCountChanged.InvokeAsync(count);
+    }
+}

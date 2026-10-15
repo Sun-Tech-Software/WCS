@@ -1,0 +1,141 @@
+@* The report of the last drop: what was born on the plant and what was not. Since the passata grafica
+   (2026-09-29) the window behind the "Details" of the creation's line in the row under the bar
+   (DrawioNotices), with the markup of before, id for id and class for class. The two pieces that
+   were not the report left it: the declaration that dropped shapes can no longer become devices is a
+   line of its own in the row (UnavailableNoticeOf), and the hidden "creating/idle" the browser's
+   tests wait on stays where it was, above the bar (DrawioEditorStatus). *@
+@using Wcs.WebEditor.Drawio.Coordination
+
+@if (HasAnything(State))
+{
+    <div id="drawio-creation-report" class="drawio-creation-report">
+        @if (State.Error is { } creationError)
+        {
+            <DrawioFailureLine Id="drawio-creation-error" LineClass="drawio-creation-error" Text="@creationError" Detail="@State.ErrorDetail" />
+        }
+        @if (State.Created.Count > 0)
+        {
+            <ul class="drawio-creation-created">
+                @for (var i = 0; i < State.Created.Count; i++)
+                {
+                    var line = State.Created[i];
+                    <li class="drawio-created @(line.CanvasFollowed ? null : "drawio-created-label-missed")">@Said($"drawio-created-{i}", $"Created: {line.Text}", line.Detail)</li>
+                }
+            </ul>
+        }
+        @if (State.NotCreated.Count > 0)
+        {
+            <ul class="drawio-creation-not-created">
+                @for (var i = 0; i < State.NotCreated.Count; i++)
+                {
+                    var line = State.NotCreated[i];
+                    <li class="drawio-not-created">@Said($"drawio-not-created-{i}", $"NOT created: {line.Text}", line.Detail)</li>
+                }
+            </ul>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public required DrawioCreationReportState State { get; set; }
+
+    /// <summary>
+    /// A line of the report, and - for a line about a request that failed - what came back behind a "?"
+    /// at its end (row 37 of the queue, extended to the whole page on 10/10): the sentence is then the
+    /// span <paramref name="lineId"/>, the "?" <c>{lineId}-help</c> and the text <c>{lineId}-detail</c>,
+    /// as on every failure line of the page. A line that says no failure is its text alone, as it was.
+    /// </summary>
+    private static RenderFragment Said(string lineId, string sentence, string? detail) => detail is null
+        ? @<text>@sentence</text>
+        : @<text><span id="@lineId">@sentence</span><DrawioHelp Id="@($"{lineId}-help")" Label="Technical detail of the failure"><p id="@($"{lineId}-detail")" class="drawio-failure-detail">@detail</p></DrawioHelp></text>;
+
+    /// <summary>
+    /// The creation's line in the row under the bar, with this report behind its "Details" - null when
+    /// the last drop left nothing to say. Red when the drop was refused whole or a shape surely did not
+    /// become a device; orange when a device was born but the drawing did not take its name, or when
+    /// whether a shape's device was born is NOT KNOWN (a request with no answer: the save says the same
+    /// of its unconfirmed pieces, in the same orange); green otherwise.
+    /// Transient: each report of the coordinator (<paramref name="report"/>) is a new outcome, and so is
+    /// the same report once it has grown (<see cref="OccurrenceOf"/>).
+    /// </summary>
+    public static DrawioNoticeLine? NoticeOf(DrawioCreationReportState state, long report) =>
+        HasAnything(state)
+            ? new DrawioNoticeLine("drawio-creation", ToneOf(state), LineOf(state), Dismissable: true, @<DrawioCreationReport State="state" />)
+            {
+                DetailsTitle = "Creation report",
+                Occurrence = OccurrenceOf(state, report),
+            }
+            : null;
+
+    /// <summary>
+    /// The declaration that a shape dropped on the drawing can no longer become a device: red, and it
+    /// stays until a subscription answers again - the sentence is all there is to it, under the id it
+    /// always had.
+    /// </summary>
+    public static DrawioNoticeLine? UnavailableNoticeOf(DrawioCreationReportState state) =>
+        state.Unavailable
+            ? new DrawioNoticeLine("drawio-creation-unavailable", DrawioNoticeTone.Bad, state.UnavailableMessage, Dismissable: false, null)
+            {
+                LineId = "drawio-creation-unavailable",
+            }
+            : null;
+
+    private static bool HasAnything(DrawioCreationReportState state) =>
+        state.Error is not null || state.Created.Count > 0 || state.NotCreated.Count > 0;
+
+    /// <summary>
+    /// Which outcome the line is: the coordinator's report, and how much of it has been said. A drop
+    /// drains its shapes one by one and says so after each, and shapes dropped meanwhile join the same
+    /// report: an X pressed on the first device's line closes what the report said until then, and a
+    /// device more, a name the drawing did not take, a shape NOT created or the error that stopped the
+    /// drop must bring the line back. Within one report the coordinator only adds - it empties the
+    /// report for the next one - so this count tells each stage from the ones before, and the report,
+    /// in the high half, tells two drops that end in the same words.
+    /// </summary>
+    private static long OccurrenceOf(DrawioCreationReportState state, long report) =>
+        report << 32 | (uint)(state.Created.Count + state.Created.Count(line => !line.CanvasFollowed) + state.NotCreated.Count + (state.Error is null ? 0 : 1));
+
+    private static DrawioNoticeTone ToneOf(DrawioCreationReportState state)
+    {
+        if (state.Error is not null || state.NotCreated.Count > state.NotKnown) return DrawioNoticeTone.Bad;
+        if (state.NotKnown > 0 || state.Created.Any(line => !line.CanvasFollowed)) return DrawioNoticeTone.Warn;
+        return DrawioNoticeTone.Ok;
+    }
+
+    /// <summary>
+    /// The error that covers the whole drop, or the count of what it came to: devices created, the ones
+    /// whose name the drawing did not take, shapes that surely did not become one, and shapes whose
+    /// device may be on the plant all the same - NOT KNOWN, which the line says as it is and with what to
+    /// do, because the natural thing after "not created" is to drag the shape again and make a second
+    /// device. The report had no summary of its own: this is the row's.
+    /// </summary>
+    private static string LineOf(DrawioCreationReportState state)
+    {
+        if (state.Error is { } error) return error;
+
+        var created = state.Created.Count;
+        var unnamed = state.Created.Count(line => !line.CanvasFollowed);
+        var notKnown = state.NotKnown;
+        var notCreated = state.NotCreated.Count - notKnown;
+        var dropped = created > 0 ? "" : " dropped on the drawing";
+        List<string> clauses = [];
+        if (created > 0)
+            clauses.Add(created == 1 ? "Created 1 device from the shapes dropped on the drawing" : $"Created {created} devices from the shapes dropped on the drawing");
+        if (unnamed > 0)
+            clauses.Add(unnamed < created ? $"the drawing did not take the name of {unnamed} of them"
+                : created == 1 ? "the drawing did not take its name" : "the drawing did not take their names");
+        if (notCreated > 0)
+            clauses.Add((notCreated == 1 ? "1 shape" : $"{notCreated} shapes") + dropped +
+                (notCreated == 1 ? " was NOT created" : " were NOT created"));
+        if (notKnown > 0)
+        {
+            clauses.Add(notKnown == 1
+                ? $"for 1 shape{(notCreated > 0 ? " more" : dropped)} it is NOT KNOWN whether its device was created - look before dragging it again"
+                : $"for {notKnown} shapes{(notCreated > 0 ? " more" : dropped)} it is NOT KNOWN whether their devices were created - look before dragging them again");
+        }
+
+        var line = string.Join("; ", clauses);
+        return $"{char.ToUpperInvariant(line[0])}{line[1..]}.";
+    }
+}

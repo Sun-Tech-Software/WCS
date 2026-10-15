@@ -1,0 +1,148 @@
+@* The plant checks (passata grafica, 2026-09-29): a button of the bar and a floating window, like
+   the six sections - until then a <details> in the band above the strip, whose box pushed the
+   drawing down when it was opened. The button says what the <summary> said (#drawio-checks-summary:
+   "Plant checks", or that the configuration check is running) and counts the problems the two checks
+   are showing (#drawio-checks-count, from ChecksPanel.OnProblemCountChanged): none checked yet, or
+   none found, and there is no number. While the configuration check runs the button also wears a
+   blue dot (.drawio-badge-running, fix round of 29/9): where its words are not shown - a narrow
+   window, or something else on its way in the bar - the dot is what says so without the mouse on
+   it. The count and the dot sit on the corners of the icon (wcs-webeditor.css). Opened and shut by
+   the page, which remembers it with the other windows; the window is hidden when shut, so the
+   results and the "go to" buttons are still there when it is opened again. *@
+@using Wcs.WebEditor.Checks
+@using Wcs.WebEditor.Drawio.Coordination
+@using Wcs.WebEditor.Model
+
+<button type="button" id="drawio-checks-toggle" class="drawio-checks-toggle"
+        aria-pressed="@(Open ? "true" : "false")" aria-label="@AriaLabel" @onclick="() => OnToggle.InvokeAsync()">
+    <DrawioIcon Name="checks" />
+    <span id="drawio-checks-summary" class="drawio-toggle-label">@Summary</span>
+    @if (_problems > 0)
+    {
+        <span id="drawio-checks-count" class="drawio-badge" aria-hidden="true">@_problems</span>
+    }
+    @if (_running)
+    {
+        <span class="drawio-badge drawio-badge-dot drawio-badge-running" aria-hidden="true"></span>
+    }
+</button>
+@* The two paragraphs that explained the checks and their "go to" buttons are behind the "?" of the
+   title bar (passata grafica, 2026-09-29), word for word and always in the page, as they were; the
+   window's first line is the two checks' buttons. *@
+<DrawioWindow Id="drawio-checks" Class="drawio-checks" Title="Plant checks" Icon="checks"
+              Open="Open" OnClose="() => OnClose.InvokeAsync()" Place="Place">
+    <Help>
+        <p id="drawio-checks-scope" class="drawio-checks-scope">
+            These two checks are about the WHOLE plant, never about the device selected in the drawing,
+            and neither of them writes anything: they work with the engine running too.
+            "Check Junctions" reads the plant as this page has it - what you have drawn and not saved
+            yet is not in it, so a junction you have just traced counts only after the save.
+            Creating a device - which is what dropping a shape on the canvas does - changes the plant
+            these results were computed on, and the results go with it: they are dropped rather than
+            left standing next to a plant that has moved under them. A save does the same, and for the
+            same reason: it reads the plant again, so from then on the results speak about a plant that
+            is no longer the one in front of you. Press the check again.
+        </p>
+        <p id="drawio-checks-goto-hint" class="drawio-checks-goto-hint">
+            An isolated device shows up below as a button. One click asks draw.io to select it and
+            bring it into view, with its properties in the column on the right, and the page says
+            what came back: a device that is also unplaced, or one whose shape has been deleted from
+            the canvas, has no cell to land on, and that is said instead of a click that appears to
+            do nothing. A dangling junction is not offered below at all - it is named above and
+            nowhere else - and there would be nothing on the canvas to select for it either.
+        </p>
+    </Help>
+    <ChildContent>
+        <ChecksPanel Graph="Graph"
+                     OnHighlightedItemIdsChanged="OnCheckedIsolatedDevices"
+                     ConfigCheckRunningChanged="RunningChangedAsync"
+                     OnProblemCountChanged="count => _problems = count" />
+        <div id="drawio-checks-goto" class="drawio-checks-goto">
+            @if (Targets.Count > 0)
+            {
+                <ul class="drawio-checks-targets">
+                    @foreach (var target in Targets)
+                    {
+                        <li>
+                            <button type="button" class="drawio-checks-target" data-item-id="@target.ItemId"
+                                    @onclick="@(() => OnGoToDevice.InvokeAsync(target.ItemId))">Go to @target.Name</button>
+                        </li>
+                    }
+                </ul>
+            }
+            @if (Outcome is { } outcome)
+            {
+                <DrawioFailureLine Id="drawio-checks-goto-outcome" Class="@(Reached ? "drawio-checks-goto-reached" : "drawio-checks-goto-missed")"
+                                   Text="@outcome.Text" Detail="@outcome.Detail" />
+            }
+        </div>
+    </ChildContent>
+</DrawioWindow>
+
+@code {
+    [Parameter, EditorRequired]
+    public required PlantGraph Graph { get; set; }
+
+    [Parameter]
+    public string Summary { get; set; } = "Plant checks";
+
+    /// <summary>Whether the page has the checks' window open.</summary>
+    [Parameter]
+    public bool Open { get; set; }
+
+    /// <summary>The button of the bar was pressed: the page opens the window, brings it to the front, or shuts it (see DrawioListSection.OnToggle).</summary>
+    [Parameter]
+    public EventCallback OnToggle { get; set; }
+
+    /// <summary>The window's X was pressed, or Esc in it: the page shuts the window, and does nothing if it is already shut.</summary>
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    /// <summary>Where the window opens when this browser remembers nothing about it (see DrawioWindowPlace).</summary>
+    [Parameter]
+    public DrawioWindowPlace Place { get; set; } = null!;
+
+    [Parameter]
+    public IReadOnlyList<DrawioCheckTarget> Targets { get; set; } = [];
+
+    /// <summary>What the drawing answered to the last "go to", worded by the page; what its script threw, if it did not answer, is behind the line's "?".</summary>
+    [Parameter]
+    public DrawioSaid? Outcome { get; set; }
+
+    [Parameter]
+    public bool Reached { get; set; }
+
+    [Parameter]
+    public EventCallback<IReadOnlySet<Guid>> OnCheckedIsolatedDevices { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> OnRunningChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid> OnGoToDevice { get; set; }
+
+    /// <summary>The problems the two checks are showing, as ChecksPanel last reported them.</summary>
+    private int _problems;
+
+    /// <summary>Whether the configuration check is running, as ChecksPanel last reported it: the button's dot.</summary>
+    private bool _running;
+
+    /// <summary>ChecksPanel's report that the configuration check started or ended: kept for the dot, and passed on to the page.</summary>
+    private Task RunningChangedAsync(bool running)
+    {
+        _running = running;
+        return OnRunningChanged.InvokeAsync(running);
+    }
+
+    /// <summary>
+    /// The button's name for a screen reader - and, where its words are not shown, for the mouse: the
+    /// CSS draws it in a tip under the button (wcs-webeditor.css, the ::after of the bar's buttons). The
+    /// summary, and the count when there is one.
+    /// </summary>
+    private string AriaLabel => _problems switch
+    {
+        0 => Summary,
+        1 => $"{Summary}, 1 problem",
+        _ => $"{Summary}, {_problems} problems",
+    };
+}

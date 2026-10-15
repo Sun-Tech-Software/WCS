@@ -1,0 +1,30 @@
+@*
+    Row 33 of the parity inventory: a page switch for draw.io's own rulers. The inventory measured
+    that setRulerVisible exists on draw.io's EditorUi but no menu reaches it with ui=min - this
+    component is that missing menu, and it is only the SHOWN half of the feature: it holds no
+    localStorage and no reference to draw.io itself, both of which live in drawio-bridge.js
+    (setRulerVisible, loadRulerPreference, saveRulerPreference) - the one place this page already
+    keeps everything that touches draw.io's ui and the browser's own storage. This component only
+    shows what Enabled says and reports a click through OnToggle; DrawioEditor.razor is what carries
+    the answer to and from the bridge.
+*@
+@* In the page's bar since the passata grafica (2026-09-29): an icon button, lit while the rulers are
+   on. It is still a checkbox, and the checkbox is still what is pressed: transparent, it lies over
+   the whole of the icon (see .drawio-ruler-switch in wcs-webeditor.css), so the mouse, the keyboard
+   and a test's click all reach the <input> itself - the icon and the tip are only what is seen.
+   "Rulers" is the checkbox's name (aria-label: the tip is not shown, so it names nothing) and the
+   tip the mouse or the focus opens. The label wraps only the icon, so a click beside it in the bar
+   does nothing (the CSS review's finding that split the old strip from its label still holds). *@
+<label class="drawio-ruler-switch drawio-btn-icon drawio-has-tip">
+    <input type="checkbox" id="drawio-ruler-switch" aria-label="Rulers" checked="@Enabled" @onchange="OnChangeAsync" />
+    <DrawioIcon Name="rulers" />
+    <span class="drawio-tip" role="tooltip">Rulers</span>
+</label>
+
+@code {
+    [Parameter] public bool Enabled { get; set; }
+
+    [Parameter] public EventCallback<bool> OnToggle { get; set; }
+
+    private Task OnChangeAsync(ChangeEventArgs e) => OnToggle.InvokeAsync(e.Value is true);
+}

@@ -1,0 +1,1 @@
+{"type":"https://tools.ietf.org/html/rfc9110#section-15.5.10","title":"Il motore non è fermo","status":409,"detail":"sostituzione dell'impianto: il motore è in Run, e un impianto si importa solo a motore fermo (Stop)"}

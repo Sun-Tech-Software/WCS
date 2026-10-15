@@ -1,0 +1,116 @@
+@* What the plant has and the drawing does not show (row 16 of the parity table). Until the passata
+   grafica (2026-09-29) a <details> in the band above the bar, its summary the one line readable with
+   it shut; now a line of the row under the bar (NoticeOf: the summary's sentence, under the summary's
+   id) and, behind its "Details", this list in a window - the paragraph that says what the list is
+   about behind the "?" of the window's title bar, as every window of the page has it (Scope), word for
+   word and under its id. The list is worked out again from the plant as the page has it at every
+   render, so it follows the plant. *@
+@using Wcs.WebEditor.Model
+
+<div id="drawio-undrawn" class="drawio-undrawn">
+    <ul class="drawio-undrawn-devices">
+        @foreach (var device in Undrawn.Devices)
+        {
+            <li class="drawio-undrawn-device">@UndrawnDeviceLine(device)</li>
+        }
+    </ul>
+    @if (Undrawn.Junctions > 0)
+    {
+        <p id="drawio-undrawn-junctions" class="drawio-undrawn-junctions">@UndrawnJunctionsLine(Undrawn.Junctions)</p>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public UndrawnPlant Undrawn { get; set; } = null!;
+
+    /// <summary>
+    /// The line of the row about the devices the drawing does not show - null when it shows them all,
+    /// which is said with silence: "0 devices not shown" at every opening is the noise that teaches
+    /// people to stop reading. Orange, and there as long as they are: no X.
+    /// </summary>
+    /// <remarks>
+    /// Its occurrence is what it counts: the same count is the same outcome and keeps its place in the
+    /// row, and a count that changes - a device more that the drawing cannot show, or one less - is
+    /// news and goes on top, out from behind "+N more" if that is where it was.
+    /// </remarks>
+    public static DrawioNoticeLine? NoticeOf(PlantGraph? graph) =>
+        graph is { } plant && DrawioDocument.NotDrawn(plant) is { Anything: true } undrawn
+            ? new DrawioNoticeLine("drawio-undrawn", DrawioNoticeTone.Warn, UndrawnSummaryLine(undrawn), Dismissable: false,
+                @<DrawioUndrawnReport Undrawn="undrawn" />)
+            {
+                DetailsTitle = "Devices not in the drawing",
+                LineId = "drawio-undrawn-summary",
+                Help = Scope,
+                Occurrence = (long)undrawn.Devices.Count << 32 | (uint)undrawn.Junctions,
+            }
+            : null;
+
+    /// <summary>What the list is about: the paragraph behind the "?" of the window's title bar.</summary>
+    private static readonly RenderFragment Scope =
+        @<p id="drawio-undrawn-scope" class="drawio-undrawn-scope">
+            The drawing is built from the plant: a device with no size, or of a type the engine's registry
+            does not declare, gets no shape - and the arrows that reach it go with it. Nothing has been
+            lost: the save leaves these devices alone, it does not read their absence from the drawing as
+            a deletion. There is no shape to click either, so a click on the drawing cannot open the
+            column on the right on them. This list is worked out again from the plant as this page has
+            it, so it follows the plant - and that means a device that becomes undrawn while you work
+            (giving it the DeviceType "None" in the panel does it) shows up here at once, while its shape
+            stays on the canvas until you open the page again.
+        </p>;
+
+    /// <summary>
+    /// The summary of the &lt;details&gt; of before, without its "- open for the names and the reason":
+    /// the names and the reason are behind "Details" now.
+    /// </summary>
+    private static string UndrawnSummaryLine(UndrawnPlant undrawn)
+    {
+        var devices = undrawn.Devices.Count == 1
+            ? "1 device of the plant is not in the drawing"
+            : $"{undrawn.Devices.Count} devices of the plant are not in the drawing";
+        var junctions = undrawn.Junctions switch
+        {
+            0 => string.Empty,
+            1 => ", and 1 junction goes with them",
+            _ => $", and {undrawn.Junctions} junctions go with them",
+        };
+        return $"{devices}{junctions}.";
+    }
+
+    private static string UndrawnDeviceLine(UndrawnDevice device)
+    {
+        var named = device.Item.Name is { Length: > 0 } name ? name : "(no name)";
+        List<string> facts = [];
+        if (device.NoBox)
+            facts.Add($"its size is {SizeText(device.Item)}, so there is no box to draw{PlacementAside(device.Item)}");
+        if (device.TypeNotInTheRegistry)
+            facts.Add($"its device type is {(int)device.Item.DeviceType}, which the engine's type registry does not declare, so there is no shape to draw it with");
+        var remedy = (device.NoBox, device.TypeNotInTheRegistry) switch
+        {
+            (true, true) => "It needs both before any drawing can show it: a box, and a type the registry declares.",
+            (true, false) => "Give it a box and the drawing shows it.",
+            _ => "A box would not help: what has to change is the type.",
+        };
+        return $"{named} ({device.Item.ItemId}): {string.Join("; and ", facts)}. {remedy}";
+    }
+
+    private static string SizeText(PlantItemDto item) => (item.Width, item.Height) switch
+    {
+        ({ } width, { } height) => $"{N(width)} x {N(height)}",
+        (null, { } height) => $"recorded only by half - a height of {N(height)} and no width",
+        ({ } width, null) => $"recorded only by half - a width of {N(width)} and no height",
+        _ => "not recorded at all",
+    };
+
+    private static string PlacementAside(PlantItemDto item) => PlantGraph.IsPlaced(item)
+        ? " - it does have a position, so it is NOT among the ones \"Check Junctions\" calls \"not placed\""
+        : " and no position either, which is what \"Check Junctions\" calls \"not placed\"";
+
+    private static string UndrawnJunctionsLine(int junctions) =>
+        (junctions == 1
+            ? "1 junction of the plant joins two devices and one of them is not drawn, so that arrow is not in the drawing either"
+            : $"{junctions} junctions of the plant join two devices of which at least one is not drawn, so those arrows are not in the drawing either")
+        + ". A junction whose end is not a device of the plant at all is NOT counted here: that is a different fault, and \"Check Junctions\" names it.";
+
+    private static string N(double value) =>
+        value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+}

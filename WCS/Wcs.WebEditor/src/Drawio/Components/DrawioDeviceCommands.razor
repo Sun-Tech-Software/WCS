@@ -1,0 +1,125 @@
+@using Wcs.Api.Contracts.Dtos
+@using Wcs.WebEditor.Drawio.Coordination
+@using Wcs.WebEditor.Live
+@using Wcs.WebEditor.Session
+@using static Wcs.Common.Enums
+@implements IDisposable
+@inject EditorSessionState Session
+
+<section id="drawio-commands" class="drawio-commands">
+    @* The heading names the four buttons for a screen reader; on screen they are part of the panel's
+       one row of actions, next to "Duplicate device" (wcs-webeditor.css, .drawio-property-actions). *@
+    <h3 class="drawio-commands-title visually-hidden">Commands</h3>
+    <div class="drawio-commands-buttons">
+        <button type="button" id="drawio-command-execute-step" disabled="@_follower.Sending"
+                @onclick="() => SendAsync(DrawioDeviceCommand.ExecuteStep)">@LabelOf(DrawioDeviceCommand.ExecuteStep)</button>
+        <button type="button" id="drawio-command-unload-lu" disabled="@_follower.Sending"
+                @onclick="() => SendAsync(DrawioDeviceCommand.UnloadLu)">@LabelOf(DrawioDeviceCommand.UnloadLu)</button>
+        <button type="button" id="drawio-command-offline" disabled="@_follower.Sending"
+                @onclick="() => SendAsync(OfflineCommand)">@LabelOf(OfflineCommand)</button>
+        <button type="button" id="drawio-command-step-done" disabled="@_follower.Sending"
+                @onclick="() => SendAsync(DrawioDeviceCommand.StepDone)">@LabelOf(DrawioDeviceCommand.StepDone)</button>
+    </div>
+    @if (_follower.Outcome is { } outcome)
+    {
+        <DrawioFailureLine Id="drawio-command-outcome" LineClass="drawio-command-outcome" Text="@outcome.Text" Detail="@outcome.Detail" />
+    }
+    @if (_menuRefused is { } refused)
+    {
+        <p id="drawio-command-menu-refused" class="drawio-command-outcome drawio-property-error">@refused</p>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public Guid ItemId { get; set; }
+    [Parameter, EditorRequired] public string DeviceName { get; set; } = "";
+    [Parameter] public DeviceStatusTypes? Status { get; set; }
+    [Parameter] public PlantLiveFeed? Feed { get; set; }
+
+    /// <summary>
+    /// Compito 5, row 63: a command chosen from draw.io's right-click menu on this device. It is sent
+    /// here, by the same <see cref="SendAsync(DrawioDeviceCommand)"/> as the buttons, so it has the
+    /// same outcome line and the same follow-up; a request for another device is left alone, and a
+    /// request is taken once (<see cref="DrawioMenuCommand.Take"/>) whatever renders after it.
+    /// </summary>
+    [Parameter] public DrawioMenuCommand? MenuRequest { get; set; }
+
+    /// <summary>
+    /// The command-outcome-following logic itself, extracted (compito 1) into
+    /// <see cref="DrawioCommandFollower"/> - shared with the whole-plant operations of that compito.
+    /// See that class for every race it defends against; this component now only wires its own
+    /// parameters (device, feed) onto it and renders <see cref="DrawioCommandFollower.Outcome"/>.
+    /// </summary>
+    private DrawioCommandFollower _follower = null!;
+
+    /// <summary>The follow-up of the last command sent, for the tests to await instead of guessing it - see DrawioCommandFollower.Resumed.</summary>
+    internal Task Resumed => _follower.Resumed;
+
+    /// <summary>Why the last command chosen from the menu was not sent, until the next one is.</summary>
+    private string? _menuRefused;
+
+    private bool IsOffline => Status == DeviceStatusTypes.OffLine;
+    private DrawioDeviceCommand OfflineCommand => IsOffline ? DrawioDeviceCommand.SetReady : DrawioDeviceCommand.SetOffLine;
+
+    private static string LabelOf(DrawioDeviceCommand command) => DrawioContextMenu.Of(command).Label;
+
+    protected override void OnInitialized()
+    {
+        _follower = new DrawioCommandFollower(() => Session.Client, DeviceName, InvokeAsync);
+        _follower.Changed += StateHasChanged;
+    }
+
+    protected override void OnParametersSet()
+    {
+        // DeviceName can change under an existing instance (the component is keyed on ItemId, not on
+        // the name - see DrawioEditor.razor.DeviceCommands): kept in step on every render, not only at
+        // OnInitialized, so a rename lands on whatever message the follower produces from here on.
+        _follower.Subject = DeviceName;
+        _follower.SetFeed(Feed);
+        TakeTheMenuRequest();
+    }
+
+    /// <summary>
+    /// The menu's command, sent as the button would send it. While a send is on its way the buttons
+    /// are disabled, and the menu is no way round that: the follower refuses a second send in silence
+    /// (DrawioCommandFollower.SendAsync), so the choice is refused HERE, and said.
+    /// </summary>
+    private void TakeTheMenuRequest()
+    {
+        if (MenuRequest is not { } request || request.ItemId != ItemId || !request.Take()) return;
+        if (_follower.Sending)
+        {
+            _menuRefused = $"{LabelOf(request.Command)} from the menu was NOT sent to {DeviceName}: the previous command is still being sent. Wait for its outcome here, then choose it again.";
+            return;
+        }
+
+        _ = SendAsync(request.Command);
+    }
+
+    /// <summary>
+    /// The one send, for the buttons and the menu alike. The menu's is started from OnParametersSet
+    /// and awaited by nobody (fix round 1), so nothing may leave this method: a failure the follower
+    /// does not recognise is caught here and said on the outcome line - for the button too, which
+    /// used to hand it to the renderer instead, so that the two paths answer the same way.
+    /// </summary>
+    private async Task SendAsync(DrawioDeviceCommand command)
+    {
+        _menuRefused = null;
+        var itemId = ItemId;
+        var (type, label) = DrawioContextMenu.Of(command);
+        try
+        {
+            await _follower.SendAsync(new CommandRequest((int)type, itemId), label, DeviceName, sent => sent.ItemId == itemId);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _follower.SayTheSendFailed(label, ex);
+        }
+    }
+
+    public void Dispose()
+    {
+        _follower.Changed -= StateHasChanged;
+        _follower.Dispose();
+    }
+}

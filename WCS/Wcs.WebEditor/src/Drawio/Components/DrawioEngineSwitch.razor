@@ -1,0 +1,181 @@
+@using Microsoft.JSInterop
+@using Wcs.WebEditor.Drawio.Coordination
+@using static Wcs.Common.Enums
+
+@* The engine in the page's bar (passata grafica, 2026-09-29): its state in a pill - green running,
+   grey stopped, orange for a pause, a recovery or a state not known, red shut down, and an icon that
+   says it too (play, stop, pause; a plain dot for the states that are none of the three) - and the one
+   gesture the engine would carry out from it. The gesture asks first, as it always has: the
+   question and its two answers are a box hanging under the button, no longer words appended to the
+   line, and the button pressed again takes the question back like Cancel. The Yes says what it does
+   (Stop engine in red, Start engine in blue), and is then the one coloured button: while the box is
+   open, Start gives up its blue class and is the page's plain button (owner's decision, 30/9), and
+   Stop is drawn pressed and neutral (wcs-webeditor.css). What is on its way stays next to the pill,
+   small and on the bar's one line: while it is there, the bar's buttons give up their words sooner
+   (wcs-webeditor.css, "something on its way"), and below 1120 px it takes the place of the gesture,
+   switched off meanwhile (row 30 of the queue). Esc takes the question back too.
+   The box's buttons go with the box, and the keyboard's focus with them: after Cancel or Esc it goes
+   back to the button that asked, after the Yes to the pill, which says what the engine does next (the
+   button is switched off while the command is on its way). What went wrong is not here: a
+   refusal is a sentence to read whole, and the page says it on a line of its own under the bar
+   (DrawioEditor.razor, #drawio-engine-error) - State.Error is read there. *@
+<div id="drawio-engine-switch" class="drawio-engine-switch">
+    <span id="drawio-engine-state" class="drawio-pill @Tone" tabindex="-1" @ref="_pill"><DrawioIcon Name="@IconName" />Engine: @StateName</span>
+    @if (GestureFor(Status) is { } offered)
+    {
+        @* aria-controls only while the box is there: it names an element, and with the box shut there is none. *@
+        <div class="drawio-engine-gesture" @onkeydown="OnKeyDown">
+            @if (offered == Gesture.Stop)
+            {
+                <button type="button" id="drawio-engine-stop" class="drawio-btn-danger" @ref="_gesture"
+                        aria-expanded="@(_confirming is not null ? "true" : "false")" aria-controls="@(_confirming is not null ? "drawio-engine-confirm-box" : null)"
+                        disabled="@(State.Pending is not null)" @onclick="() => Ask(Gesture.Stop)"><DrawioIcon Name="stop" />Stop the engine</button>
+            }
+            else
+            {
+                @* Blue at rest, and a plain button of the page while its own question is open:
+                   the box's Start engine is then the one blue button (owner's decision, 30/9).
+                   Stop keeps its red class while it asks. The words' data-words is the bold copy
+                   that keeps them as wide as at rest meanwhile (wcs-webeditor.css). *@
+                <button type="button" id="drawio-engine-start" class="@(_confirming == Gesture.Start ? null : "drawio-btn-primary")" @ref="_gesture"
+                        aria-expanded="@(_confirming is not null ? "true" : "false")" aria-controls="@(_confirming is not null ? "drawio-engine-confirm-box" : null)"
+                        disabled="@(State.Pending is not null)" @onclick="() => Ask(Gesture.Start)"><DrawioIcon Name="play" /><span class="drawio-engine-words" data-words="@StartWords">@StartWords</span></button>
+            }
+            @if (_confirming is { } asked)
+            {
+                <div id="drawio-engine-confirm-box" class="drawio-popover drawio-engine-confirm-box" role="group" aria-label="Confirm">
+                    <span class="drawio-engine-question">@Question</span>
+                    <div class="drawio-engine-answers">
+                        <button type="button" id="drawio-engine-cancel" @onclick="Cancel">Cancel</button>
+                        <button type="button" id="drawio-engine-confirm"
+                                class="@(asked == Gesture.Stop ? "drawio-btn-danger" : "drawio-btn-primary")"
+                                @onclick="ConfirmAsync">@(asked == Gesture.Stop ? "Stop engine" : "Start engine")</button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    @if (State.Pending is { } pending)
+    {
+        <span id="drawio-engine-pending" class="drawio-engine-pending">@pending</span>
+    }
+</div>
+
+@code {
+    /// <summary>The engine's status as the page shows it; null when it is not known.</summary>
+    [Parameter] public NavigatorStatusTypes? Status { get; set; }
+    [Parameter, EditorRequired] public DrawioEngineState State { get; set; } = null!;
+    [Parameter] public EventCallback OnStart { get; set; }
+    [Parameter] public EventCallback OnStop { get; set; }
+
+    private enum Gesture { Start, Stop }
+
+    /// <summary>The words of the Start button, written twice on it: once shown, once as the bold copy that holds their width.</summary>
+    private const string StartWords = "Start the engine";
+
+    /// <summary>
+    /// The gesture being confirmed, fixed when it was asked for: a Yes confirms what the question
+    /// said, not what the engine's status says at the moment of the click.
+    /// </summary>
+    private Gesture? _confirming;
+
+    /// <summary>The pill's icon: play running, stop stopped, pause paused, a dot for any other state.</summary>
+    private string IconName => Status switch
+    {
+        NavigatorStatusTypes.Run => "play",
+        NavigatorStatusTypes.Stop => "stop",
+        NavigatorStatusTypes.Pause => "pause",
+        _ => "live",
+    };
+
+    /// <summary>The pill's tone: green running, grey stopped, red shut down, orange for anything the operator should look at twice.</summary>
+    private string Tone => Status switch
+    {
+        NavigatorStatusTypes.Run => "drawio-pill-ok",
+        NavigatorStatusTypes.Stop => "drawio-pill-neutral",
+        NavigatorStatusTypes.Dispose => "drawio-pill-bad",
+        _ => "drawio-pill-warn",
+    };
+
+    private string StateName => Status switch
+    {
+        null => "unknown",
+        NavigatorStatusTypes.Stop => "Stop",
+        NavigatorStatusTypes.Run => "Run",
+        NavigatorStatusTypes.Pause => "Pause",
+        NavigatorStatusTypes.Recover => "Recovering after a failure",
+        NavigatorStatusTypes.Dispose => "Shut down",
+        { } other => other.ToString(),
+    };
+
+    private string Question => _confirming == Gesture.Stop
+        ? "Stop the engine? Every movement in progress stops."
+        : "Start the engine? The plant becomes read only for everybody, and devices connected to a PLC start moving.";
+
+    /// <summary>
+    /// A question the engine's status has overtaken is withdrawn: asked "Start?" with the engine
+    /// stopped, and the engine now running (started from elsewhere), a Yes must not do anything.
+    /// </summary>
+    protected override void OnParametersSet()
+    {
+        if (_confirming is { } asked && asked != GestureFor(Status)) _confirming = null;
+    }
+
+    /// <summary>
+    /// What the engine would carry out from <paramref name="status"/>, and so what the switch offers.
+    /// The engine's rule, copied (the Editor does not reference it): <c>HandleSetNavigatorRun</c>
+    /// (<c>Wcs.Engine/src/Collections/ComandToDo.cs</c>) starts only from Stop or Pause, and
+    /// <c>HandleSetNavigatorStop</c> stops only from Run; in any other status (Recover, Dispose) it
+    /// answers with a Warning and nothing changes - so nothing is offered.
+    /// </summary>
+    private static Gesture? GestureFor(NavigatorStatusTypes? status) => status switch
+    {
+        NavigatorStatusTypes.Stop or NavigatorStatusTypes.Pause => Gesture.Start,
+        NavigatorStatusTypes.Run => Gesture.Stop,
+        _ => null,
+    };
+
+    /// <summary>The button of the gesture: it asks, or - asking already - takes the question back.</summary>
+    private void Ask(Gesture gesture) => _confirming = _confirming == gesture ? null : gesture;
+
+    private ElementReference _pill;
+    private ElementReference _gesture;
+
+    /// <summary>Where the keyboard's focus goes once the box has gone with the button that had it; null for nowhere.</summary>
+    private Func<ElementReference>? _focusNext;
+
+    /// <summary>Cancel, or Esc anywhere in the gesture while it asks: the question taken back, the focus on the button that asked.</summary>
+    private void Cancel()
+    {
+        _confirming = null;
+        _focusNext = () => _gesture;
+    }
+
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape" && _confirming is not null) Cancel();
+    }
+
+    private async Task ConfirmAsync()
+    {
+        var asked = _confirming;
+        _confirming = null;
+        _focusNext = () => _pill;
+        if (asked == Gesture.Stop) await OnStop.InvokeAsync();
+        else if (asked == Gesture.Start) await OnStart.InvokeAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusNext is not { } next) return;
+        _focusNext = null;
+        try
+        {
+            await next().FocusAsync(preventScroll: true);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException or InvalidOperationException)
+        {
+            // Only the focus is lost: the gesture is done, or taken back, all the same.
+        }
+    }
+}

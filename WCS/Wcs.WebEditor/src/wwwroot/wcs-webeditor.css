@@ -1,0 +1,4220 @@
+/*
+ * Il foglio di stile dell'Editor web (compito 4b/B1). Prima di questo file Wcs.WebEditor non ne
+ * aveva nessuno: ogni pulsante, elenco e pannello era quello che il browser disegna per difetto -
+ * il giudizio del proprietario alla prima prova a video ("molto molto primitivo") nasceva
+ * soprattutto da qui.
+ *
+ * Il modello e' quello del ribbon Office 2013 che l'Editor WinForms porta oggi
+ * (WCS/Wcs.Editor/src/FrmEDITOR.designer.cs): barra orizzontale in cima, gruppi con l'etichetta
+ * sotto, grigio chiaro, piatto, pulsanti piccoli col testo dove conta. Lo si evoca, non lo si
+ * clona: niente ombre, sfumature o icone importate - questo file non carica nessuna libreria
+ * esterna e nessun CDN.
+ *
+ * Non tocca il disegno dell'impianto: i nodi e le giunzioni sulla tela SVG restano colorati con
+ * attributi di presentazione (fill/stroke), non con classi - bUnit non applica il CSS, quindi una
+ * classe da sola non proverebbe niente a schermo per quei test. Lo stesso vale per lo sfondo delle
+ * righe scelte nelle due liste (ItemList/JunctionList): resta uno stile in linea, un test lo
+ * verifica per nome (ItemListTest.TheSelectedRowIsMarkedDistinctlyFromTheOthers e la sua gemella
+ * in JunctionListTest), e sostituirlo con una classe lo farebbe fallire senza cambiare nulla per
+ * davvero.
+ */
+
+:root {
+    --editor-font: "Segoe UI", "Segoe UI Web", Tahoma, Geneva, Verdana, Arial, sans-serif;
+    --editor-font-mono: Consolas, "Courier New", monospace;
+
+    --editor-bg: #faf9f8;
+    --editor-ribbon-bg: #f3f2f1;
+    --editor-surface: #ffffff;
+    --editor-border: #d2d0ce;
+    --editor-border-strong: #a19f9d;
+
+    --editor-text: #201f1e;
+    --editor-text-muted: #605e5c;
+    --editor-text-on-accent: #ffffff;
+
+    --editor-accent: #0078d4;
+    --editor-accent-hover: #106ebe;
+    --editor-accent-active: #005a9e;
+    --editor-accent-bg: #deecf9;
+
+    --editor-danger: #b91c1c;
+    --editor-danger-bg: #fdecea;
+    --editor-danger-border: #f3b3ae;
+    --editor-danger-hover: #991b1b;
+    --editor-danger-active: #7f1d1d;
+
+    --editor-success: #107c10;
+    --editor-success-bg: #dff6dd;
+
+    --editor-warning: #c2410c;
+    --editor-warning-bg: #fdf1e8;
+
+    --editor-pressed-bg: #edebe9;
+
+    --editor-radius: 3px;
+    --editor-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    --editor-shadow-raised: var(--editor-shadow), 0 6px 18px rgba(0, 0, 0, 0.16);
+}
+
+/* --- Base ---------------------------------------------------------------------------------- */
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--editor-bg);
+    color: var(--editor-text);
+    font-family: var(--editor-font);
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+button, input, select {
+    font-family: inherit;
+    font-size: inherit;
+}
+
+/* --- La pagina della chiave (Key.razor + il guscio di Editor.razor) ------------------------ */
+
+/* height, non min-height: min-height e' un PAVIMENTO, non un SOFFITTO - se il contenuto e' piu' alto
+   di 100vh, lo scafo cresce con lui invece di fermarsi alla finestra, e ogni "flex:1; min-height:0"
+   piu' sotto nella catena (#plant-content, .plant-canvas, .plant-canvas-body, .plant-svg) smette di
+   avere un vincolo da rispettare: un flex item si restringe solo quando il proprio ANTENATO flex ha
+   un'altezza VERA a cui stare, non quando gli si chiede solo "sii alto ALMENO cosi'". Misurato con
+   min-height: a 1600x900 l'<svg> veniva reso 1585x991 px (piu' alto della finestra) e
+   document.documentElement.scrollHeight valeva 1337 - la pagina scorreva in verticale e gli ultimi
+   ~410 px del disegno restavano sotto la piega, proprio il contrario di quanto il proprietario aveva
+   chiesto per nome ("lo spazio del grafo deve essere tutto lo spazio disponibile della finestra").
+   Con height:100vh lo scafo e' un rettangolo fisso: la tela si restringe per starci dentro invece di
+   spingerlo oltre.
+
+   Il soffitto da solo non basta: senza un pavimento in qualche punto della catena, quando l'ingombro
+   fisso (intestazione + barra + legenda delle porte) supera 100vh la tela si restringe fino a ZERO
+   invece di fermarsi sotto la piega - il disegno sparisce del tutto, non solo la parte che eccede la
+   finestra. .plant-canvas-diagram (piu' sotto in questo file) porta un pavimento di 200px, l'unico
+   punto della catena senza min-height:0: quando l'ingombro fisso piu' quei 200px supera la finestra,
+   e' lui a rifiutarsi di restringersi oltre, e la pagina torna a scorrere (nessun overflow:hidden in
+   questa catena, quindi il contenuto che eccede il rettangolo fisso resta dipinto sotto di lui, non
+   ritagliato) invece di perdere il disegno.
+
+   Misurato sull'impianto vero (DEMOPLANT, 51 dispositivi), sullo stesso banco, A/B a 1000x420
+   (finestra piu' bassa dell'ingombro fisso, ~471px - la barra va a due righe a questa larghezza):
+   senza il pavimento la tela era alta 0px (misura del correttore nella revisione, non ripetuta qui -
+   ripristinare min-height:0 per riverificarla romperebbe il rimedio appena applicato); con il
+   pavimento di 200px .plant-canvas-diagram e' davvero alto 200px (misurato) ma <svg> arriva a 174.2px
+   - il resto lo prende un fratello dentro lo stesso contenitore, la lettura "X: - Y: -" della
+   posizione del puntatore (25.8px, sempre presente) - comunque un disegno vero, non zero, raggiungibile
+   scrollando: document.documentElement.scrollHeight sale a 671 contro i 420 della finestra. Il caso
+   del proprietario (1600x900) non cambia: la' l'ingombro fisso lascia comunque piu' di 200px, quindi
+   il pavimento non entra mai in gioco e la tela resta 1600x553.23 come prima di questo pavimento -
+   misurato di nuovo sullo stesso banco, stesso numero della correzione precedente. */
+.editor-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+/* #plant-content (Editor.razor) e' il contenitore autenticato: deve restare un ramo flex verticale
+   fino a PlantCanvas, altrimenti "flex:1" su .plant-canvas (piu' sotto) non avrebbe nessuno spazio
+   da riempire - un flex item cresce dentro il proprio genitore flex, non dentro un antenato
+   qualunque. min-height:0 e' la parte che si dimentica piu' spesso in una catena flex verticale:
+   senza, un figlio con "flex:1" non scende mai sotto la propria altezza di contenuto, e la tela
+   smetterebbe di restringersi quando l'elenco dei dispositivi non collocati (piu' sotto in questo
+   file) si allunga. */
+#plant-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+/* --- /editor/drawio (compito 5): l'iframe deve prendere tutto lo spazio della finestra, stessa
+   ragione di .editor-shell qui sopra - senza un'altezza vera nella catena un iframe resta alto
+   quanto il browser lo disegna per difetto (~150px), non quanto la finestra. */
+.drawio-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+/* The area the drawing and the properties panel share (batch B). It is the only child of
+   .drawio-shell that grows, so it is where the height of the page ends up; min-height:0 is what
+   lets it actually shrink to the window instead of being pushed out by its own content, the same
+   reason .editor-shell gives at the top of this file. position:relative is what the panel below
+   anchors to. */
+.drawio-body {
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    min-height: 0;
+}
+
+#drawio-frame {
+    flex: 1;
+    /* A flex item never shrinks below its own content's width by default, and for a replaced
+       element like an iframe that floor is its intrinsic 300px. The same correction
+       .plant-canvas-diagram carries for the same reason. */
+    min-width: 0;
+    border: 0;
+}
+
+/* The column the properties panel lives in (batch B). Same width and same look as
+   #property-panel-container on /editor - but ALWAYS there, empty or full, and that is the one
+   decision on this page that had to be taken against the plan. Both other shapes were built and
+   measured first:
+
+   1. A column that appears with the selection, as on /editor. Narrowing the iframe makes draw.io
+      scroll the drawing sideways by exactly the width removed, a few hundred milliseconds later.
+      And inside draw.io a cell is SELECTED ON MOUSEDOWN - that is, at the start of every drag - so
+      the panel opened in the middle of the gesture and the plant slid out from under the mouse:
+      measured, a device dragged 180 px to the right ended up 521 px to the LEFT
+      (DrawioRoundTripTest went red on exactly that, DrawioGroupedCellsTest too). Not a test
+      artefact: that is what the operator's hand would feel.
+   2. A panel overlaying the drawing's right edge, so that nothing is ever resized. It covers
+      draw.io's "Save & Exit" button, which sits in the top right corner - measured as well: the
+      save click could not reach it any more.
+
+   The column remains present regardless of selection, so selecting a device cannot move the plant
+   under the operator's hand. Its width only changes when the operator uses its separator, or when
+   the viewport shrinks. When nothing is selected it explains how to fill it. */
+.drawio-property-dock {
+    position: relative;
+    flex: 0 0 var(--drawio-property-dock-width, 320px);
+    width: var(--drawio-property-dock-width, 320px);
+    box-sizing: border-box;
+    border-left: 1px solid var(--editor-border);
+    background: var(--editor-surface);
+    padding: 10px 16px 16px;
+    /* A column in two parts since batch C: the fields scroll, the outcome of the last confirmation
+       does not. min-height:0 for the same reason .drawio-body gives above - without it the part
+       that scrolls refuses to shrink below its own content. */
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.drawio-property-dock-resizer {
+    position: absolute;
+    z-index: 2;
+    inset: 0 auto 0 0;
+    width: 10px;
+    cursor: col-resize;
+    touch-action: none;
+}
+
+.drawio-property-dock-resizer::after {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 2px;
+    background: transparent;
+}
+
+.drawio-property-dock-resizer:is(:hover, :focus-visible)::after {
+    background: var(--editor-accent);
+}
+
+/* The padding is the room of the keyboard's ring: the page's ring is drawn outside a control's box
+   (2 px, 1 px off it), and a box that scrolls clips on every side - without it a focused field or
+   button at the column's edge showed no ring on that edge. The negative margin gives the room back,
+   so nothing in the column moves. */
+.drawio-property-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    margin: -4px;
+    padding: 4px;
+}
+
+/* What the column says when nothing is selected. It is not a placeholder: an empty 320 px strip
+   next to the drawing reads as something that failed to load. */
+.drawio-property-hint {
+    margin: 0;
+    color: var(--editor-text-muted);
+    font-size: 0.85rem;
+}
+
+/* The selected field's contract description stays at the foot of the dock while the sixty fields
+   scroll above it. The blue edge makes it read as contextual guidance rather than another editable
+   property; the icon and heading keep that distinction when the description is only one line. */
+.drawio-property-description {
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr);
+    gap: 8px;
+    margin-top: 10px;
+    padding: 9px 10px;
+    border: 1px solid var(--editor-border);
+    border-left: 3px solid var(--editor-accent);
+    border-radius: var(--editor-radius);
+    background: var(--editor-accent-bg);
+    color: var(--editor-text);
+}
+
+.drawio-property-description > .drawio-icon {
+    margin-top: 1px;
+    color: var(--editor-accent-active);
+}
+
+.drawio-property-description-copy {
+    min-width: 0;
+}
+
+.drawio-property-description :is(p) {
+    margin: 0;
+}
+
+.drawio-property-description-heading {
+    color: var(--editor-accent-active);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.drawio-property-description-title {
+    margin-top: 2px !important;
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.drawio-property-description-body {
+    margin-top: 2px !important;
+    color: var(--editor-text-muted);
+    font-size: 11px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+/* MEASURED, and not a nicety: without this the panel is 320 px wide and its content 733 px, so
+   every field runs 154 px past the right edge of a 1600 px window and the values are cut in half.
+   The cause is the browser's own stylesheet: a <fieldset> carries min-inline-size: min-content,
+   which makes it refuse to shrink below the widest thing inside it - here the longest <option> of
+   MotionType, a whole sentence. It is set HERE, on this page's dock, and not on
+   .property-panel-group, which /editor renders too: the same rule there would be a change to the
+   shared panel, and this batch does not touch it. (The same overflow is to be expected of
+   #property-panel-container on /editor, which is 320 px wide as well - NOT measured, and left to
+   whoever owns that panel.)
+
+   The groups of the properties in the panel (passata grafica, 2026-09-29): no box around each, a
+   small grey legend over a line, and every property on one row - its name, then its value, the
+   values of a group in one column. The name column is fixed, so that the values line up whatever
+   the names; a long name wraps inside it, between the words of its camel case (PropertyPanel breaks
+   it there with <wbr>) and, for a word longer than the column, anywhere. */
+.drawio-property-dock .property-panel-group {
+    min-width: 0;
+    margin: 0 0 10px;
+    padding: 0;
+    border: 0;
+    border-top: 1px solid var(--editor-border);
+    border-radius: 0;
+    background: transparent;
+}
+
+/* The legends keep the shared panel's 12 px, grey and in capitals: the page's one look of a group
+   heading, which Operations' titles and the mission steps' title wear too (.drawio-group-heading). */
+.drawio-property-dock .property-panel-group legend {
+    padding: 0 6px 0 0;
+}
+
+.drawio-property-dock .property-panel-field {
+    display: grid;
+    grid-template-columns: 9rem minmax(0, 1fr);
+    align-items: center;
+    column-gap: 8px;
+    padding: 2px 0;
+}
+
+.drawio-property-dock .property-panel-field label {
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+.drawio-property-dock .property-panel-field input[type="checkbox"] {
+    justify-self: start;
+}
+
+/* The fields of the shared panel carry a rule of their own (further down): here they take the height
+   and the corners of the page's fields. */
+.drawio-property-dock .property-panel-field :is(input:not([type="checkbox"]), select) {
+    box-sizing: border-box;
+    height: 28px;
+    padding: 0 6px;
+    border-radius: 6px;
+}
+
+/* Which device the panel is about, and when the permit is asked for (batch C: at "Save", not when
+   the panel opens). Not in the tones of the row of outcomes: those speak about the whole page,
+   this one is a note about the panel it sits on. The box that points a shape at a device wears it
+   too (#drawio-reassociate-subject). */
+.drawio-property-subject {
+    margin: 0 0 10px;
+    padding: 6px 8px;
+    border: 1px solid var(--editor-border);
+    border-radius: var(--editor-radius);
+    background: var(--editor-bg);
+    color: var(--editor-text-muted);
+    font-size: 0.85rem;
+}
+
+/* Behind the "?" of the panel's heading since the passata grafica (#drawio-property-subject): the
+   note's box is its frame, and the sentence has none of its own there. */
+.drawio-help-body > .drawio-property-subject {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+}
+
+/* The panel's heading (passata grafica, 2026-09-29): what is selected in bold, the device's type and
+   the load unit it holds in grey under it, the "?" at the right. It does not scroll with the
+   properties (it is outside .drawio-property-scroll), and a line under it closes it off. Its "?"'s
+   note is placed by drawio-help.js like every other (.drawio-help-body): fixed to the viewport, the
+   column's edges do not cut it. */
+.drawio-property-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 0 0 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--editor-border);
+}
+
+.drawio-property-heading {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.drawio-property-kind {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 10px;
+    margin: 2px 0 0;
+    color: var(--editor-text-muted);
+    font-size: 0.85rem;
+}
+
+.drawio-property-kind:empty {
+    display: none;
+}
+
+/* The panel's actions - Duplicate, then the four commands while the engine runs - as one row of
+   buttons that wraps, above the properties. The two sections they come in (DrawioDuplicateDevice,
+   DrawioDeviceCommands) and the commands' own box of buttons draw no box here (display: contents):
+   their buttons are the row's, side by side. What is not a button - the duplicate's question with its
+   two answers, a command's outcome - takes a whole line of the row, under the buttons before it. The
+   commands' "Commands" heading is there for a screen reader only (.visually-hidden): on screen it
+   would split the row, or name Duplicate a command. Measured in DrawioPropertyPanelTest: before this,
+   a column of four lines - Duplicate alone, the heading, the four commands on two more. */
+.drawio-property-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 12px;
+}
+
+.drawio-property-actions > .drawio-duplicate,
+.drawio-property-actions > .drawio-commands,
+.drawio-property-actions .drawio-commands-buttons {
+    display: contents;
+}
+
+/* The duplicate's question and its two answers, a whole line of the row (border-box: as wide as the
+   row, never wider). Its sentences are flex items, whose margins do not collapse: the browser's 1em
+   around a <p> (the "not now" line, #drawio-duplicate-not-now) would stand 20 px off its neighbours
+   instead of the row's 6. */
+.drawio-duplicate-confirmation {
+    box-sizing: border-box;
+    flex: 1 0 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.drawio-duplicate-confirmation > p {
+    margin: 0;
+}
+
+.drawio-duplicate-question {
+    flex: 1 0 100%;
+    margin: 0;
+    font-size: 0.85rem;
+}
+
+.drawio-command-outcome {
+    box-sizing: border-box;
+    flex: 1 0 100%;
+    margin: 0;
+    font-size: 0.85rem;
+}
+
+.drawio-property-loading {
+    margin: 0;
+    color: var(--editor-text-muted);
+}
+
+.drawio-cells-none,
+.drawio-cells-notice {
+    margin: 0;
+    color: var(--editor-text-muted);
+    font-size: 0.85rem;
+}
+
+.drawio-property-error {
+    margin: 0;
+    color: var(--editor-danger);
+    font-weight: 600;
+}
+
+/* Row 29 of the queue: the sentence of a cells read that failed, and at its right, level with its
+   first line as the heading's is, the "?" that holds what the host answered - one line for each read
+   that failed (the page joins them with a line break, which pre-line keeps on screen - measured in
+   DrawioPropertyPanelTest). In the sentence, inside the 320 px column, that answer ran past the
+   edge: the problem document's type, a URL, was cut there. In the note, which is wider, its longest
+   run fitted until row 34 of the queue, whose field ("unavailable") made the run of the answer's
+   tail longer - from the detail to the trace id there is no space in it - and the note's text ran
+   22 px past its edge (DrawioPropertyPanelTest). The answer is the host's, and how long its runs are
+   is the host's too: the detail breaks anywhere, rather than trusting the next field to fit.
+   Row 37 of the queue: every line of the panel that says a failure is built so (DrawioFailureLine),
+   and so is every window that shows the same lines (the edit permit that could not be asked for, a
+   command's outcome, the label the drawing did not take): the save, the creation, the engine's band,
+   the device list, the Operations and PLC connections windows, the Plant file. The row takes the
+   line's place and margins (its LineClass), so the sentence in it has none of its own. */
+.drawio-failure-line {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.drawio-failure-line > :first-child {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+}
+
+.drawio-failure-detail {
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+
+/* The outcome of a confirmation - the refusal in the same red as a failed read (same class), and
+   the line that says what was written - both UNDER the panel, right below the "Save" button that
+   produced them.
+
+   The position was measured, not chosen: the button is the last thing in a column of sixty fields
+   that scrolls, so whoever presses it is looking at the bottom of the column. Put above the fields,
+   as they were first, the write went through and the screenshot showed no trace of it - the
+   confirmation sat a full column's scroll away from the button.
+
+   And below the button, inside the scrolling part, was still not enough: the line ADDS height to a
+   column already scrolled to its end, so it landed just past the fold - looked at, and all that
+   could be read of a refusal was the top edge of its first line. position:sticky does not fix that
+   either, and the reason is worth keeping: a sticky element cannot leave its containing block, and
+   this one is the LAST thing in it, so there is nowhere to stick to. Measured: one line of the
+   refusal readable instead of none.
+
+   What is left is the shape that cannot fail: the outcome is OUTSIDE the part that scrolls. The
+   column is a flex column, the fields scroll inside it, and these two lines sit under them, always
+   on screen, however long the message is. */
+.drawio-property-outcome {
+    flex: 0 0 auto;
+    margin: 10px 0 0;
+    padding-top: 8px;
+    border-top: 1px solid var(--editor-border);
+}
+
+.drawio-property-written {
+    color: var(--editor-text-muted);
+    font-weight: 600;
+}
+
+/* The save's report (compito 7b): one line for everything written, not written, refused or chosen
+   for whoever draws. It is not cut short and not summed up: it is where "nothing lost in silence"
+   shows. Since the passata grafica (29/9) it is the content of the window behind "Details" of its
+   line in the row under the bar: the window gives the frame, the padding and the scrolling (they were
+   its own, with a ceiling of 30vh, while it pushed the drawing down). */
+.drawio-save-report ul {
+    margin: 4px 0;
+    padding-left: 20px;
+}
+
+.drawio-save-error {
+    margin: 0 0 4px;
+    color: var(--editor-danger);
+    font-weight: 600;
+}
+
+.drawio-save-summary {
+    margin: 0 0 4px;
+    font-weight: 600;
+}
+
+.drawio-refusal,
+.drawio-not-written {
+    color: var(--editor-danger);
+}
+
+/* Il terzo esito: non si sa se sia passato (la richiesta e' scaduta senza risposta). Colore
+   diverso dal rosso dei non scritti apposta - chi legge non deve confonderlo con una cosa che
+   sicuramente non e' passata, perche' l'azione da fare e' diversa: andare a guardare, non rifare. */
+.drawio-unconfirmed {
+    color: var(--editor-warning);
+    font-weight: 600;
+}
+
+.drawio-notice {
+    color: var(--editor-text-muted);
+}
+
+/* The report of the last DROP: what was born on the plant and what was not. The same shape as the
+   save's, and a window of its own behind "Details" of its own line: two different gestures, and
+   mixing them would read a birth as the outcome of a save nobody made. */
+.drawio-creation-report ul {
+    margin: 4px 0;
+    padding-left: 20px;
+}
+
+.drawio-creation-error {
+    margin: 0 0 4px;
+    color: var(--editor-danger);
+    font-weight: 600;
+}
+
+.drawio-not-created {
+    color: var(--editor-danger);
+}
+
+.drawio-created {
+    color: var(--editor-text);
+}
+
+/* A SUCCESSFUL birth whose name did not reach the drawing. It stays a line of the births - the device
+   is on the plant, and moving it among the failures would have the gesture made again and a double
+   born - but among twenty identical lines the extra sentence is, on screen, invisible: whoever is
+   about to save must see WHICH one did not take its name without reading them all again. The orange
+   of the warnings of the row of outcomes ("something here did not work"), not the red of
+   .drawio-not-created: nothing was lost. */
+.drawio-created-label-missed {
+    color: var(--editor-warning);
+    font-weight: 600;
+}
+
+/* What the plant has and the drawing does not show (row 16 of the parity table): the window behind
+   "Details" of its orange line in the row under the bar, the paragraph about the list behind the "?"
+   of its title bar. The list is one line per device, and the window scrolls it: a plant migrated from
+   an old drawing can carry many undrawn devices. */
+.drawio-undrawn-devices {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.drawio-undrawn-device {
+    margin-bottom: 4px;
+}
+
+.drawio-undrawn-junctions {
+    margin: 8px 0 0;
+    font-size: 0.85rem;
+}
+
+/* The selection line (batch A of the properties panel): which device is selected inside draw.io.
+   Since the passata grafica it is the panel's title, in its heading (.drawio-property-head), no longer
+   a line above the bar: in the text's colour and bold, as a title, and not in a tone - the row under
+   the bar colours an outcome by what it came to (green, orange, red), while this line only reports
+   what the operator has just done. The failure variant below is the exception, and it borrows the red
+   of the row's failures because it is the same kind of sentence: something is not working. */
+.drawio-selection {
+    margin: 0;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.drawio-selection-error {
+    color: var(--editor-danger);
+}
+
+/* The plant's file - export and import - the first section of the strip (.drawio-sections below;
+   in the band above, next to the checks, until 27/9), shut to begin with (DrawioPlantFile.razor
+   says why). Open, it is a floating window (.drawio-window, at the end of this file): the window
+   gives the frame, the padding and the scrollbar, and the section only its text size. The import's
+   confirmation is a fixed dialog of its own: the window's scrollbar does not clip it. */
+.drawio-plant-file {
+    --drawio-window-preferred-width: 680px;
+    --drawio-window-max-height: 420px;
+    font-size: 0.9rem;
+}
+
+.drawio-plant-file-loading {
+    margin: 0 0 8px;
+    color: var(--editor-text-muted);
+    font-size: 0.85rem;
+}
+
+/* Operational cards adapt to their floating window, independently of the viewport. */
+.drawio-plant-file-body {
+    container-type: inline-size;
+}
+
+.drawio-plant-file-commands {
+    display: block;
+}
+
+.drawio-operational-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.drawio-operational-card {
+    --card-accent: var(--editor-accent);
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid var(--editor-border);
+    border-top: 3px solid var(--card-accent);
+    border-radius: var(--editor-radius);
+    background: var(--editor-surface);
+}
+
+.drawio-operational-card.is-info { --card-accent: var(--editor-accent); }
+.drawio-operational-card.is-safe { --card-accent: var(--editor-success); }
+.drawio-operational-card.is-warning { --card-accent: var(--editor-warning); }
+.drawio-operational-card.is-danger { --card-accent: var(--editor-danger); }
+
+.drawio-operational-card-header {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr);
+    gap: 9px;
+}
+
+.drawio-operational-card-header > .drawio-icon {
+    color: var(--card-accent);
+}
+
+.drawio-operational-card-marker {
+    width: 10px;
+    height: 10px;
+    margin-top: 4px;
+    border-radius: 50%;
+    background: var(--card-accent);
+}
+
+.drawio-operational-card-header :is(h4, p) {
+    margin: 0;
+}
+
+.drawio-operational-card-header h4 {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.drawio-operational-card-header p {
+    margin-top: 4px;
+    color: var(--editor-text-muted);
+    overflow-wrap: anywhere;
+}
+
+.drawio-operational-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.drawio-operational-status {
+    margin: 0;
+    color: var(--editor-text-muted);
+    overflow-wrap: anywhere;
+}
+
+@container (max-width: 620px) {
+    .drawio-operational-grid { grid-template-columns: 1fr; }
+}
+
+/* Operations uses the same responsive cards as Plant file. Long command outcomes grow inside
+   the window's scrolling content rather than imposing fixed card heights. */
+.drawio-operations {
+    font-size: 0.9rem;
+}
+
+.drawio-operations-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    container-type: inline-size;
+}
+
+.drawio-operations-tabs {
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--editor-border);
+    scrollbar-width: thin;
+}
+
+.drawio-operations-tab {
+    --tab-accent: var(--editor-accent);
+    flex: 1 0 auto;
+    min-width: max-content;
+    padding: 8px 10px 7px;
+    border: 0;
+    border-bottom: 3px solid transparent;
+    border-radius: 4px 4px 0 0;
+    background: transparent;
+    color: var(--editor-text-muted);
+    font-weight: 600;
+}
+
+.drawio-operations-tab.is-danger { --tab-accent: var(--editor-danger); }
+.drawio-operations-tab.is-safe { --tab-accent: var(--editor-success); }
+
+.drawio-operations-tab[aria-selected="true"] {
+    border-bottom-color: var(--tab-accent);
+    background: color-mix(in srgb, var(--tab-accent) 9%, var(--editor-surface));
+    color: var(--tab-accent);
+}
+
+.drawio-operations-tab:focus-visible {
+    position: relative;
+    z-index: 1;
+    outline: 2px solid var(--tab-accent);
+    outline-offset: -2px;
+}
+
+.drawio-operations-grid {
+    display: block;
+}
+
+.drawio-operations-grid > [hidden] {
+    display: none;
+}
+
+.drawio-operations-fields {
+    display: grid;
+    grid-template-columns: auto minmax(0, 180px);
+    align-items: center;
+    gap: 8px;
+}
+
+.drawio-operations-fields input {
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.drawio-operations-grid :is(.drawio-operations-outcome, .drawio-operations-question,
+    .drawio-operations-reason, .drawio-test-route-selected, .drawio-test-route-endpoints span) {
+    overflow-wrap: anywhere;
+    min-width: 0;
+}
+
+/* On a small screen the windows can still be wider than the card container breakpoint.
+   Keep the reading order vertical when the viewport itself has little room. */
+@media (max-width: 760px) {
+    .drawio-operational-grid { grid-template-columns: 1fr; }
+}
+
+/* A group heading of the page (passata grafica, 2026-09-29): the mission steps' title - small,
+   grey and in capitals, the look
+   of the properties panel's legends (.property-panel-group legend), not the browser's bold h4. */
+.drawio-group-heading {
+    margin: 0 0 6px;
+    color: var(--editor-text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+.drawio-operations-question {
+    font-weight: 600;
+}
+
+.drawio-operations-outcome {
+    margin: 4px 0 0;
+    color: var(--editor-text-muted);
+}
+
+.drawio-operations-error {
+    color: var(--editor-danger);
+    font-weight: 600;
+}
+
+.drawio-operations-reason {
+    color: var(--editor-text-muted);
+    font-style: italic;
+}
+
+.drawio-test-route-endpoints {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+/* The lists (compito 2, rows 58 and 59, and after them the missions and the PLC connections): each
+   a floating window like .drawio-operations above, shut to begin with. A plant of a few hundred
+   devices scrolls inside the window (.drawio-window-content scrolls both ways - the device list has a
+   column for every field of the configuration), never in the page. */
+.drawio-device-list,
+.drawio-junction-list,
+.drawio-mission-list,
+.drawio-plc-connections {
+    font-size: 0.9rem;
+}
+
+/* The bar above the drawing (passata grafica, 2026-09-29): ONE line with the title, the engine, the
+   live link, "Read only", the plant checks, the Rulers and the buttons of the windows, whatever is
+   open (DrawioEditor.razor says why: the drawing must not lose height - measured, a shorter canvas
+   let draw.io's own windows cover its Save button). It may still wrap, as a last resort: on a narrow
+   window, or while something is on its way in the bar, the buttons lose their words first
+   (.drawio-toggle-label, at the end of "The bar" further down). The windows the
+   buttons open are rendered inside the bar but are fixed to the viewport, so they take no room in
+   it. NOTHING HERE MAY BECOME A CONTAINING BLOCK OR A STACKING CONTEXT for them - no transform,
+   filter, backdrop-filter, contain, container-type, will-change or position with a z-index, on this
+   rule or on .drawio-shell: a fixed window would then be placed from this box instead of the
+   viewport, and stacked inside it. */
+.drawio-sections {
+    flex: 0 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--editor-border);
+    background: var(--editor-surface);
+}
+
+/* The first line of a list's window: the search field, result count and actions form one compact
+   toolbar. Devices and junctions use the same visual grammar as the missions console. */
+.drawio-device-list-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.drawio-device-list-filter {
+    min-width: 16rem;
+}
+
+.drawio-device-list-count {
+    margin-right: auto;
+    color: var(--editor-text-muted);
+}
+
+/* A search affordance drawn inside the field. The icon lets clicks through to the field. */
+.drawio-filter {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.drawio-filter > .drawio-icon {
+    position: absolute;
+    left: 8px;
+    color: var(--editor-text-muted);
+    pointer-events: none;
+}
+
+.drawio-filter > input {
+    padding-left: 30px;
+}
+
+.drawio-device-list-written {
+    color: var(--editor-text);
+}
+
+.drawio-device-list-not-written {
+    color: var(--editor-danger);
+    font-weight: 600;
+}
+
+.drawio-list-scroll {
+    margin-top: 6px;
+}
+
+.drawio-list-table {
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+/* The header stays on top while the rows scroll under it inside the section's own box. */
+.drawio-list-table th {
+    position: sticky;
+    top: 0;
+    background: var(--editor-ribbon-bg);
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.drawio-list-table th[aria-sort="ascending"]::after {
+    content: " \25B2";
+}
+
+.drawio-list-table th[aria-sort="descending"]::after {
+    content: " \25BC";
+}
+
+.drawio-list-table th,
+.drawio-list-table td {
+    border: 1px solid var(--editor-border);
+    padding: 2px 6px;
+    white-space: nowrap;
+}
+
+.drawio-list-row {
+    cursor: pointer;
+}
+
+/* A shade darker than the veil of every other row (--editor-bg, the base rule of the page's tables):
+   in that same colour, the mouse on an even row showed nothing. */
+.drawio-list-row:hover {
+    background: var(--editor-ribbon-bg);
+}
+
+.drawio-list-row-selected,
+.drawio-list-row-selected:hover {
+    background: var(--editor-accent-bg);
+}
+
+/* Devices, junctions and PLC connections are bounded grids: the toolbar and pager stay visible while
+   the rows scroll inside the available window. The table remains wide enough for all its columns. */
+.drawio-device-list > .drawio-window-content,
+.drawio-junction-list > .drawio-window-content,
+.drawio-plc-connections > .drawio-window-content {
+    display: flex;
+    overflow: hidden;
+}
+
+.drawio-device-list-body,
+.drawio-junction-list-body,
+.drawio-plc-connections-body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+.drawio-device-list .drawio-filter,
+.drawio-junction-list .drawio-filter,
+.drawio-plc-connections .drawio-filter {
+    flex: 1 1 250px;
+    min-width: 180px;
+}
+
+.drawio-device-list .drawio-device-list-filter,
+.drawio-junction-list .drawio-device-list-filter,
+.drawio-plc-connections .drawio-device-list-filter {
+    width: 100%;
+    min-width: 0;
+}
+
+.drawio-device-list .drawio-device-list-count,
+.drawio-junction-list .drawio-device-list-count,
+.drawio-plc-connections .drawio-device-list-count {
+    flex: 0 0 auto;
+    margin-right: 0;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--editor-ribbon-bg);
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
+.drawio-data-grid {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid var(--editor-border);
+    border-radius: 7px;
+    background: var(--editor-surface);
+}
+
+.drawio-device-grid {
+    box-shadow: inset 0 2px 0 var(--editor-accent);
+}
+
+.drawio-junction-grid {
+    box-shadow: inset 0 2px 0 #0f766e;
+}
+
+.drawio-data-grid-scroll {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    margin-top: 0;
+    overflow-x: auto;
+    overflow-y: scroll;
+    scrollbar-gutter: stable;
+}
+
+.drawio-data-table {
+    width: 100%;
+    min-width: max-content;
+}
+
+.drawio-data-table th,
+.drawio-data-table td {
+    height: 30px;
+    padding: 4px 8px;
+}
+
+.drawio-data-table tbody tr:nth-child(even):not([aria-selected="true"]):not([aria-invalid="true"]) {
+    background: color-mix(in srgb, var(--editor-ribbon-bg) 52%, transparent);
+}
+
+/* Match the zebra rule's specificity so even rows still show the pointer's feedback. */
+.drawio-data-table tbody tr.drawio-list-row:hover:not([aria-selected="true"]) {
+    background: var(--editor-ribbon-bg);
+}
+
+.drawio-device-table th:first-child,
+.drawio-device-table td:first-child,
+.drawio-junction-table th:first-child,
+.drawio-junction-table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--editor-surface);
+    box-shadow: 1px 0 0 var(--editor-border);
+    font-weight: 600;
+}
+
+.drawio-device-table th:first-child,
+.drawio-junction-table th:first-child {
+    z-index: 3;
+    background: var(--editor-ribbon-bg);
+}
+
+.drawio-data-table tr[aria-selected="true"] > :first-child {
+    background: var(--editor-accent-bg);
+}
+
+.drawio-data-table tbody tr:nth-child(even):not([aria-selected="true"]):not([aria-invalid="true"]) > :first-child {
+    background: color-mix(in srgb, var(--editor-ribbon-bg) 52%, var(--editor-surface));
+}
+
+.drawio-data-table tbody tr.drawio-list-row:hover:not([aria-selected="true"]) > :first-child {
+    background: var(--editor-ribbon-bg);
+}
+
+.drawio-data-pager {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 38px;
+    padding: 5px 8px;
+    border-top: 1px solid var(--editor-border);
+    background: var(--editor-ribbon-bg);
+    color: var(--editor-text-muted);
+}
+
+.drawio-data-page-buttons {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.drawio-data-page-buttons > button {
+    min-width: 28px;
+    min-height: 26px;
+    padding: 2px 7px;
+}
+
+.drawio-data-page-buttons > .drawio-data-page-active {
+    border-color: var(--editor-accent);
+    background: var(--editor-accent);
+    color: var(--editor-text-on-accent);
+}
+
+.drawio-junction-pager .drawio-data-page-active {
+    border-color: #0f766e;
+    background: #0f766e;
+}
+
+.drawio-device-list-editor {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+/* Compito 3, row 60: moving a mission, between the list's tools and its rows. */
+.drawio-mission-move {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 4px 0 8px;
+}
+
+/* Missions are an operational console, not an unbounded data dump. The window keeps its tools and
+   pager still while only the rows scroll; the extended view can scroll sideways inside the same box. */
+.drawio-mission-list > .drawio-window-content {
+    display: flex;
+    overflow: hidden;
+}
+
+.drawio-mission-list-body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+.drawio-mission-list .drawio-device-list-tools {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+}
+
+.drawio-mission-list .drawio-filter {
+    flex: 1 1 250px;
+    min-width: 180px;
+}
+
+.drawio-mission-list .drawio-device-list-filter {
+    width: 100%;
+    min-width: 0;
+}
+
+.drawio-mission-view-switch {
+    display: inline-flex;
+    flex: 0 0 auto;
+    padding: 2px;
+    border: 1px solid var(--editor-border);
+    border-radius: 8px;
+    background: var(--editor-ribbon-bg);
+}
+
+.drawio-mission-view-switch > button {
+    min-height: 24px;
+    padding: 2px 9px;
+    border-color: transparent;
+    background: transparent;
+}
+
+.drawio-mission-view-switch > button.drawio-mission-view-active {
+    border-color: var(--editor-accent);
+    background: var(--editor-accent);
+    color: var(--editor-text-on-accent);
+}
+
+.drawio-mission-field-count {
+    flex: 0 0 auto;
+    color: var(--editor-text-muted);
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
+.drawio-mission-list .drawio-device-list-count {
+    flex: 0 0 auto;
+    margin-right: 0;
+    white-space: nowrap;
+}
+
+.drawio-mission-selection-summary {
+    margin: 0;
+    padding: 6px 9px;
+    border-left: 3px solid var(--editor-accent);
+    border-radius: 0 6px 6px 0;
+    background: var(--editor-accent-bg);
+}
+
+/* Missions plan of 30/9, task 6: Move and Set destination side by side, and the destination's
+   question with the mission's gateway under it - the choices on one line, the gateway's picker
+   below them when one is to be picked. */
+.drawio-mission-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.drawio-mission-action-position {
+    border-color: #d97706;
+    background: #fff7ed;
+    color: #9a3412;
+    font-weight: 600;
+}
+
+.drawio-mission-action-position:where(:hover:not(:disabled)) {
+    background: #ffedd5;
+}
+
+.drawio-mission-action-destination {
+    border-color: #7c3aed;
+    background: #f5f3ff;
+    color: #6d28d9;
+    font-weight: 600;
+}
+
+.drawio-mission-action-destination:where(:hover:not(:disabled)) {
+    background: #ede9fe;
+}
+
+.drawio-mission-destination-box {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px;
+    border-left: 3px solid #7c3aed;
+    border-radius: 0 6px 6px 0;
+    background: #faf8ff;
+}
+
+.drawio-mission-grid {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid var(--editor-border);
+    border-radius: 7px;
+    background: var(--editor-surface);
+}
+
+.drawio-mission-grid-scroll {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    margin-top: 0;
+    overflow-x: auto;
+    overflow-y: scroll;
+    scrollbar-gutter: stable;
+}
+
+.drawio-mission-table {
+    width: 100%;
+    min-width: max-content;
+}
+
+.drawio-mission-table th,
+.drawio-mission-table td {
+    height: 30px;
+    padding: 4px 8px;
+}
+
+.drawio-mission-table .drawio-mission-column-primary {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--editor-surface);
+    box-shadow: 1px 0 0 var(--editor-border);
+    font-weight: 600;
+}
+
+.drawio-mission-table th.drawio-mission-column-primary {
+    z-index: 3;
+    background: var(--editor-ribbon-bg);
+}
+
+.drawio-mission-table tr[aria-selected="true"] .drawio-mission-column-primary {
+    background: var(--editor-accent-bg);
+}
+
+.drawio-mission-status-run {
+    color: var(--editor-accent-active);
+    font-weight: 600;
+}
+
+.drawio-mission-status-stop {
+    color: var(--editor-warning);
+    font-weight: 600;
+}
+
+.drawio-mission-status-done {
+    color: var(--editor-success);
+    font-weight: 600;
+}
+
+.drawio-mission-status-error {
+    color: var(--editor-danger);
+    font-weight: 600;
+}
+
+.drawio-mission-column-type {
+    color: #0f766e;
+    font-weight: 600;
+}
+
+.drawio-mission-column-operation {
+    color: #6d28d9;
+    font-weight: 600;
+}
+
+.drawio-mission-pager {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 38px;
+    padding: 5px 8px;
+    border-top: 1px solid var(--editor-border);
+    background: var(--editor-ribbon-bg);
+    color: var(--editor-text-muted);
+}
+
+.drawio-mission-page-buttons {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.drawio-mission-page-buttons > button {
+    min-width: 28px;
+    min-height: 26px;
+    padding: 2px 7px;
+}
+
+.drawio-mission-page-buttons > .drawio-mission-page-active {
+    border-color: var(--editor-accent);
+    background: var(--editor-accent);
+    color: var(--editor-text-on-accent);
+}
+
+@media (max-width: 900px) {
+    .drawio-mission-list .drawio-device-list-tools {
+        flex-wrap: wrap;
+    }
+
+    .drawio-mission-list .drawio-filter {
+        flex: 1 0 100%;
+    }
+
+    .drawio-mission-field-count {
+        display: none;
+    }
+}
+
+.drawio-mission-destination-gateway {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    align-items: center;
+    margin: 0;
+    padding: 4px 8px;
+    border: 1px solid var(--editor-border);
+    border-radius: 6px;
+}
+
+.drawio-mission-destination-gateway > legend {
+    padding: 0 4px;
+}
+
+.drawio-mission-destination-gateway > .drawio-test-route-endpoints {
+    flex-basis: 100%;
+}
+
+.drawio-mission-destination-option {
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+}
+
+/* Item 54, decision 6: the cell the operator chooses - the warehouse system's list and the field for a
+   code - under the cell's two choices, on a line of their own. */
+.drawio-mission-destination-cell-pick {
+    flex-basis: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* Compito 3, row 61: the live, read-only mission steps of the device. The contextual window around
+   this section owns its frame; the section owns the fixed tools and scrolling rows. */
+.drawio-mission-steps {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+.drawio-mission-steps-none {
+    margin: 0 0 6px;
+    color: var(--editor-text-muted);
+    font-size: 0.85rem;
+}
+
+.drawio-mission-steps-scroll {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+}
+
+/* What "Write" is about to send, next to the button (the owner's decision on the cell write: one
+   press, with the change in sight). */
+.drawio-device-list-editor-preview {
+    color: var(--editor-text-muted);
+    white-space: nowrap;
+}
+
+/* The plant's checks, in a floating window since the passata grafica (DrawioChecksDock.razor), like
+   the lists. The configuration check hands back one row per warning the WMS procedure returns, and
+   there is no number this page may assume: the table scrolls inside the window
+   (.drawio-window-content), which is the ceiling the box of the strip used to set for itself - it
+   never pushes the drawing. */
+.drawio-checks {
+    font-size: 0.9rem;
+}
+
+/* The line between the panel's own results and the "go to" buttons: two different things, one of
+   which is this page's and the other the shared component's. */
+.drawio-checks-goto {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--editor-border);
+}
+
+/* Since the passata grafica its paragraph is behind the window's "?": with no button and no outcome
+   the box has nothing to show, and its line would close off nothing. */
+.drawio-checks-goto:not(:has(*)) {
+    display: none;
+}
+
+/* The window's first line: the two checks' buttons side by side, and each result under them across
+   the whole width (ChecksPanel stacks them all in a column of its own). The whole width with the
+   result's padding and border inside it (border-box): the failure's red box (#config-check-error)
+   has both, and it came out 22 px wider than the window's content, which then scrolled across and
+   cut the box's right edge off (DrawioChecksTest.AFailedConfigurationCheckFitsInsideItsWindow). */
+.drawio-checks .checks-panel {
+    display: flex;
+    flex-flow: row wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.drawio-checks .checks-panel > :not(button) {
+    box-sizing: border-box;
+    flex: 1 0 100%;
+}
+
+.drawio-checks-targets {
+    margin: 0 0 8px;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+/* The "go to" buttons (.drawio-checks-target) have no rule of their own since the second fix round
+   of task 4 of the passata grafica: they wear the page's buttons' look, like the two checks' buttons
+   above them. The rule they had drew the old corners and the light border, and set a background of
+   its own that outweighed the page's hover and pressed states, which weigh nothing: the buttons
+   stayed the same colour whatever the mouse did
+   (DrawioChecksTest.TheGoToButtonsWearThePagesLookLikeTheChecksButtons). */
+
+/* The two outcomes of a "go to" are told apart by colour as well as by words: one landed on a cell,
+   the other did not. Green would be too strong for "the canvas scrolled" - it is muted, like the
+   selection line, while the miss borrows the red every other failure on this page wears. */
+.drawio-checks-goto-reached {
+    margin: 0;
+    color: var(--editor-text-muted);
+    font-size: 0.85rem;
+}
+
+.drawio-checks-goto-missed {
+    margin: 0;
+    color: var(--editor-danger);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.key-page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    padding: 32px 16px;
+}
+
+.key-card {
+    width: 100%;
+    max-width: 360px;
+    background: var(--editor-surface);
+    border: 1px solid var(--editor-border);
+    border-radius: var(--editor-radius);
+    box-shadow: var(--editor-shadow);
+    padding: 24px;
+}
+
+.key-card h2 {
+    margin: 0 0 4px;
+    font-size: 18px;
+}
+
+.key-card p {
+    margin: 0 0 16px;
+    color: var(--editor-text-muted);
+}
+
+.key-field {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 10px;
+    margin-bottom: 12px;
+    border: 1px solid var(--editor-border-strong);
+    border-radius: var(--editor-radius);
+    background: var(--editor-surface);
+    color: var(--editor-text);
+}
+
+.key-field:focus {
+    outline: none;
+    border-color: var(--editor-accent);
+    box-shadow: 0 0 0 1px var(--editor-accent);
+}
+
+.key-field:disabled {
+    background: var(--editor-ribbon-bg);
+    color: var(--editor-text-muted);
+}
+
+.key-button {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--editor-accent);
+    border-radius: var(--editor-radius);
+    background: var(--editor-accent);
+    color: var(--editor-text-on-accent);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.key-button:hover:not(:disabled) {
+    background: var(--editor-accent-hover);
+    border-color: var(--editor-accent-hover);
+}
+
+.key-button:active:not(:disabled) {
+    background: var(--editor-accent-active);
+    border-color: var(--editor-accent-active);
+}
+
+.key-button:disabled {
+    background: var(--editor-border);
+    border-color: var(--editor-border);
+    color: var(--editor-text-muted);
+    cursor: not-allowed;
+}
+
+.key-error {
+    margin: 12px 0 0;
+    padding: 8px 10px;
+    border-radius: var(--editor-radius);
+    background: var(--editor-danger-bg);
+    border: 1px solid var(--editor-danger-border);
+    color: var(--editor-danger);
+}
+
+/* --- Le fasce di stato (permesso di sola lettura, scritture fallite) ------------------------ */
+
+#edit-lock-banner {
+    padding: 8px 16px;
+    background: var(--editor-warning-bg);
+    border-bottom: 1px solid var(--editor-border);
+    color: var(--editor-warning);
+    font-weight: 600;
+}
+
+.plant-drag-error {
+    padding: 8px 16px;
+    background: var(--editor-danger-bg);
+    border-top: 1px solid var(--editor-danger-border);
+    border-bottom: 1px solid var(--editor-danger-border);
+    color: var(--editor-danger);
+}
+
+/* --- Le righe del dock (Toolbar.razor), a gruppi come il ribbon di oggi --------------------- */
+
+/* Il contenitore di UNA riga del dock: a finestra stretta va a capo un gruppo intero per volta - ogni
+   .toolbar-group e' un solo elemento flessibile, quindi non si spezza mai a meta'. */
+.toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 6px;
+    background: var(--editor-ribbon-bg);
+    border-bottom: 1px solid var(--editor-border);
+    padding: 6px 8px;
+}
+
+/* Compito barre-usabili: prima di questo compito il dock usava <c>FluentOverflow</c> e questa classe
+   forzava <c>flex-wrap: nowrap</c>, perche' una barra che non entrava in riga doveva sparire dentro un
+   menu "Altro" invece di andare a capo. Misurato nel DOM sull'Editor vero: quel menu non nascondeva
+   NIENTE (0 elementi marcati come traboccati su 7), il proprietario l'ha bocciato ("le barre non si
+   sovrappongono sono pessime") e la finestra scorreva di lato (1964 px di documento contro 1600 di
+   finestra). Il rimedio, verificato dal vivo prima di scriverlo qui: <c>FluentOverflow</c> e' sparito,
+   e questa regola non forza piu' <c>nowrap</c> - eredita il "wrap" di .toolbar qui sopra, con un
+   piccolo scarto verticale (row-gap) fra le righe che l'andare a capo crea. Misurato applicando il
+   cambio: 1600 px di documento (non piu' 1964), zero comandi irraggiungibili (prima erano tre, tagliati
+   via da un tentativo di "overflow: hidden" scartato perche' peggiore del difetto originale - lo
+   stesso silenzio, un altro nome).
+   align-items:stretch tiene i riquadri dei gruppi alti uguali sulla stessa riga visiva. */
+.toolbar-fluent {
+    align-items: stretch;
+    row-gap: 4px;
+}
+
+/* L'involucro di ogni riga del dock: tiene insieme la riga dei comandi e i <fluent-tooltip> ancorati
+   ai loro id, che stanno fuori dalla riga apposta - un elemento in piu' che non e' un comando non deve
+   contare nella larghezza che decide dove una barra va a capo. */
+.toolbar-shell {
+    display: block;
+    /* flex:0 0 auto (compito barre-spostabili): il dock tiene SEMPRE l'altezza del suo contenuto, e a
+       restringersi e' la tela sotto di lui (".plant-canvas-body", flex:1 nella stessa colonna di
+       ".plant-canvas"). Senza, questo elemento sarebbe un elemento flessibile come gli altri, con
+       flex-shrink 1 di base: in una finestra bassa il browser avrebbe potuto comprimere le righe delle
+       barre invece della tela, e il brief chiede l'esatto contrario - una riga in piu' deve
+       RIMPICCIOLIRE la tela, non traboccare. */
+    flex: 0 0 auto;
+}
+
+/* Finche' il modulo dei componenti web di Fluent non e' arrivato, un <fluent-tooltip> non e' ancora
+   un componente: e' un elemento sconosciuto, che il browser tratta come inline e di cui MOSTRA il
+   testo. Con un suggerimento per ogni comando sarebbero una trentina di frasi in fila sotto la
+   barra, per il tempo che il modulo impiega a caricarsi (e per sempre, se non si carica affatto -
+   la voce D200 del registro). ":not(:defined)" e' la pseudo-classe che esiste apposta per questo:
+   vale finche' il custom element non e' definito, e smette da sola nel momento in cui lo diventa. */
+fluent-tooltip:not(:defined) {
+    display: none;
+}
+
+/* Il contenitore GENERICO di una barra: un riquadro vero (sfondo chiaro, bordo su tutti e quattro i
+   lati, angoli arrotondati). Da questo compito (barre-usabili) e' un ripiego mai raggiunto in
+   pratica, non uno stile vivo: le otto barre del dock finiscono TUTTE sotto ".toolbar-fluent
+   .toolbar-group" qui sotto, che lo sovrascrive con un confine dritto - dichiarato qui, non tolto,
+   perche' resta il valore di base se un giorno una barra nascesse fuori da ".toolbar-fluent" (oggi
+   non succede: si veda Toolbar.razor, ogni riga del dock porta sempre quella classe). */
+.toolbar-group {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    box-sizing: border-box;
+    padding: 4px 10px 4px;
+    background: var(--editor-surface);
+    border: 1px solid var(--editor-border);
+    border-radius: var(--editor-radius);
+}
+
+/* Il separatore verticale di ogni barra del dock (compito barra-aspetto, esteso a tutte le otto barre
+   dal compito barre-usabili): azzera sfondo/bordo/angoli/padding verticale ereditati da
+   ".toolbar-group" qui sopra e disegna solo un confine a destra, come nel ribbon di oggi
+   (FrmEDITOR.designer.cs) - il proprietario ha bocciato un riquadro pieno per gruppo a icona sola
+   ("la barra fatta da noi e' pessima" valeva anche per questo), un confine dritto fra icone piccole si
+   legge gia' bene. Il nome del gruppo non e' a video: lo porta role="group"/aria-label sul
+   <div class="toolbar-group-buttons"> che avvolge i pulsanti, non su questo contenitore - che porta
+   anche la maniglia, non solo i pulsanti (si veda il punto 1 in testa a Toolbar.razor). Nessun bordo
+   sull'ultimo gruppo: non separa da nulla, solo un padding-right in meno perche' non resti uno spazio
+   vuoto oltre l'ultimo gruppo.
+   <para>
+   Direzione RIGA e align-items:stretch (compito barre-spostabili), perche' la maniglia stia a sinistra
+   dei comandi e sia alta quanto la barra (il ".toolbar-group" generico qui sopra e' una colonna: era
+   bottoni sopra, etichetta sotto, e l'etichetta non c'e' piu' da barra-aspetto).
+   </para>
+   <para>
+   <b>Il padding asimmetrico e' la misura, non un'estetica.</b> La maniglia deve costare zero pixel di
+   larghezza: la barra e' appena stata portata a 1926 px con 41 comandi, e ripagare quel lavoro con
+   sette maniglie sarebbe stato tornare indietro. Conto per barra, prima e dopo, a contenuto uguale:
+   PRIMA padding-left 8 + contenuto + padding-right 8 + bordo 1 = contenuto + 17;
+   DOPO padding-left 2 + maniglia 5 + suo margine 3 + contenuto + padding-right 6 + bordo 1 =
+   contenuto + 17. La maniglia occupa lo spazio che prima era margine vuoto dentro la barra, non
+   spazio nuovo: il conto e' identico, e la larghezza totale non cambia di un pixel per barra. Il gap
+   di 6 px fra barre (".toolbar") sta fuori da questo conto e non e' toccato. */
+.toolbar-fluent .toolbar-group {
+    background: none;
+    border: none;
+    border-radius: 0;
+    flex-direction: row;
+    align-items: stretch;
+    padding: 0 6px 0 2px;
+    border-right: 1px solid #e1dfdd;
+}
+
+.toolbar-fluent .toolbar-group:last-child {
+    border-right: none;
+    padding-right: 0;
+}
+
+.toolbar-group-buttons {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+}
+
+/* Pulsanti piu' vicini nella barra dell'Editor (compito barra-aspetto): a sola icona i 4px di prima
+   lasciavano un vuoto sproporzionato fra due riquadri gia' stretti (si veda ".toolbar-fluent
+   fluent-button::part(control)" piu' sotto per la loro larghezza) - misurato insieme a quella regola,
+   non da sola. */
+.toolbar-fluent .toolbar-group-buttons {
+    gap: 2px;
+}
+
+/* Il gruppo "Crea" ospita <Palette>, che porta gia' la propria disposizione orizzontale
+   (.palette qui sotto): qui basta togliere il contenitore verticale predefinito dei bottoni,
+   Palette gestisce il proprio layout. */
+.toolbar-group-create .toolbar-group-buttons {
+    align-items: flex-start;
+}
+
+/* Il pulsante Fluent della barra dell'Editor, a sola icona dal compito barra-aspetto, e' comunque
+   largo 49px prima di questa regola: Fluent porta una larghezza minima propria sulla parte
+   "control" del suo shadow DOM, pensata per un pulsante con testo. min-width:32px piu' un padding
+   orizzontale piu' stretto (il suo, di base, e' pensato per affiancare testo a un'icona) portano il
+   pulsante a 37px insieme al gap piu' stretto qui sopra - misurato in un browser vero, passo per
+   passo, non i tre insieme: e' quel percorso che ha deciso i tre numeri. Vale anche per i due
+   pulsanti "bassa"/"alta" (che il testo lo mostrano ancora, si veda ToolbarCommand.ShowLabel): non
+   c'era ragione di escluderli da un pulsante piu' compatto, il loro testo e' due sole parole corte.
+   "::part" perche' <fluent-button> e' un custom element con shadow DOM: le regole di questo foglio
+   non lo raggiungerebbero altrimenti, la stessa ragione per cui ".toolbar-button"/".toolbar-icon" qui
+   sopra non hanno mai potuto disegnare un <fluent-button>. */
+.toolbar-fluent fluent-button::part(control) {
+    min-width: 32px;
+    padding: 0 4px;
+}
+
+/* Il selettore "bassa"/"alta" del peso di una giunzione (compito B2b, sostituisce il campo numerico
+   ".toolbar-input" di prima - il proprietario ha chiesto due valori nominati, mai una cifra a
+   schermo): due pulsanti .toolbar-button affiancati senza spazio fra loro, cosi' si leggono come un
+   solo controllo a due stati invece che due comandi indipendenti. Nessun gap qui: lo spazio serve solo
+   fra l'etichetta e i pulsanti (.toolbar-weight-picker-label sotto), non fra i due pulsanti - un gap
+   sul contenitore li separerebbe entrambi allo stesso modo, disfacendo la lettura "un solo controllo"
+   che questa regola dichiara (misurato: era proprio quello che succedeva prima di questa correzione). */
+.toolbar-weight-picker {
+    display: inline-flex;
+    align-items: center;
+}
+
+/* L'etichetta visibile davanti a ogni selettore "bassa"/"alta" (correzione: senza di lei i due
+   selettori del gruppo "Giunzioni" - "peso del prossimo collegamento" e "peso della giunzione
+   scelta" - si leggevano come quattro pulsanti uguali in fila, distinti solo da un title che
+   richiede di fermarsi col mouse sopra). Il margine sta qui, non su .toolbar-weight-picker: solo fra
+   l'etichetta e il primo pulsante, mai fra i due pulsanti. */
+.toolbar-weight-picker-label {
+    font-size: 11px;
+    color: var(--editor-text-muted);
+    white-space: nowrap;
+    margin-right: 4px;
+}
+
+/* Le due scelte sono ora FluentButton, che si disegnano da soli nel proprio shadow DOM: le regole
+   che prima le saldavano in un solo controllo (border-radius: 0 sui pulsanti interni,
+   :first-of-type/:last-of-type per gli angoli esterni, bordo condiviso) non potrebbero piu'
+   raggiungerle e sono state tolte invece di restare come regole morte. A far leggere la coppia come
+   un controllo solo restano lo scarto nullo qui sopra, l'etichetta davanti, e il fatto che la scelta
+   corrente e' accentata mentre l'altra no (appearance="accent"/"neutral", si veda il punto 4 del
+   commento in testa a Toolbar.razor).
+   Lo stesso vale per ".toolbar-weight-active", ".toolbar-toggle-active" e
+   ".toolbar-toggle-ineffective": dicevano uno stato a un <button> nudo, e quello stato ora lo dice il
+   componente Fluent. Tolte. */
+
+/* Il selettore "Nuovo:" e' il comando pesante del gruppo Giunzioni (si veda il commento su
+   ".toolbar-button-primary" piu' sopra): un anello color d'accento intorno all'intera coppia
+   Bassa/Alta, disegnato con box-shadow apposta - non un bordo vero, che romperebbe i raggi
+   :first-of-type/:last-of-type dei due pulsanti qui sopra e allargherebbe il controllo di due
+   pixel, spostando di nuovo le soglie di andare a capo misurate sopra ".toolbar". */
+.toolbar-weight-picker-primary {
+    border-radius: var(--editor-radius);
+    box-shadow: 0 0 0 1px var(--editor-accent);
+}
+
+/* Nasconde un nodo alla vista senza nasconderlo a una tecnologia assistiva (schema standard: un
+   ritaglio a un pixel invece di display:none, che lo toglierebbe anche dall'albero di accessibilita').
+   Un solo uso oggi: la descrizione del pulsante "Griglia" quando e' acceso ma inefficace (acceso, ma
+   troppo fitta per essere disegnata a questo zoom - si veda Toolbar.GridDescribedBy) - lo stesso
+   testo del suggerimento, ma raggiungibile da uno screen reader, che non legge in modo affidabile
+   ne' un title ne' un aria-pressed="mixed". */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* --- Il gruppo "Vista" (Toolbar.razor, compito B3b): zoom, griglia, aggancio, righelli, vista
+   d'insieme --------------------------------------------------------------------------------- */
+
+.toolbar-zoom {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border: 1px solid var(--editor-border-strong);
+    border-radius: var(--editor-radius);
+    background: var(--editor-surface);
+}
+
+#zoom-input {
+    width: 52px;
+    border: none;
+    padding: 0;
+    background: transparent;
+    color: var(--editor-text);
+    text-align: right;
+}
+
+#zoom-input:focus {
+    outline: none;
+}
+
+.toolbar-zoom-suffix {
+    color: var(--editor-text-muted);
+}
+
+/* --- La palette dei tipi (Palette.razor) ----------------------------------------------------- */
+
+.palette {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 4px;
+    max-width: 420px;
+}
+
+.palette-armed-hint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    width: 100%;
+    background: var(--editor-accent-bg);
+    border: 1px solid var(--editor-accent);
+    border-radius: var(--editor-radius);
+    color: var(--editor-accent-active);
+    font-size: 12px;
+}
+
+/* Un tipo da creare non e' un comando da eseguire: a riposo ha il contorno (appearance="outline" in
+   Palette.razor) invece del pieno grigio dei comandi, cosi' la palette si legge come "scegli che cosa
+   nasce", non come un'altra fila di pulsanti comando; quello armato passa all'accento pieno.
+   Bordo, sfondo, stati e forma li disegna FluentButton nel proprio shadow DOM: le regole che li
+   dettavano qui (compresa ".palette-type-armed", che diceva "armato" a un <button> nudo) non
+   potrebbero piu' raggiungerlo e sono state tolte invece di restare come regole morte. Resta solo
+   cio' che riguarda la disposizione, che e' dell'elemento ospite e non del suo interno. */
+.palette-type-button {
+    white-space: nowrap;
+}
+
+/* --- Il dock delle barre, le maniglie e il menu del tasto destro (compito barre-spostabili) --- */
+
+/* Il dock: le righe di barre, una sotto l'altra. Non ha sfondo ne' bordo propri - li portano gia' le
+   righe (".toolbar"), cosi' una riga sola resta identica alla barra unica di prima.
+   <para>
+   position:relative e' funzionale, non decorativo: il segno di inserimento del trascinamento
+   (".toolbar-drop-marker" qui sotto) e' position:absolute e toolbar-dock.js lo posiziona in
+   coordinate relative a QUESTO elemento. Senza, si posizionerebbe rispetto al primo antenato
+   posizionato che capita - oggi ".plant-canvas-diagram", che sta piu' in basso e piu' stretto: il
+   filo comparirebbe da un'altra parte.
+   </para>
+   <para>
+   L'altezza del dock e' quella del suo contenuto: non ha flex-grow, quindi ogni riga in piu' e'
+   altezza che la tela (".plant-canvas-body", flex:1 nella stessa colonna) si vede togliere, e ogni
+   riga in meno le torna - la tela si rimisura da sola col ResizeObserver di plant-canvas-size.js.
+   Fino al pavimento di 200px di ".plant-canvas-diagram": sotto quello la colonna trabocca invece di
+   restringersi, ed e' una scelta gia' presa e commentata la' (un disegno alto meno di 200px non e'
+   piu' un disegno).
+   </para> */
+.toolbar-dock {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+/* La riga esiste per portare "data-toolbar-row" (il modulo del trascinamento cerca quello) e per
+   restare un blocco a piena larghezza: il contenitore ".toolbar.toolbar-fluent" dentro di lei misura
+   la PROPRIA larghezza per decidere quali barre vanno a capo, quindi deve essere largo quanto il
+   dock, non quanto il suo contenuto. */
+.toolbar-row {
+    display: block;
+}
+
+/* LA MANIGLIA: i puntini che si afferrano. Larga 5px piu' 3px di margine - si veda il commento di
+   ".toolbar-fluent .toolbar-group" per il conto che tiene la barra della stessa larghezza di prima.
+   I puntini sono un fondo ripetuto e non caratteri: un carattere avrebbe portato con se' una
+   dimensione del testo e un colore da riconciliare con quelli dei pulsanti accanto.
+   align-self:stretch la fa alta quanto la barra, non quanto la riga (che ha il proprio padding). */
+.toolbar-handle {
+    flex: 0 0 auto;
+    align-self: stretch;
+    width: 5px;
+    margin-right: 3px;
+    border-radius: 2px;
+    cursor: grab;
+    background-image: radial-gradient(circle at 1px 1px, var(--editor-text-muted) 1px, transparent 0);
+    background-size: 3px 4px;
+    background-position: center;
+    background-repeat: repeat;
+}
+
+.toolbar-handle:hover {
+    background-color: var(--editor-accent-bg);
+}
+
+/* Il fuoco si vede: e' l'unico modo di sapere dove si e' arrivati col tabulatore, e senza di lui lo
+   spostamento da tastiera sarebbe al buio. */
+.toolbar-handle:focus-visible {
+    outline: 2px solid var(--editor-accent);
+    outline-offset: 1px;
+}
+
+/* Mentre si trascina, il cursore "grabbing" vale su TUTTA la pagina e non solo sulla maniglia: il
+   puntatore ne esce subito (e' larga cinque pixel) e il cursore non deve tornare quello di sotto nel
+   mezzo del gesto. La classe la mette e la toglie toolbar-dock.js. */
+body.toolbar-dragging,
+body.toolbar-dragging * {
+    cursor: grabbing !important;
+}
+
+/* La barra che si sta trascinando resta al suo posto, in trasparenza: dove finira' lo dice il segno
+   di inserimento, non un'anteprima della barra intera (il brief lo chiede esplicitamente - una barra
+   fantasma che segue il mouse copre proprio cio' che si sta cercando di vedere). */
+.toolbar-bar-dragging {
+    opacity: 0.45;
+}
+
+/* Il segno di inserimento: un filo, non un riquadro. Verticale fra due barre (larghezza fissa, altezza
+   scritta da JS), orizzontale sotto l'ultima riga quando il rilascio farebbe nascere una riga nuova.
+   pointer-events:none perche' non rubi mai l'evento del puntatore che lo sta muovendo. */
+.toolbar-drop-marker {
+    position: absolute;
+    z-index: 5;
+    width: 2px;
+    background: var(--editor-accent);
+    border-radius: 1px;
+    pointer-events: none;
+}
+
+.toolbar-drop-marker-row {
+    height: 2px;
+}
+
+/* Il menu del tasto destro sul dock. Stessa forma e stesse misure del menu contestuale della tela
+   (".plant-context-menu" piu' sotto): sono due menu diversi su due elementi diversi, ma per chi li
+   usa devono essere la stessa cosa - e quello della tela questo compito non lo tocca. */
+.toolbar-dock-menu-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 900;
+    background: transparent;
+}
+
+.toolbar-dock-menu {
+    position: fixed;
+    z-index: 901;
+    display: flex;
+    flex-direction: column;
+    min-width: 200px;
+    box-sizing: border-box;
+    background: var(--editor-surface);
+    border: 1px solid var(--editor-border);
+    border-radius: var(--editor-radius);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.24);
+    padding: 4px;
+    font-family: var(--editor-font);
+}
+
+/* Lo spazio a sinistra c'e' sempre, anche nelle voci senza spunta: senza, il testo ballerebbe di
+   sedici pixel a ogni mostra/nascondi. */
+.toolbar-dock-menu-item {
+    position: relative;
+    text-align: left;
+    padding: 6px 10px 6px 26px;
+    border: none;
+    background: transparent;
+    color: var(--editor-text);
+    cursor: pointer;
+    border-radius: var(--editor-radius);
+    font: inherit;
+}
+
+.toolbar-dock-menu-item:hover:not(:disabled) {
+    background: var(--editor-accent-bg);
+}
+
+/* L'ultima barra rimasta non si nasconde (si veda ToolbarLayout.Hide): la voce si spegne invece di
+   restare accesa e non fare niente - un comando che si puo' premere e non succede niente e' peggio di
+   uno dichiaratamente spento. */
+.toolbar-dock-menu-item:disabled {
+    color: var(--editor-text-muted);
+    cursor: not-allowed;
+}
+
+/* La spunta e' disegnata dal CSS con il codice del carattere (\2713), non scritta nel markup: questo
+   foglio resta cosi' di soli caratteri ASCII, e il segno a video non dipende dalla codifica con cui
+   il file viene salvato. Chi ascolta non la legge comunque: per lui c'e' aria-checked sul pulsante. */
+.toolbar-dock-menu-item-checked::before {
+    content: "\2713";
+    position: absolute;
+    left: 8px;
+    color: var(--editor-accent);
+}
+
+.toolbar-dock-menu-separator {
+    height: 1px;
+    margin: 4px 0;
+    background: var(--editor-border);
+}
+
+/* --- La tela (PlantCanvas.razor) -------------------------------------------------------------- */
+
+.plant-canvas {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    /* Catena flex verticale con #plant-content (si veda il suo commento): senza, l'elenco dei
+       dispositivi non collocati (piu' in basso in questo file) potrebbe spingere la tela oltre
+       l'altezza disponibile invece di farla restringere. */
+    min-height: 0;
+}
+
+/* plant-canvas-body (compito B3a): divide in orizzontale l'area del disegno
+   (plant-canvas-diagram, sotto) da un eventuale pannello agganciato di lato (plant-property-dock,
+   piu' sotto in questo file) - i due si spartiscono la larghezza, nessuno copre l'altro. Sopra di
+   lei restano la barra e la legenda delle porte, a piena larghezza come prima: solo l'area del
+   disegno si divide. */
+.plant-canvas-body {
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    min-height: 0;
+}
+
+.plant-canvas-diagram {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    /* 200px, non 0: e' il PAVIMENTO della tela, si veda il commento su .editor-shell in cima a questo
+       file per la ragione (senza di lui, in una finestra bassa la tela collassa a zero invece di
+       restare sotto la piega). 200px e' poco piu' di una miniatura ma resta un disegno leggibile, non
+       solo una striscia - la stessa cifra non ha un contratto a cui rispondere, e' una scelta
+       ergonomica come DragMovedThresholdScreenPixels piu' sotto in PlantCanvas.razor, non una misura
+       sull'impianto. */
+    min-height: 200px;
+    /* Un flex item non si restringe mai sotto la larghezza del proprio contenuto per difetto:
+       senza min-width:0 l'<svg> (che porta un attributo width in pixel, si veda PlantCanvas.razor)
+       impedirebbe a questa colonna di restringersi quando il pannello delle proprieta' si apre
+       accanto a lei, spingendolo fuori dalla finestra invece di fargli posto. */
+    min-width: 0;
+    /* Ancora di posizionamento per plant-popups (sotto): un popup deve restare sopra alla SOLA
+       tela, non anche sopra al pannello delle proprieta' se aperto insieme a lei - si veda il
+       commento nel markup di PlantCanvas.razor sopra <div class="plant-popups">. */
+    position: relative;
+}
+
+/* Il selettore e' sulla classe, non piu' su ".plant-canvas svg": da questo compito (B1) le icone
+   della barra sono anche loro <svg>, dentro lo stesso contenitore .plant-canvas - un selettore per
+   discendenza le avrebbe prese anche loro (sfondo bianco e cursore "grab" su un'icona di 16px). */
+.plant-svg {
+    background: var(--editor-surface);
+    /* La tela riempie lo spazio disponibile (compito B3a), non piu' 960x600 fissi: flex:1 la fa
+       crescere nella colonna di plant-canvas-diagram, width/height:100% la fanno stendere
+       nell'altra dimensione (un <svg> non si allarga da solo dentro un flex item quanto farebbe un
+       <div>: e' un elemento sostituito, con una propria dimensione intrinseca che altrimenti
+       vince). Gli attributi width/height nel markup (@Fmt(_canvasPixelWidth)/@Fmt(_canvasPixelHeight))
+       restano comunque i numeri veri: sono loro, non questa regola, che PlantCanvas.razor usa per
+       convertire pixel del mouse in unita' del disegno - qui servono solo a far si' che il CSS e
+       l'attributo dicano la stessa cosa, cosi' ResizeObserver (plant-canvas-size.js) misura
+       esattamente il riquadro che il CSS ha appena deciso, non uno diverso. */
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    /* Il cursore cambia con l'intenzione del gesto (pan sullo sfondo, presa su un nodo): un
+       dettaglio piccolo, ma e' uno di quelli che fanno sembrare uno strumento reattivo invece che
+       primitivo, senza toccare nessuna logica di trascinamento. */
+    cursor: grab;
+}
+
+.plant-svg:active {
+    cursor: grabbing;
+}
+
+.plant-node {
+    cursor: pointer;
+}
+
+.plant-port {
+    cursor: crosshair;
+}
+
+.plant-port-glyph {
+    /* Decorazione sopra il pallino della porta (compito B2a): pointer-events="none" e' gia'
+       sull'attributo SVG (deve valere anche senza questo foglio, si veda PlantCanvas.razor), ma un
+       glifo di testo e' anche selezionabile col mouse per difetto - un trascinamento che parte
+       proprio sul carattere selezionerebbe il testo invece di afferrare la porta sottostante. */
+    user-select: none;
+}
+
+/* --- La legenda delle porte (PortLegend.razor), sempre a schermo sotto la barra ---------------- */
+
+.port-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+    padding: 6px 16px;
+    border-bottom: 1px solid var(--editor-border);
+    background: var(--editor-bg);
+    font-size: 12px;
+    color: var(--editor-text-muted);
+}
+
+.port-legend-title {
+    font-weight: 600;
+    color: var(--editor-text);
+}
+
+/* Il "?" del compito barre-usabili: al posto del paragrafo esplicativo sempre a schermo (misurato:
+   68 px di contorno insieme alla legenda, tolti in questo stesso compito), il testo vive nel
+   title/aria-label di questo pallino - si veda il commento in cima a PortLegend.razor per la misura.
+   Le stesse dimensioni di ".port-legend-swatch" qui sotto (18px), cosi' il "?" si legge come un'altra
+   voce della stessa fila invece che come un elemento estraneo. cursor:help e' il cursore che i
+   browser gia' usano per un elemento con un title esplicativo - nessun JavaScript nuovo per mostrarlo. */
+.port-legend-help {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1px solid var(--editor-border-strong);
+    color: var(--editor-text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: help;
+}
+
+.port-legend-help:focus-visible {
+    outline: 2px solid var(--editor-accent);
+    outline-offset: 1px;
+}
+
+.port-legend-entry {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.port-legend-swatch {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    /* Colore di sfondo, colore e spessore del bordo arrivano dall'attributo "style" in linea
+       (PortLegend.razor, SwatchStyle) e sovrascrivono questi due: variano per voce (vuota o piena,
+       si veda PortPresentation.IsHollow), un'unica dichiarazione qui non potrebbe seguirli. Restano
+       come ripiego se lo stile in linea mancasse. */
+    border: 1px solid #1f2933;
+    color: #ffffff;
+    font-size: 11px;
+    line-height: 1;
+}
+
+/* --- La lettura X/Y del puntatore, sotto la tela, come la barra di stato dell'Editor di oggi ---
+   Fino al compito B3a la tela aveva un'altezza fissa (600px): a 768px di larghezza la barra va a
+   capo su piu' righe, e barra + legenda + tela fissa + questa fascia potevano superare l'altezza
+   della finestra, lasciando la fascia sotto lo schermo finche' non si scorreva. Da questo compito la
+   tela e' invece elastica (.plant-svg qui sopra: flex:1, min-height:0) - resta lei, non questa fascia,
+   a restringersi per prima quando .plant-canvas-diagram (il comune contenitore flex, piu' sopra) ha
+   meno spazio: e' un fratello a intrinseco fisso in quella colonna, .plant-svg e' l'unico flex:1.
+
+   Questa fascia resta quindi SEMPRE intera quando il suo contenitore e' reso (non tagliata a meta'),
+   ma non e' piu' vero che non serva mai scorrere per vederla: .plant-canvas-diagram porta un
+   pavimento di 200px (si veda il commento su .editor-shell in cima a questo file) - su una finestra
+   piu' bassa dell'ingombro fisso piu' quel pavimento, e' la PAGINA a scorrere per raggiungere l'intero
+   .plant-canvas-diagram (fascia compresa), non piu' la sola tela a comprimersi fino a sparire. */
+
+.plant-position-readout {
+    display: flex;
+    gap: 16px;
+    padding: 4px 16px;
+    border-top: 1px solid var(--editor-border);
+    background: var(--editor-ribbon-bg);
+    color: var(--editor-text-muted);
+    font-size: 12px;
+    font-family: var(--editor-font-mono);
+}
+
+.plant-unplaced, .plant-degenerate-geometry, .plant-mirrored-geometry {
+    padding: 8px 16px;
+    border-top: 1px solid var(--editor-border);
+    background: var(--editor-ribbon-bg);
+    font-size: 13px;
+}
+
+.plant-unplaced p, .plant-degenerate-geometry p, .plant-mirrored-geometry p {
+    margin: 0 0 4px;
+    font-weight: 600;
+    color: var(--editor-text-muted);
+}
+
+.plant-unplaced ul, .plant-degenerate-geometry ul, .plant-mirrored-geometry ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+/* --- Il pannello delle proprieta': agganciato di lato, non un popup (compito B3a) --------------
+   Il proprietario, provando l'Editor: "i pannelli delle proprieta' o delle liste vanno aperti in
+   popup e non sotto il diagramma". Per il pannello delle proprieta' la scelta presa e' diversa dagli
+   elenchi (si vedano i popup piu' sotto): resta ancorato di lato, MAI sopra alla tela - un
+   dispositivo si configura guardandolo, e coprirlo per vedere le sue proprieta' sarebbe un passo
+   indietro anche rispetto all'Editor di oggi (la griglia delle proprieta' agganciata di lato in
+   FrmEDITOR, il diagramma sempre visibile). E' un figlio flex di plant-canvas-body (PlantCanvas.razor),
+   non posizionato in assoluto: prende una fetta fissa di larghezza e plant-canvas-diagram si stringe
+   per fargli posto (min-width:0 su di lei, si veda sopra). */
+#property-panel-container {
+    flex: 0 0 320px;
+    width: 320px;
+    box-sizing: border-box;
+    border-left: 1px solid var(--editor-border);
+    background: var(--editor-surface);
+    padding: 10px 16px 16px;
+    overflow-y: auto;
+}
+
+/* --- Il pannello celle/mappa porte (DoorMappings.razor, LinkedCells.razor - compito 11) ---------
+   Stesso schema agganciato di #property-panel-container (si veda il suo commento), ma piu' largo:
+   DoorMappings mostra due tabelle di celle del gestionale fianco a fianco (porta A, porta B), che a
+   320px sarebbero illeggibili. */
+#cells-panel-container {
+    flex: 0 0 520px;
+    width: 520px;
+    box-sizing: border-box;
+    border-left: 1px solid var(--editor-border);
+    background: var(--editor-surface);
+    padding: 10px 16px 16px;
+    overflow-y: auto;
+}
+
+.wms-cells-empty {
+    color: var(--editor-text-muted);
+}
+
+.wms-cells-columns {
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
+}
+
+.wms-cells-column {
+    flex: 1;
+    min-width: 0;
+    margin: 0 0 12px;
+    padding: 8px 10px 10px;
+    border: 1px solid var(--editor-border);
+    border-radius: var(--editor-radius);
+    background: var(--editor-bg);
+}
+
+.wms-cells-column legend {
+    padding: 0 6px;
+    font-weight: 600;
+    color: var(--editor-text-muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.wms-cells-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.wms-cells-table th, .wms-cells-table td {
+    padding: 2px 4px;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.wms-cells-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.wms-linked-cell-current {
+    font-weight: 600;
+}
+
+.wms-automatic-cells {
+    margin-top: 12px;
+    padding-top: 8px;
+    border-top: 1px solid var(--editor-border);
+    color: var(--editor-text-muted);
+}
+
+/* --- Gli elenchi e le verifiche: popup veri sopra la tela (compito B3a) -------------------------
+   La stessa richiesta del proprietario, ma la scelta qui e' l'altra meta': un elenco puo' mettersi
+   davanti come fa oggi l'Editor WinForms (FrmEDITOR.Private.cs:30-34 e :167-171,
+   "new FrmAUTOMATION_ITEMS_LIST().ShowDialog(this)" e la gemella delle giunzioni - finestre vere,
+   non contenuto in coda alla pagina). plant-popups (PlantCanvas.razor) sta dentro
+   plant-canvas-diagram, che porta position:relative apposta (si veda il suo commento sopra): un
+   popup resta quindi ancorato all'angolo della SOLA tela, non anche del pannello delle proprieta' se
+   aperto insieme a lui. z-index sopra alla tela (che non ne dichiara uno, quindi vale l'ordine del
+   documento) ma non altissimo: non deve competere con niente che l'Editor non ha ancora. */
+.plant-popups {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 12px;
+    max-width: calc(100% - 24px);
+    max-height: calc(100% - 24px);
+    z-index: 20;
+    /* Il contenitore stesso non deve rubare i clic sullo sfondo della tela negli spazi vuoti fra un
+       popup e l'altro (o quando e' vuoto, nessun pannello aperto): pointer-events:none qui, e
+       ciascun .plant-popup lo riaccende per se' stesso (sotto) - lo stesso principio gia' in uso
+       per port-legend/plant-node-grip, applicato qui a un contenitore invece che a una sagoma. */
+    pointer-events: none;
+}
+
+.plant-popup {
+    pointer-events: auto;
+    width: min(420px, 100%);
+    max-height: 100%;
+    overflow-y: auto;
+    box-sizing: border-box;
+    background: var(--editor-surface);
+    border: 1px solid var(--editor-border);
+    border-radius: var(--editor-radius);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+    padding: 10px 16px 16px;
+}
+
+/* --- La vista d'insieme (compito B3b): un popup come gli altri, con una tela SVG piccola e fissa
+   dentro (BirdviewPixelWidth/Height in PlantCanvas.razor - questa regola non decide la dimensione,
+   solo il cursore e il distacco dal riquadro del popup). ------------------------------------- */
+.plant-birdview {
+    display: block;
+    cursor: crosshair;
+}
+
+#property-panel-close-button, #item-list-close-button, #junction-list-close-button, #checks-panel-close-button, #birdview-close-button, #cells-panel-close-button {
+    padding: 3px 10px;
+    margin-bottom: 8px;
+    border: 1px solid var(--editor-border-strong);
+    border-radius: var(--editor-radius);
+    background: var(--editor-ribbon-bg);
+    color: var(--editor-text);
+    cursor: pointer;
+}
+
+#property-panel-close-button:hover, #item-list-close-button:hover, #junction-list-close-button:hover, #checks-panel-close-button:hover, #birdview-close-button:hover, #cells-panel-close-button:hover {
+    background: var(--editor-accent-bg);
+    border-color: var(--editor-accent);
+}
+
+/* --- Il menu contestuale (ContextMenu.razor, compito B3-bis, punto 3) -------------------------
+   Il rivestimento copre l'intera finestra (position:fixed, inset:0): un clic fuori dal menu lo
+   chiude, come un menu contestuale di un editor desktop. z-index sopra a tutto il resto di questo
+   file (il piu' alto finora era 20, i popup): il menu deve mostrarsi anche sopra un elenco o le
+   verifiche gia' aperti, non solo sopra la tela. */
+.plant-context-menu-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 900;
+    background: transparent;
+}
+
+.plant-context-menu {
+    position: fixed;
+    z-index: 901;
+    display: flex;
+    flex-direction: column;
+    min-width: 180px;
+    box-sizing: border-box;
+    background: var(--editor-surface);
+    border: 1px solid var(--editor-border);
+    border-radius: var(--editor-radius);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.24);
+    padding: 4px;
+    font-family: var(--editor-font);
+}
+
+.plant-context-menu-item {
+    text-align: left;
+    padding: 6px 10px;
+    border: none;
+    background: transparent;
+    color: var(--editor-text);
+    cursor: pointer;
+    border-radius: var(--editor-radius);
+    font: inherit;
+}
+
+.plant-context-menu-item:hover:not(:disabled) {
+    background: var(--editor-accent-bg);
+}
+
+.plant-context-menu-item:disabled {
+    color: var(--editor-text-muted);
+    cursor: not-allowed;
+}
+
+/* Lo stesso segnale "attivo" del selettore di peso della barra (che ora lo prende da Fluent, con
+   appearance="accent" sul valore scelto): non solo il colore, anche aria-pressed nel markup - lo
+   stesso principio gia' scritto per quel selettore. Qui la classe resta perche' il menu contestuale
+   e' ancora fatto di elementi nostri, non di componenti Fluent. */
+.plant-context-menu-weight-active {
+    font-weight: 600;
+    color: var(--editor-accent);
+}
+
+.plant-context-menu-separator {
+    height: 1px;
+    margin: 4px 6px;
+    background: var(--editor-border);
+}
+
+.plant-context-menu-label {
+    padding: 4px 10px 0;
+    font-size: 0.85em;
+    color: var(--editor-text-muted);
+}
+
+/* --- Il pannello delle proprieta' (PropertyPanel.razor) --------------------------------------- */
+
+.property-panel-empty {
+    color: var(--editor-text-muted);
+}
+
+.property-panel-group {
+    margin: 0 0 12px;
+    padding: 8px 12px 12px;
+    border: 1px solid var(--editor-border);
+    border-radius: var(--editor-radius);
+    background: var(--editor-bg);
+}
+
+.property-panel-group legend {
+    padding: 0 6px;
+    font-weight: 600;
+    color: var(--editor-text-muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+/* Etichetta SOPRA il campo, non accanto (compito B3a): prima di questo compito il pannello si
+   stendeva a piena larghezza sotto il diagramma (quasi 960px), e un'etichetta di 200px accanto al
+   campo ci stava comoda. Ora il pannello e' agganciato in una colonna stretta (~320px meno il
+   riempimento, si veda #property-panel-container), dove 200px di etichetta lascerebbero al campo
+   una manciata di pixel - un passo indietro proprio nella lettura che il pannello agganciato
+   dovrebbe migliorare. Impilato invece di affiancato, il campo prende sempre tutta la larghezza
+   disponibile qualunque essa sia. */
+.property-panel-field {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    padding: 3px 0;
+}
+
+.property-panel-field label {
+    color: var(--editor-text-muted);
+    font-size: 13px;
+}
+
+.property-panel-field input, .property-panel-field select {
+    min-width: 0;
+    padding: 4px 6px;
+    border: 1px solid var(--editor-border-strong);
+    border-radius: var(--editor-radius);
+    background: var(--editor-surface);
+    color: var(--editor-text);
+}
+
+.property-panel-field input:disabled, .property-panel-field select:disabled {
+    background: var(--editor-ribbon-bg);
+    color: var(--editor-text-muted);
+}
+
+.property-panel-readonly-value {
+    font-family: var(--editor-font-mono);
+    color: var(--editor-text-muted);
+}
+
+/* The panel's "Save" has no rule of its own since the final fix round of the passata grafica (30/9):
+   it wears the draw.io page's blue button (.drawio-btn-primary), the one page the panel lives on. Its
+   id rules outweighed the page's pressed state, which it did not have, and turned it a darker grey
+   than every other switched-off button. */
+
+/* --- Le liste (ItemList.razor, JunctionList.razor) --------------------------------------------
+
+   Lo sfondo della riga scelta resta uno stile in linea impostato dal componente, per la stessa
+   ragione della tela (si veda il commento in cima al file). Qui si stila tutto il resto: il
+   filtro, l'intestazione, il bordo delle righe. */
+
+.item-list, .junction-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#item-list-filter, #junction-list-filter {
+    padding: 6px 8px;
+    border: 1px solid var(--editor-border-strong);
+    border-radius: var(--editor-radius);
+    background: var(--editor-surface);
+    color: var(--editor-text);
+}
+
+#item-list, #junction-list {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+#item-list th, #junction-list th {
+    text-align: left;
+    padding: 6px 8px;
+    border-bottom: 2px solid var(--editor-border-strong);
+    color: var(--editor-text-muted);
+    font-weight: 600;
+}
+
+#item-list td, #junction-list td {
+    padding: 5px 8px;
+    border-bottom: 1px solid var(--editor-border);
+}
+
+.item-list-row, .junction-list-row {
+    cursor: pointer;
+}
+
+.item-list-row:hover, .junction-list-row:hover {
+    background: var(--editor-ribbon-bg);
+}
+
+/* --- Le verifiche (ChecksPanel.razor) ---------------------------------------------------------- */
+
+/* ChecksPanel lives only in the plant checks' window of /editor/drawio: its layout is there
+   (.drawio-checks .checks-panel), and its two buttons have no rule of their own - they wear the page's
+   buttons' look, which an id rule here would outweigh. */
+
+#junction-check-result ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+/* The failure's text is the host's answer, and nothing bounds how long a run without a break point
+   in it can be: the 503's problem document with its "unavailable" field (voce 34) put about 70 such
+   characters in a row, and the box - which cannot shrink below its longest word - came out 31 px
+   wider than the window (DrawioChecksTest.AFailedConfigurationCheckFitsInsideItsWindow). "anywhere"
+   lets the line break inside such a run and counts that break in the box's narrowest width too. */
+#config-check-error {
+    overflow-wrap: anywhere;
+    padding: 8px 10px;
+    border-radius: var(--editor-radius);
+    background: var(--editor-danger-bg);
+    border: 1px solid var(--editor-danger-border);
+    color: var(--editor-danger);
+}
+
+#config-check-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+#config-check-table th, #config-check-table td {
+    text-align: left;
+    padding: 5px 8px;
+    border: 1px solid var(--editor-border);
+}
+
+#config-check-table th {
+    background: var(--editor-ribbon-bg);
+    color: var(--editor-text-muted);
+}
+
+/* --- Esportazione e importazione (ImportExport.razor, compito 12) ----------------------------
+   Dal compito barre-usabili questi due pulsanti non hanno piu' un contenitore ".toolbar"/".toolbar-
+   group" proprio: sono l'ottava barra del dock, e quel contenitore lo rende Toolbar.razor come per
+   le altre sette - si veda il commento in cima a ImportExport.razor. Restano le regole di QUESTO che
+   sono davvero loro: l'aspetto dei due pulsanti e l'errore. */
+
+/* <label for="plant-import-input"> travestita da pulsante (.drawio-btn): l'input vero (sotto) e'
+   invisibile ma resta nel flusso della tastiera - non display:none, che lo toglierebbe anche dal
+   tab, solo ridotto a un punto e trasparente, la stessa tecnica di un "file input" travestito che
+   non nasconde l'elemento agli screen reader ne' alla tastiera. Il clic sulla label apre il
+   selettore di file del browser; se l'input e' disabled (CanEdit falso, un'importazione gia' in
+   corso, o una conferma gia' in attesa) il browser stesso rifiuta di aprirlo, senza bisogno di
+   duplicare qui lo stato "disabled" a mano. Quel rifiuto pero' e' muto (correzione minore M11 della
+   revisione): una <label> non e' un <button>, :disabled non le si applica mai, e restava identica a
+   un bottone acceso mentre premerla non faceva niente. aria-disabled (impostato a mano in
+   ImportExport.razor, non deducibile dal DOM come per :disabled) le da' lo stesso grigio di un
+   pulsante spento della pagina (:where(.drawio-shell button):where(:disabled)), cosi' lo stato si
+   vede anche qui. */
+.plant-import-picker[aria-disabled="true"] {
+    color: var(--editor-text-muted);
+    background: var(--editor-ribbon-bg);
+    border-color: var(--editor-border);
+    cursor: not-allowed;
+}
+
+/* The keyboard's focus is on the file input, clipped to a pixel after the label: the ring the page
+   draws on a focused button goes on the label that is drawn as one, or Tab would land on nothing that
+   can be seen. */
+.plant-import-picker:has(+ .plant-import-input:focus-visible) {
+    outline: 2px solid var(--editor-accent);
+    outline-offset: 1px;
+}
+
+.plant-import-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.plant-io-error {
+    align-self: center;
+    padding: 4px 10px;
+    border-radius: var(--editor-radius);
+    background: var(--editor-danger-bg);
+    border: 1px solid var(--editor-danger-border);
+    color: var(--editor-danger);
+    font-size: 12px;
+}
+
+/* The import's confirmation (task 12, point 5): the same scheme as the context menu
+   (.plant-context-menu-overlay/.plant-context-menu) - a backdrop over the whole page, a click outside
+   cancels - but centred instead of anchored at the click, and with a higher z-index: it must cover
+   everything, a context menu or a panel already open included, not only the canvas.
+   Since 2026-09-29 it lives inside the Plant file window (.drawio-window), which is fixed with an
+   inline z-index (100-800, written by drawio-windows.js) and so is a stacking context: 950/951 then
+   count only inside that window, and another window brought to the front (a focus moved into it
+   with Tab, a window opened from the keyboard) would sit above the backdrop and the dialog and take
+   clicks while the whole-plant replace waits. The rule below lifts the window that holds a pending
+   confirmation to 950 while - and only while - the overlay is in it (ImportExport renders the
+   overlay only with an import pending): above every window and the 900 menus. !important because
+   it has to beat the module's INLINE z-index, which toFront and renumber keep rewriting - they read
+   and write the inline value only, so they cannot undo it, and once the confirmation goes the
+   window stacks by its inline value again. */
+.drawio-window:has(.plant-import-dialog-overlay) {
+    z-index: 950 !important;
+}
+
+.plant-import-dialog-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 950;
+    background: rgba(32, 31, 30, 0.35);
+}
+
+.plant-import-dialog {
+    position: fixed;
+    z-index: 951;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-sizing: border-box;
+    width: min(520px, calc(100vw - 32px));
+    max-height: calc(100vh - 64px);
+    overflow-y: auto;
+    background: var(--editor-surface);
+    border: 1px solid var(--editor-border);
+    /* The corners of the page's other boxes over the page (.drawio-popover: the engine's
+       confirmation, the notes behind a "?"), since the passata grafica. */
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+    padding: 16px;
+    font-family: var(--editor-font);
+}
+
+.plant-import-title {
+    margin: 0;
+    font-size: 15px;
+}
+
+.plant-import-legacy-report, .plant-import-diff {
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: var(--editor-radius);
+    background: var(--editor-ribbon-bg);
+    border: 1px solid var(--editor-border);
+    font-size: 13px;
+}
+
+.plant-import-legacy-report p, .plant-import-diff p {
+    margin: 0 0 6px;
+}
+
+.plant-import-diff ul {
+    margin: 0;
+    padding-left: 18px;
+}
+
+/* L'avvertenza sui contatori (la stessa della migrazione, compito 4a): non un colore neutro come
+   il resto del riquadro - lo stesso giallo di #edit-lock-banner qui sopra, perche' e' la frase che
+   piu' ha costato leggerla male (si veda il commento di DiagramGeometryReader). */
+.plant-import-caveat {
+    margin: 0;
+    padding: 6px 8px;
+    border-radius: var(--editor-radius);
+    background: var(--editor-warning-bg);
+    color: var(--editor-warning);
+    font-size: 12px;
+}
+
+/* Cancel and Confirm are the page's buttons (the base rules under .drawio-shell), Confirm the red one
+   (.drawio-btn-danger): it replaces the whole plant. No rule of their own here since the passata
+   grafica: ".plant-import-dialog-buttons button" weighs more than .drawio-btn-danger and than the
+   base's hover and pressed states, and kept Confirm white and both buttons deaf to the mouse
+   (DrawioImportExportTest.ThePlantFilesButtonsAndTheImportsConfirmationWearThePagesLook). */
+.plant-import-dialog-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+/* ROW 15: the box that points a shape at a device. It takes the place of .drawio-property-hint -
+   the column shows one or the other, never both - so it inherits the dock's width and nothing here
+   sets one. The input is width:100% for the reason measured on the panel above: this column is
+   320 px, a guid is 36 characters, and a field sized by its own content would run past the edge. */
+.drawio-reassociate {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.drawio-reassociate-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.85rem;
+    color: var(--editor-text-muted);
+}
+
+.drawio-reassociate-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 4px 6px;
+    border: 1px solid var(--editor-border);
+    border-radius: var(--editor-radius);
+    font-family: monospace;
+}
+
+.drawio-reassociate-confirm {
+    align-self: flex-start;
+}
+
+/* The candidates, shut to begin with: on a plant of fifty devices an open list would push the box's
+   own field and its outcome off the top of the column, and the summary already carries the fact
+   (how many there are) for whoever only wants to know whether it is worth opening. */
+.drawio-reassociate-candidates {
+    font-size: 0.85rem;
+}
+
+.drawio-reassociate-list {
+    margin: 6px 0 0;
+    padding-left: 20px;
+    font-family: monospace;
+}
+
+.drawio-reassociate-candidate {
+    margin-bottom: 4px;
+    word-break: break-all;
+}
+
+.drawio-reassociate-none {
+    margin: 6px 0 0;
+    color: var(--editor-text-muted);
+}
+
+/* Row 35: the strip under the canvas that carries the pointer's position. flex:0 0 auto for the same
+   reason as the bar and every other fixed strip of .drawio-shell's column: it must not be
+   the child that grows, or it would fight .drawio-body for the window's height. */
+.drawio-status-bar {
+    flex: 0 0 auto;
+    padding: 4px 16px;
+    border-top: 1px solid var(--editor-border);
+    background: var(--editor-surface);
+    color: var(--editor-text-muted);
+    font-family: var(--editor-font-mono);
+    font-size: 0.85rem;
+    /* A fixed height even when the span is empty (pointer off the canvas): without it the whole
+       strip - and the canvas above it - would resize by a line's height on every entry and exit,
+       which is motion nobody asked for. */
+    min-height: 1.4em;
+}
+
+.drawio-pointer-position {
+    white-space: pre;
+}
+
+/* Compito 4, row 62: the PLC connections. Every cell is a box to type into,
+   and a row the WinForms checks refuse is marked until it is put right.
+   The question before a save and the choice after the host's list changed underneath sit between the
+   tools and the rows, like the move of a mission. */
+.drawio-plc-connections .drawio-device-list-tools {
+    flex: 0 0 auto;
+}
+
+.drawio-window.drawio-plc-connections {
+    min-width: 440px;
+    min-height: 420px;
+}
+
+/* Reserve room for the fixed tools/pager and a usable grid. Arbitrarily long host outcomes,
+   conflicts and confirmation summaries scroll here, including their action buttons. */
+.drawio-plc-messages {
+    flex: 0 1 auto;
+    min-height: 0;
+    max-height: 45%;
+    overflow: auto;
+    overflow-wrap: anywhere;
+}
+
+.drawio-plc-messages:empty {
+    display: none;
+}
+
+.drawio-plc-connections .drawio-list-scroll {
+    min-height: 64px;
+    border: 1px solid var(--editor-border);
+    border-radius: 7px 7px 0 0;
+}
+
+.drawio-plc-table th {
+    z-index: 2;
+    cursor: default;
+}
+
+.drawio-plc-pager {
+    flex-wrap: wrap;
+    border: 1px solid var(--editor-border);
+    border-top: 0;
+    border-radius: 0 0 7px 7px;
+}
+
+.drawio-plc-table input {
+    width: 9rem;
+}
+
+.drawio-plc-table td[data-field="Id"] input,
+.drawio-plc-table td[data-field="PcmPort"] input,
+.drawio-plc-table td[data-field="LocalPort"] input {
+    width: 5rem;
+}
+
+.drawio-plc-row-invalid {
+    background: var(--editor-danger-bg);
+}
+
+/* A row removed here stays on screen until the save, struck, so it can be marked (a connection devices
+   still use cannot be removed) and restored. */
+.drawio-plc-row-removed input {
+    text-decoration: line-through;
+    color: var(--editor-text-muted);
+}
+
+.drawio-plc-conflict,
+.drawio-plc-confirmation {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    margin: 4px 0 8px;
+}
+
+/* The floating windows of the draw.io page (spec 2026-09-29). Fixed to the viewport, above the
+   canvas: opening one takes no height from draw.io's iframe. Position, size and stacking are set by
+   drawio-windows.js; the values here are only what a window has before the module attaches (or
+   without it). Border-box, because the module measures the border box and writes it back as the
+   width and height: in content-box every show and every gesture would grow the window by its
+   border. */
+.drawio-window {
+    position: fixed;
+    box-sizing: border-box;
+    left: 40px;
+    top: 140px;
+    width: 640px;
+    height: 420px;
+    min-width: 280px;
+    min-height: 160px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    background: var(--editor-surface);
+    border: 1px solid var(--editor-border);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.drawio-window-title {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px 6px 12px;
+    border-bottom: 1px solid var(--editor-border);
+    font-weight: 600;
+    cursor: move;
+    user-select: none;
+    touch-action: none;
+}
+
+.drawio-window-name {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* The title bar's icon, the section's (passata grafica, 2026-09-29): the icon of its button in the
+   bar. */
+.drawio-window-title > .drawio-icon {
+    color: var(--editor-text-muted);
+}
+
+/* What a list counts, right after its name ("Devices 51", the spec's example): quiet, the page's
+   neutral pill (.drawio-pill-neutral, in the markup). The "?" and the X go to the right end, both
+   icon buttons (.drawio-btn-icon), the X last: whatever comes last of the name and the count takes
+   the room left in between. */
+.drawio-window-count {
+    flex: 0 0 auto;
+}
+
+.drawio-window-name:not(:has(+ .drawio-window-count)),
+.drawio-window-count {
+    margin-right: auto;
+}
+
+.drawio-window-title > .drawio-help-wrap {
+    flex: 0 0 auto;
+}
+
+.drawio-window-popout-status {
+    display: none;
+    max-width: min(300px, 35vw);
+    padding: 2px 7px;
+    border: 1px solid color-mix(in srgb, var(--editor-danger) 35%, var(--editor-border));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--editor-danger) 8%, var(--editor-surface));
+    color: var(--editor-danger);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: normal;
+}
+
+.drawio-window-popout-status:not(:empty) {
+    display: block;
+}
+
+.drawio-window-popout,
+.drawio-window-close {
+    flex: 0 0 auto;
+}
+
+/* A detached window is the whole of its separate browser window, whatever size the operator gives
+   that: the minimum sizes of the windows in the editor (PLC connections, Linked storage cells) would
+   otherwise push the title bar's buttons out of a narrow one, so they go too - the content scrolls
+   inside the window, and the host scrolls if even the title bar does not fit. */
+.drawio-window-detached {
+    position: relative !important;
+    inset: auto !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: none !important;
+    max-height: none !important;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.drawio-window-detached > .drawio-window-title {
+    cursor: default;
+}
+
+.drawio-popout-body {
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    overflow: hidden;
+    background: var(--editor-bg);
+    color: var(--editor-text);
+    font-family: var(--editor-font);
+}
+
+.drawio-popout-host {
+    width: 100vw;
+    height: 100vh;
+    overflow: auto;
+}
+
+/* The cover of a detached window while an import waits for its confirmation in the editor
+   (drawio-windows.js): it takes the presses, the module the keys, and it says where to go. */
+.drawio-popout-blocker {
+    position: fixed;
+    inset: 0;
+    z-index: 950;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
+    background: color-mix(in srgb, var(--editor-surface) 90%, transparent);
+    color: var(--editor-text);
+    font-weight: 600;
+    text-align: center;
+}
+
+.drawio-popout-blocker[hidden] {
+    display: none;
+}
+
+.drawio-window-content {
+    flex: 1 1 auto;
+    overflow: auto;
+    padding: 8px 12px;
+}
+
+.drawio-window-fixed > .drawio-window-content {
+    flex: 0 1 auto;
+    min-height: 0;
+}
+
+/* Mission Steps and Linked Storage Cells are device-context workspaces, not extensions of the
+   properties column. Their quiet body leaves one functional colour to do the navigation work:
+   blue for mission flow, violet for warehouse association. Tools and outcomes stay fixed while the
+   data area scrolls inside the window. */
+.drawio-context-window {
+    --drawio-context-accent: var(--editor-accent);
+    --drawio-context-accent-bg: var(--editor-accent-bg);
+    --drawio-context-accent-border: #b7d7f0;
+    border-top: 3px solid var(--drawio-context-accent);
+}
+
+.drawio-linked-storage-cells-window {
+    --drawio-context-accent: #6b4fa1;
+    --drawio-context-accent-bg: #f3effa;
+    --drawio-context-accent-border: #d8caec;
+    min-width: 440px;
+    min-height: 460px;
+}
+
+.drawio-context-window > .drawio-window-title > .drawio-icon {
+    color: var(--drawio-context-accent);
+}
+
+.drawio-context-window > .drawio-window-content {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    padding: 0;
+}
+
+.drawio-context-window-tools {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--editor-border);
+    background: var(--editor-surface);
+}
+
+.drawio-context-window-tools .drawio-filter {
+    flex: 1 1 20rem;
+    min-width: 0;
+}
+
+.drawio-context-window-tools .drawio-device-list-filter {
+    width: 100%;
+    min-width: 0;
+}
+
+.drawio-context-window-tools .drawio-device-list-count {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 2px 8px;
+    border: 1px solid var(--drawio-context-accent-border);
+    border-radius: 999px;
+    background: var(--drawio-context-accent-bg);
+    color: var(--drawio-context-accent);
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.drawio-context-window-tools .drawio-filter > .drawio-icon {
+    color: var(--drawio-context-accent);
+}
+
+.drawio-context-window .drawio-property-loading,
+.drawio-context-window .drawio-property-error,
+.drawio-context-window .drawio-mission-steps-none,
+.drawio-context-window .drawio-cells-none,
+.drawio-context-window .drawio-cells-notice {
+    margin: 12px;
+}
+
+.drawio-context-window-outcome {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 8px 12px;
+    border-top: 1px solid var(--editor-border);
+    background: var(--editor-surface);
+}
+
+.drawio-mission-steps-scroll .drawio-list-table {
+    width: 100%;
+    min-width: max-content;
+}
+
+.drawio-mission-steps-scroll .drawio-list-table th {
+    z-index: 1;
+}
+
+.drawio-mission-steps-scroll .drawio-list-table tbody tr:nth-child(even),
+.drawio-linked-storage-cells-window .wms-cells-table tbody tr:nth-child(even) {
+    background: var(--editor-bg);
+}
+
+.drawio-mission-steps-scroll .drawio-list-table tbody tr:hover,
+.drawio-linked-storage-cells-window .wms-cells-table tbody tr:hover {
+    background: var(--drawio-context-accent-bg);
+}
+
+.drawio-linked-storage-cells {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+.drawio-linked-storage-cells .drawio-cells-details {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+.drawio-linked-storage-cells .drawio-cells-summary {
+    flex: 0 0 auto;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--drawio-context-accent-border);
+    background: var(--drawio-context-accent-bg);
+    color: var(--drawio-context-accent);
+    font-weight: 600;
+}
+
+.drawio-linked-storage-cells-window .wms-cells-panel {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+.drawio-linked-storage-cells-window .wms-linked-cell-current {
+    display: none;
+}
+
+.drawio-linked-storage-cells-window .wms-cells-table-scroll {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+}
+
+.drawio-linked-storage-cells-window .wms-cells-table {
+    min-width: 100%;
+    width: max-content;
+}
+
+.drawio-linked-storage-cells-window .wms-cells-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    border-bottom: 1px solid var(--editor-border-strong);
+    background: var(--editor-ribbon-bg);
+}
+
+.drawio-linked-storage-cells-window .wms-cells-table th,
+.drawio-linked-storage-cells-window .wms-cells-table td {
+    padding: 6px 8px;
+}
+
+.drawio-linked-storage-cells-window .wms-cells-table input {
+    accent-color: var(--drawio-context-accent);
+}
+
+.drawio-linked-storage-cells-window .wms-cells-columns {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+    min-width: 0;
+    min-height: 0;
+    gap: 10px;
+    padding: 10px 12px 0;
+}
+
+.drawio-linked-storage-cells-window .wms-cells-column {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    overflow: hidden;
+    background: var(--editor-surface);
+}
+
+.drawio-linked-storage-cells-window .wms-cells-column legend {
+    color: var(--drawio-context-accent);
+}
+
+.drawio-linked-storage-cells-window .wms-cells-empty {
+    margin: 12px;
+}
+
+.drawio-linked-storage-cells-window .wms-cells-actions {
+    flex: 0 0 auto;
+    justify-content: flex-end;
+    margin: 0;
+    padding: 10px 12px;
+    border-top: 1px solid var(--editor-border);
+    background: var(--editor-surface);
+}
+
+.drawio-linked-storage-cells-window .wms-cells-actions > :first-child {
+    border-color: var(--drawio-context-accent);
+    background: var(--drawio-context-accent);
+    color: var(--editor-text-on-accent);
+}
+
+.drawio-linked-storage-cells-window .wms-cells-actions > :first-child:hover:not(:disabled) {
+    background: #593d8b;
+}
+
+.drawio-linked-storage-cells-window .wms-automatic-cells {
+    flex: 0 0 auto;
+    max-height: 8rem;
+    margin: 0;
+    padding: 8px 12px;
+    overflow: auto;
+    border-top: 1px solid var(--editor-border);
+    background: var(--editor-bg);
+}
+
+.drawio-window-grip {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 14px;
+    height: 14px;
+    cursor: nwse-resize;
+    touch-action: none;
+}
+
+/* --- The draw.io page's controls (passata grafica, 2026-09-29) ------------------------------------
+
+   One look for the buttons, fields, tables, pills, badges and pop-overs of /editor/drawio, taken from
+   the palette in :root and from nowhere else. Until now the page's buttons were the browser's own -
+   the rule at the top of this file gives them the font and nothing more - and this section is what
+   makes a raw <button> inside .drawio-shell look like the page's without touching its markup. /editor
+   and the key page are not inside .drawio-shell and do not change.
+
+   THE BASE RULES WEIGH NOTHING. Their selectors sit inside :where(), whose specificity is zero, so a
+   rule that already draws a control of this page by its class or id (.drawio-section-toggle, the
+   shared property panel's fields) keeps every property it sets and takes from here only what it
+   leaves unset. Written as ".drawio-shell button" (0,1,1) and ".drawio-shell input[type=text]"
+   (0,2,1), the base would outweigh those one-class rules and restyle the controls they draw. The
+   other side of the same weight: a rule of a control's own that sets its background outweighs the
+   hover and pressed states below as well, and the control stops answering the mouse unless the rule
+   draws those states itself (.drawio-section-toggle does). The controls this pass reached in its
+   later tasks - the plant file's buttons, the checks' two buttons and their "go to" buttons - lost
+   their rules of their own for that reason and wear these; the windows' X is a .drawio-btn-icon, and
+   the properties panel's Save a .drawio-btn-primary (its id rules went, final fix round). The named
+   classes further down (.drawio-btn-primary, .drawio-pill-ok, ...) are ordinary classes: a control
+   opts into them by name, and they weigh one class - a rule of a control's own that weighs more (an
+   id, a class with an element) outweighs them, so a coloured control has none (the import's buttons
+   lost theirs in task 4). .drawio-btn is the default look for an element that is not a <button> - a
+   <label> drawn as one. Two rules of the base weigh something, on purpose: [hidden], and the ring of a
+   focused field (each says why). */
+
+/* What the page hides with the hidden attribute - a shut window or note, the lines behind "+N more",
+   the counters the tests wait on - is hidden whatever display a rule of the page gives it: an
+   author's display, at any weight, outweighs the browser's own [hidden] { display: none }, and the
+   base rules below, the pills, the badges, the lines of the row and the windows all set one.
+   !important because it has to outweigh them all, whatever their selectors. */
+.drawio-shell [hidden] {
+    display: none !important;
+}
+
+:where(.drawio-shell button, .drawio-btn) {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 28px;
+    padding: 4px 10px;
+    border: 1px solid var(--editor-border-strong);
+    border-radius: 6px;
+    background: var(--editor-surface);
+    color: var(--editor-text);
+    line-height: 1.2;
+    cursor: pointer;
+}
+
+:where(.drawio-shell button, .drawio-btn):where(:hover:not(:disabled)) {
+    background: var(--editor-ribbon-bg);
+}
+
+:where(.drawio-shell button, .drawio-btn):where(:active:not(:disabled)) {
+    background: var(--editor-pressed-bg);
+}
+
+/* :focus-visible, not :focus: a click leaves no ring, Tab does. */
+:where(.drawio-shell button, .drawio-btn):where(:focus-visible) {
+    outline: 2px solid var(--editor-accent);
+    outline-offset: 1px;
+}
+
+:where(.drawio-shell button, .drawio-btn):where(:disabled) {
+    border-color: var(--editor-border);
+    background: var(--editor-ribbon-bg);
+    color: var(--editor-text-muted);
+    cursor: not-allowed;
+}
+
+/* The one action a view is for (Write, Save, Confirm): one blue button per view, no more. */
+.drawio-btn-primary {
+    border-color: var(--editor-accent);
+    background: var(--editor-accent);
+    color: var(--editor-text-on-accent);
+    font-weight: 600;
+}
+
+.drawio-btn-primary:hover:not(:disabled) {
+    border-color: var(--editor-accent-hover);
+    background: var(--editor-accent-hover);
+}
+
+.drawio-btn-primary:active:not(:disabled) {
+    border-color: var(--editor-accent-active);
+    background: var(--editor-accent-active);
+}
+
+/* Red is for what destroys or stops, and for nothing else: Stop engine, Remove All LU, the import
+   that replaces the plant. */
+.drawio-btn-danger {
+    border-color: var(--editor-danger);
+    background: var(--editor-danger);
+    color: var(--editor-text-on-accent);
+    font-weight: 600;
+}
+
+.drawio-btn-danger:hover:not(:disabled) {
+    border-color: var(--editor-danger-hover);
+    background: var(--editor-danger-hover);
+}
+
+.drawio-btn-danger:active:not(:disabled) {
+    border-color: var(--editor-danger-active);
+    background: var(--editor-danger-active);
+}
+
+/* Switched off, the two coloured buttons turn grey like every other: a coloured button that does
+   not answer the click would say the opposite. After their hover and active rules on purpose. */
+.drawio-btn-primary:disabled,
+.drawio-btn-danger:disabled {
+    border-color: var(--editor-border);
+    background: var(--editor-ribbon-bg);
+    color: var(--editor-text-muted);
+    font-weight: normal;
+}
+
+/* An icon and nothing else (the words go in its aria-label): a 28 px square with no border until the
+   mouse is on it or it is switched on. The border is there all along, transparent, so that switching
+   it on does not move anything by a pixel. Its hover weighs less than its on state: the button just
+   pressed shows that it is on while the mouse is still on it. */
+.drawio-btn-icon {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    min-height: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--editor-text-muted);
+    cursor: pointer;
+}
+
+.drawio-btn-icon:where(:hover:not(:disabled)) {
+    border-color: var(--editor-border);
+    background: var(--editor-ribbon-bg);
+    color: var(--editor-text);
+}
+
+.drawio-btn-icon[aria-pressed="true"],
+.drawio-btn-icon[aria-expanded="true"] {
+    border-color: var(--editor-accent);
+    background: var(--editor-accent-bg);
+    color: var(--editor-accent-active);
+}
+
+/* Pressed, switched on or not, and switched off: its own rules above set a background and a colour,
+   and outweigh the base rule's :active and :disabled, which weigh nothing. */
+.drawio-btn-icon:active:not(:disabled) {
+    background: var(--editor-pressed-bg);
+}
+
+.drawio-btn-icon:disabled {
+    border-color: transparent;
+    background: transparent;
+    color: var(--editor-border-strong);
+    cursor: not-allowed;
+}
+
+.drawio-icon {
+    flex: 0 0 auto;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+/* Fields: the height of a button, so that a filter and the buttons next to it sit on one line. The
+   ring on focus is the key page's (.key-field). type=search is here too: the lists' filters are. */
+:where(.drawio-shell) :where(input[type="text"], input[type="number"], input[type="search"], input:not([type]), select) {
+    box-sizing: border-box;
+    height: 28px;
+    padding: 0 8px;
+    border: 1px solid var(--editor-border-strong);
+    border-radius: 6px;
+    background: var(--editor-surface);
+    color: var(--editor-text);
+}
+
+/* The ring on focus is the one rule of the base that weighs something: a field whose own rule sets
+   its border (the properties panel's, .property-panel-field input; the reassociation's) would keep
+   that grey border against a ring of no weight, and show a 1 px halo beside it - a weaker ring than
+   the browser's own, which it replaces. */
+.drawio-shell :is(input[type="text"], input[type="number"], input[type="search"], input:not([type]), select):focus {
+    outline: none;
+    border-color: var(--editor-accent);
+    box-shadow: 0 0 0 1px var(--editor-accent);
+}
+
+:where(.drawio-shell) :where(input[type="text"], input[type="number"], input[type="search"], input:not([type]), select):where(:disabled) {
+    background: var(--editor-ribbon-bg);
+    color: var(--editor-text-muted);
+}
+
+:where(.drawio-shell) :where(input[type="checkbox"], input[type="radio"]) {
+    accent-color: var(--editor-accent);
+}
+
+/* Tables: rows told apart by a line and by a barely veiled every other row, the header in grey, the
+   selected row in the accent's light blue - the rows of the lists carry aria-selected. */
+:where(.drawio-shell table) {
+    border-collapse: collapse;
+}
+
+:where(.drawio-shell) :where(th, td) {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--editor-border);
+    text-align: left;
+}
+
+:where(.drawio-shell th) {
+    color: var(--editor-text-muted);
+    font-weight: 600;
+}
+
+:where(.drawio-shell tbody tr:nth-child(even)) {
+    background: var(--editor-bg);
+}
+
+:where(.drawio-shell tr[aria-selected="true"]) {
+    background: var(--editor-accent-bg);
+}
+
+/* A state in a word (the engine, the live link, read only): a rounded tag in one of four tones. */
+.drawio-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 16px;
+    white-space: nowrap;
+}
+
+.drawio-pill .drawio-icon {
+    width: 12px;
+    height: 12px;
+}
+
+.drawio-pill-ok {
+    background: var(--editor-success-bg);
+    color: var(--editor-success);
+}
+
+.drawio-pill-warn {
+    background: var(--editor-warning-bg);
+    color: var(--editor-warning);
+}
+
+.drawio-pill-bad {
+    background: var(--editor-danger-bg);
+    color: var(--editor-danger);
+}
+
+.drawio-pill-neutral {
+    border-color: var(--editor-border);
+    background: var(--editor-ribbon-bg);
+    color: var(--editor-text-muted);
+}
+
+/* A number on a button (the problems of the plant checks) or a mark that something is waiting. */
+.drawio-badge {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--editor-warning);
+    color: var(--editor-text-on-accent);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+}
+
+/* A box over the page: the text behind a "?", the engine's confirmation. The text is the page's
+   ordinary text, whatever the bar or the title it opens from (a window's title is bold, and cannot be
+   selected). */
+.drawio-popover {
+    box-sizing: border-box;
+    max-width: 28rem;
+    padding: 10px 12px;
+    border: 1px solid var(--editor-border);
+    border-radius: 8px;
+    background: var(--editor-surface);
+    color: var(--editor-text);
+    box-shadow: var(--editor-shadow-raised);
+    font-size: 0.85rem;
+    font-weight: normal;
+    line-height: 1.45;
+    text-align: left;
+    white-space: normal;
+    cursor: auto;
+    user-select: text;
+}
+
+/* The "?" and its note (DrawioHelp.razor): the note hangs under the "?" with its right edge on the
+   "?"'s - the "?" sits at the right end of a window's title or of a panel's heading, so the note
+   opens towards the middle of the screen. That alone does not keep it on screen: a window can be
+   dragged to the browser's left edge and narrowed to 280 px, and the properties column and a box
+   that scrolls clip what goes past their edges. So drawio-help.js places the note at each opening,
+   and again when the page scrolls or the browser's window changes size: fixed to the viewport
+   (.drawio-help-placed) - no box of the page clips it then - under the "?" or over it, whichever has
+   the room, moved left or right until it is inside the browser's window, and no taller than the room
+   it has (it scrolls inside itself beyond that). The rule below is where it opens before the module
+   has placed it, or without it. position:relative and no z-index on the "?"'s box: a containing
+   block for the note only, and no stacking context (no window is ever inside it). */
+.drawio-help-wrap {
+    position: relative;
+    display: inline-flex;
+}
+
+.drawio-help-body {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 20;
+    width: max-content;
+    max-width: min(28rem, calc(100vw - 16px));
+}
+
+.drawio-help-body.drawio-help-placed {
+    position: fixed;
+    right: auto;
+    overflow-y: auto;
+}
+
+/* The paragraphs that moved behind a "?" keep their ids and classes (the tests find them by those),
+   not the grey and the small size they wore under a window's title - those rules went with them: in
+   the note they are its text. */
+.drawio-help-body > p {
+    margin: 0 0 8px;
+    color: inherit;
+    font-size: inherit;
+}
+
+.drawio-help-body > :first-child {
+    margin-top: 0;
+}
+
+.drawio-help-body > :last-child {
+    margin-bottom: 0;
+}
+
+/* --- The bar (passata grafica, 2026-09-29) --------------------------------------------------------
+
+   The pieces of .drawio-sections (see its rule): what a pill or a button used to say in a sentence is
+   inside it, in a .drawio-tip that the mouse or the keyboard's focus opens. The confirmation of the
+   engine and the tips hang under the bar at 850: over the drawing and over the windows (100-800,
+   written by drawio-windows.js), under the page's overlays (900 and up). Their owners are
+   position:relative with no z-index - a containing block for them and no stacking context, as
+   .drawio-help-wrap - and no window is ever inside one of them. */
+
+.drawio-plant-name {
+    margin-right: 4px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.drawio-bar-separator {
+    align-self: stretch;
+    width: 1px;
+    margin: 2px 4px;
+    background: var(--editor-border);
+}
+
+/* The engine: its pill, its one gesture, and what is on its way, side by side. What went wrong is the
+   line under the bar (.drawio-engine-error, further down). */
+.drawio-engine-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.drawio-engine-gesture {
+    position: relative;
+    display: inline-flex;
+}
+
+.drawio-engine-confirm-box {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 850;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: max-content;
+    max-width: min(24rem, 90vw);
+}
+
+.drawio-engine-answers {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+/* While its question is open, the button that asked it is not coloured, so that the box under it
+   holds the one coloured button, the one that acts - Start engine in blue, Stop engine in red (the
+   spec: one blue button per view). Coloured as well, the two looked alike and did opposite things:
+   pressed again, the one on top takes the question back. Start gives up its blue class meanwhile and
+   is the page's plain button, weight of text included (owner's decision, 30/9). Stop keeps its red
+   class, and this rule draws it pressed and in the neutral colours, as since the review of 29/9; the
+   mouse on it changes nothing - the rule outweighs .drawio-btn-danger:hover:not(:disabled), four
+   classes to three, and comes after it. Switched off, it greys like any other. */
+.drawio-engine-gesture > .drawio-btn-danger[aria-expanded="true"]:not(:disabled) {
+    border-color: var(--editor-border-strong);
+    background: var(--editor-pressed-bg);
+    color: var(--editor-text);
+}
+
+/* Start's words, plain while it asks, keep the width they have in bold at rest, so that nothing in the
+   bar moves by a pixel when the box opens (measured on 30/9: 3.6 px at 1366 without it). A copy of
+   them in bold, hidden and with no height, is laid out in the same column of a grid, and the column is
+   as wide as the wider of the two. The copy is the words' data-words, and says nothing to a screen
+   reader: hidden, and with an empty alternative text. */
+.drawio-engine-words {
+    display: inline-grid;
+}
+
+.drawio-engine-gesture > button[aria-expanded="true"] > .drawio-engine-words::after {
+    content: attr(data-words) / "";
+    height: 0;
+    overflow: hidden;
+    visibility: hidden;
+    font-weight: 600;
+}
+
+/* What is on its way: short ("Checking that the engine can be started...", the longest, is some
+   230 px), and on one line. */
+.drawio-engine-pending {
+    color: var(--editor-text-muted);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+/* A refusal of the engine is a sentence to read, and to read whole: a line of its own under the bar
+   (DrawioEditor.razor), red on the danger's light tint, as many lines as the sentence needs. Most
+   refusals say what counts at their end ("... so the engine was NOT started. Save first, then start
+   it."). Until the review of 29/9 it was cut short with an ellipsis on the bar's one line, the rest
+   behind a tip; before that, allowed lines of its own INSIDE the bar, it put the bar on two rows
+   (80.6 px instead of 41, measured). A child of the column like the bar: it never shrinks, the
+   drawing gives the height, and drawio-windows.js keeps the windows under it. On one line it is as
+   tall as a line of the row of outcomes under it (the final fix round of 30/9: it was 6 px lower). */
+.drawio-engine-error {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    min-height: 31px;
+    margin: 0;
+    padding: 3px 10px;
+    border-bottom: 1px solid var(--editor-danger-border);
+    background: var(--editor-danger-bg);
+    color: var(--editor-danger);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+/* The live link up and well: a grey pill, and its dot in green. */
+.drawio-live-on .drawio-icon {
+    color: var(--editor-success);
+}
+
+/* A sentence behind its owner: in the page all along (the tests read it by its owner's id), shown
+   while the mouse is on the owner or the keyboard's focus is on it - or in it, for the Rulers'
+   checkbox. Not on any focus: a button keeps the focus after a click, and its tip would stay open.
+   The name of a button of a window, where its word is not shown, is the same tip drawn by the CSS
+   (its ::after, further down). */
+.drawio-has-tip {
+    position: relative;
+}
+
+.drawio-has-tip:focus-visible {
+    outline: 2px solid var(--editor-accent);
+    outline-offset: 1px;
+}
+
+.drawio-tip,
+.drawio-sections > .drawio-section-toggle::after,
+.drawio-sections > .drawio-checks-toggle::after {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 850;
+    box-sizing: border-box;
+    width: max-content;
+    max-width: min(28rem, 90vw);
+    padding: 6px 10px;
+    border: 1px solid var(--editor-border);
+    border-radius: 6px;
+    background: var(--editor-surface);
+    color: var(--editor-text);
+    box-shadow: var(--editor-shadow-raised);
+    font-size: 0.85rem;
+    font-weight: normal;
+    line-height: 1.45;
+    text-align: left;
+    white-space: normal;
+    pointer-events: none;
+}
+
+.drawio-has-tip:hover > .drawio-tip,
+.drawio-has-tip:focus-visible > .drawio-tip,
+.drawio-has-tip:has(:focus-visible) > .drawio-tip {
+    display: block;
+}
+
+/* What a failure on the page's side threw, in the live pill's tip under its sentence and apart from
+   it (row 37 of the queue, extended to the whole page on 10/10): a line of its own, in the small type
+   of the failures' "?". */
+.drawio-tip > .drawio-failure-detail {
+    display: block;
+    margin-top: 6px;
+    font-size: 0.8rem;
+}
+
+/* The buttons of the windows sit in the right half of the bar: their tips open towards its middle. */
+.drawio-section-toggle > .drawio-tip,
+.drawio-sections > .drawio-section-toggle::after {
+    left: auto;
+    right: 0;
+}
+
+/* The name of a button of a window in a tip: its aria-label, the name a screen reader says, drawn
+   under it. Written for every width, drawn only where the button's word is not shown (the two media
+   queries at the end of this section) and only while the mouse or the keyboard's focus is on it. */
+.drawio-sections > .drawio-section-toggle::after,
+.drawio-sections > .drawio-checks-toggle::after {
+    content: attr(aria-label);
+}
+
+/* The buttons that open a window - the plant checks and the six sections: an icon and a word, quiet
+   until the mouse is on one, lit in the accent's light blue while its window is open, a mark on the
+   corner of the icon when something waits behind it. */
+.drawio-sections > .drawio-section-toggle,
+.drawio-sections > .drawio-checks-toggle {
+    position: relative;
+    flex: 0 0 auto;
+    padding: 4px 8px;
+    border-color: transparent;
+    background: transparent;
+    color: var(--editor-text);
+    font-size: 0.9rem;
+    white-space: nowrap;
+}
+
+.drawio-sections > .drawio-section-toggle:hover,
+.drawio-sections > .drawio-checks-toggle:hover {
+    border-color: var(--editor-border);
+    background: var(--editor-ribbon-bg);
+}
+
+.drawio-sections > .drawio-section-toggle:active,
+.drawio-sections > .drawio-checks-toggle:active {
+    background: var(--editor-pressed-bg);
+}
+
+.drawio-sections > .drawio-section-toggle[aria-pressed="true"],
+.drawio-sections > .drawio-checks-toggle[aria-pressed="true"] {
+    border-color: var(--editor-accent);
+    background: var(--editor-accent-bg);
+    color: var(--editor-accent-active);
+}
+
+/* Pressed while lit - to shut its window, or to bring it to the front - it shows the press too: the
+   lit rule above comes after the :active one with the same weight, and would hide it. */
+.drawio-sections > .drawio-section-toggle[aria-pressed="true"]:active,
+.drawio-sections > .drawio-checks-toggle[aria-pressed="true"]:active {
+    background: var(--editor-pressed-bg);
+}
+
+/* "Changed, not saved": a dot, not a number. */
+.drawio-badge-dot {
+    min-width: 8px;
+    width: 8px;
+    height: 8px;
+    padding: 0;
+}
+
+/* The configuration check running (DrawioChecksDock.razor): a dot in the accent's blue - what says so
+   where the checks' words are not shown. */
+.drawio-badge-running {
+    background: var(--editor-accent);
+}
+
+/* The marks of the buttons of the windows - the checks' count, the "!" of Plant file, the dot of the
+   PLC connections - sit on the top corner of the button's icon, the way a badge sits on an icon, and
+   take no room in the bar; the running check's dot sits on its lower corner, so that it and the count
+   are both seen. After the word, as they were until the final fix round of 30/9, they added 14 to 22 px
+   each to the bar's width (measured that day, host of the worktree, Chromium): with "Read only", the
+   live link reconnecting and the three of them the bar needed 1395.5 px, two rows at 1366 with every
+   word - and no rule of the bar's widths counted them. On the corner, only the words of the pills
+   change the bar's width at rest (see the media queries at the end of this section). */
+.drawio-sections > :is(.drawio-section-toggle, .drawio-checks-toggle) > .drawio-badge {
+    position: absolute;
+    top: 1px;
+    left: 17px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    font-size: 10px;
+}
+
+.drawio-sections > :is(.drawio-section-toggle, .drawio-checks-toggle) > .drawio-badge-dot {
+    top: 3px;
+    left: 20px;
+    min-width: 8px;
+    height: 8px;
+    padding: 0;
+}
+
+.drawio-sections > .drawio-checks-toggle > .drawio-badge-running {
+    top: auto;
+    bottom: 3px;
+}
+
+/* Rulers (DrawioRulerSwitch.razor): an icon button that is a checkbox. The checkbox covers the whole
+   button, transparent - not clipped down to a pixel as the usual "visually hidden" recipe does: that
+   would leave the label under the pointer where the checkbox is, and a click aimed at the checkbox
+   (Playwright's, or elementFromPoint's) would land on the label. Here the checkbox is what the mouse
+   hits, the keyboard reaches it as before, and the button is lit while it is ticked. */
+.drawio-ruler-switch > input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+/* In the text's colour, as the buttons around it in the bar (an icon button elsewhere is grey until the
+   mouse is on it). Pressed, lit or not, it shows it as every icon button does (.drawio-btn-icon:active,
+   which reaches this <label> where the page's rule for pressed buttons does not). */
+.drawio-sections > .drawio-ruler-switch {
+    color: var(--editor-text);
+}
+
+.drawio-ruler-switch:has(> input:checked) {
+    border-color: var(--editor-accent);
+    background: var(--editor-accent-bg);
+    color: var(--editor-accent-active);
+}
+
+.drawio-ruler-switch:has(> input:focus-visible) {
+    outline: 2px solid var(--editor-accent);
+    outline-offset: 1px;
+}
+
+/* The words of the checks' button grow by a whole clause while the configuration check runs: cut
+   short with an ellipsis at 12rem - the whole of it is still the button's text and its aria-label, and
+   the mouse or the keyboard's focus on the button shows it whole in its tip (the ::after drawn from the
+   aria-label), at every width. Below 1450 px they go altogether while the check runs, with the other
+   buttons' words (the media queries at the end of this section): 12rem more, with the engine in Run,
+   wrapped the bar at 1366. */
+.drawio-checks-toggle > .drawio-toggle-label {
+    max-width: 12rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.drawio-sections > .drawio-checks-toggle:has(> .drawio-badge-running):is(:hover, :focus-visible)::after {
+    display: block;
+}
+
+/* On a narrow window the buttons of the bar keep their icon and lose their word before the bar
+   wraps; the word goes into the tip (the button's ::after, drawn from its aria-label, which is also
+   the name a screen reader says), and a waiting mark stays on the icon. A button that has a sentence
+   of its own behind its tip (Plant file, PLC connections, while something waits) shows that one
+   instead: it begins with the name. Where: the bar at rest with every word, measured on 30/9 (final
+   fix round, host of the worktree, Chromium), is 1198.6 px wide with the engine stopped and 1287.7 px
+   with the "Read only" pill, and the live link's widest word, "Connecting", adds 41 px - 1328.6 px at
+   the most, whatever marks the buttons wear (they sit on their icons, and take no room). So the words
+   go below 1340 px, and a 1366 px window keeps them on one line. A media query on the viewport and not
+   a container query on the bar: the bar is as wide as the viewport, so the two measure the same, and
+   container-type is a containment property, which the rule of .drawio-sections keeps off it for the
+   windows' sake. (Measured on 29/9: container-type: inline-size on the bar left an open window where
+   it was - Chromium applies no layout containment for it - but an engine that did would place and
+   stack every window from the bar.) */
+@media (max-width: 1339px) {
+    .drawio-toggle-label {
+        display: none;
+    }
+
+    .drawio-sections > :is(.drawio-section-toggle, .drawio-checks-toggle):not(:has(> .drawio-tip)):is(:hover, :focus-visible)::after {
+        display: block;
+    }
+}
+
+/* Something on its way in the bar - the engine's pending line, the configuration check running (its
+   longer words, cut at 12rem, and its dot) - and the words go sooner, the same way: those 1340 px are
+   the bar at rest. Measured on 29/9 (fix round, 1366x768): each of them put the bar on two rows, 75 px
+   instead of 41, moving the drawing and the windows' floor down and up again. How much sooner is
+   measured for each, with the widest words of the live link (30/9, final fix round): the longest
+   pending line, "Checking that the engine can be started..." (with the engine stopped, 1476 px) or
+   "Stopping the engine..." (next to "Read only", 1457 px), needs 1500 px; the running check, with the
+   engine in Run, 1428.3 px - 1450; the two together, 1653.5 px - that longest pending line next to
+   "Read only", a bound rather than a state met, as it comes with the engine stopped - 1680. With the
+   icons alone the busiest bar needs 1101 px, so 1366 keeps it on one line. One threshold for the
+   busiest of them, as there was until the final fix round (1760 px, marks included), took the words
+   away from a bar that had room for them. */
+@media (max-width: 1499px) {
+    .drawio-sections:has(> .drawio-engine-switch > .drawio-engine-pending) > :is(.drawio-section-toggle, .drawio-checks-toggle) > .drawio-toggle-label {
+        display: none;
+    }
+
+    .drawio-sections:has(> .drawio-engine-switch > .drawio-engine-pending) > :is(.drawio-section-toggle, .drawio-checks-toggle):not(:has(> .drawio-tip)):is(:hover, :focus-visible)::after {
+        display: block;
+    }
+}
+
+@media (max-width: 1449px) {
+    .drawio-sections:has(> .drawio-checks-toggle > .drawio-badge-running) > :is(.drawio-section-toggle, .drawio-checks-toggle) > .drawio-toggle-label {
+        display: none;
+    }
+
+    .drawio-sections:has(> .drawio-checks-toggle > .drawio-badge-running) > :is(.drawio-section-toggle, .drawio-checks-toggle):not(:has(> .drawio-tip)):is(:hover, :focus-visible)::after {
+        display: block;
+    }
+}
+
+@media (max-width: 1679px) {
+    .drawio-sections:has(> .drawio-engine-switch > .drawio-engine-pending):has(> .drawio-checks-toggle > .drawio-badge-running) > :is(.drawio-section-toggle, .drawio-checks-toggle) > .drawio-toggle-label {
+        display: none;
+    }
+
+    .drawio-sections:has(> .drawio-engine-switch > .drawio-engine-pending):has(> .drawio-checks-toggle > .drawio-badge-running) > :is(.drawio-section-toggle, .drawio-checks-toggle):not(:has(> .drawio-tip)):is(:hover, :focus-visible)::after {
+        display: block;
+    }
+}
+
+/* Narrower still, the words of the bar's buttons are all gone, and what is on the engine's way was
+   still too wide: at 900 px the pending line put the bar on two rows for as long as the command lasted
+   (row 30 of the queue, the owner's decision of 1/10; measured on 9/10, host of the worktree, Chromium:
+   75 px instead of 41, the bar needing 955.4 px with "Checking that the engine can be started..." and
+   941.8 px with "Stopping the engine..." next to "Read only"). Below 1120 px, while a command is on its
+   way, the engine's gesture steps aside and its pending line takes its place: the button is switched
+   off meanwhile, so nothing it offers is lost, and it comes back with the command's outcome. That gives
+   back the button and its gap, 148 px: 807.1 px with that longest pending line, 793.9 with the stop's,
+   and the live link's widest word, "Connecting", adds 41 px. 1120 px because the busiest bar with the
+   icons alone was measured at 1101 px on 30/9 (the longest pending line next to "Read only", a bound
+   rather than a state met): at 1120 and wider it fits as it is, and nothing changes there. */
+@media (max-width: 1119px) {
+    .drawio-engine-switch:has(> .drawio-engine-pending) > .drawio-engine-gesture {
+        display: none;
+    }
+}
+
+/* --- The row of outcomes (passata grafica, 2026-09-29) ---------------------------------------------
+
+   Under the bar (DrawioNotices.razor): one line per outcome, in its tone - green done, orange a
+   warning, red a refusal or a failure - with "Details" and the X at its end. The row has no box of its
+   own, no padding and no border: with nothing to say it takes no height, and the drawing keeps it.
+   It holds the windows of the reports too, fixed to the viewport: like the bar, it must never become
+   a containing block or a stacking context for them (no transform, filter, contain, container-type,
+   will-change or z-index here). */
+
+.drawio-notices {
+    flex: 0 0 auto;
+}
+
+/* One height for every line, with buttons or without (the drawing out of reach, the live channel that
+   cannot be built, the drops that can no longer become devices have none): the height a line with
+   "Details" or the X has - its 24 px buttons, 3 px above and below, and its border. "Loading the
+   plant..." (below) has it too, and so has the engine's refusal above the row
+   (.drawio-engine-error). */
+.drawio-notices-line,
+.drawio-shell > .editor-loading {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 31px;
+    padding: 3px 10px;
+    border-bottom: 1px solid var(--editor-border);
+    font-size: 0.85rem;
+}
+
+.drawio-notices-ok {
+    background: var(--editor-success-bg);
+    color: var(--editor-success);
+}
+
+.drawio-notices-warn {
+    background: var(--editor-warning-bg);
+    color: var(--editor-warning);
+}
+
+.drawio-notices-bad {
+    border-bottom-color: var(--editor-danger-border);
+    background: var(--editor-danger-bg);
+    color: var(--editor-danger);
+}
+
+/* The sentence takes the room left by the buttons and wraps when it needs to: an error is read whole,
+   and the report behind "Details" says the rest. */
+.drawio-notices-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    font-weight: 600;
+}
+
+/* "Details" and "+N more": small plain buttons at the end of the line, a little lower than the page's
+   28 px so that a line stays as short as the bands it replaced. The page's button otherwise, in its
+   colours and not the line's, with its hover and pressed states (the base rules). */
+.drawio-notices-button {
+    flex: 0 0 auto;
+    min-height: 24px;
+    padding: 2px 8px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+/* "Details" while its window is open is lit, as every other button of the page that opens something
+   is while it is open: the bar's buttons of the windows, the "?". Pressed, lit or not, it shows it. */
+.drawio-notices-button[aria-controls][aria-expanded="true"] {
+    border-color: var(--editor-accent);
+    background: var(--editor-accent-bg);
+    color: var(--editor-accent-active);
+}
+
+.drawio-notices-button[aria-controls][aria-expanded="true"]:active {
+    background: var(--editor-pressed-bg);
+}
+
+.drawio-notices-dismiss {
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    color: inherit;
+}
+
+/* A line with no X keeps the X's room (its 24 px and the gap), so that the "Details" of two lines
+   stand one above the other - unless "+N more" or "Show fewer" is on one of them, after its Details. */
+.drawio-notices-line:not(:has(> .drawio-notices-dismiss)) {
+    padding-right: calc(10px + 24px + 8px);
+}
+
+/* "Loading the plant...": the same place and height as a line of the row (the rule of the lines above),
+   in no tone - nothing has happened yet. */
+.drawio-shell > .editor-loading {
+    flex: 0 0 auto;
+    margin: 0;
+    background: var(--editor-ribbon-bg);
+    color: var(--editor-text-muted);
+}
+
+/* The windows of the reports behind "Details": the reports' text a little smaller than the page's. */
+.drawio-notices-details {
+    font-size: 0.9rem;
+}

@@ -1,0 +1,43 @@
+@page "/editor"
+@inject NavigationManager Navigation
+
+@* Whoever types /editor ends up on /editor/drawio. Nothing is drawn here.
+
+   WHY A REDIRECT AND NOT A ROUTE TAKEN AWAY. Taking the route away was the other option, and it is
+   worse for the one thing that matters at the beta: the address is out there. It is in the product
+   itself (ImportExport.razor navigates to it after an import), it is in whatever anybody has
+   bookmarked, and it is the address the WinForms era's Editor answered to. Without this component
+   all of those land on the router's <NotFound>, which is the bare line "Pagina non trovata." - and
+   somebody who typed the address he has always used, and got a blank page with four words on it,
+   reads that as "the Editor is broken", not as "the Editor moved". A redirect answers the question
+   he actually had.
+
+   WHAT IT COSTS, AND WHY IT IS SAFE. This component declares NO render mode, so it is rendered
+   statically: NavigateTo in OnInitialized is then an HTTP redirect issued by the server, and the
+   old canvas (Editor.razor, which has no @page any more) is never instantiated - which is the
+   point, because it took the edit permit as it opened and so kept draw.io from saving. Not being
+   interactive is also what keeps it out of OnlyAllowlistedComponentsAreInteractiveTest's
+   allowlist: it shows nothing of the plant, so there is nothing here to deny to whoever has no key.
+
+   THE ADDRESS IT SENDS TO is inside /editor, so ApiKeyMiddleware lets it through by the same
+   prefix that lets this page through: "/editor" in AnonymousPathPrefixes covers /editor/drawio as
+   well. That prefix must not be narrowed to this page - doing so would lock out the new Editor,
+   not the old one. *@
+
+@code {
+    /// <summary>
+    /// The whole page. <c>replace: true</c> so the browser's Back button goes wherever the operator
+    /// came from and not back onto this address, which would bounce him forward again and leave him
+    /// unable to go back at all.
+    /// </summary>
+    /// <remarks>
+    /// <b>OnInitialized, and not OnAfterRender.</b> Static rendering never calls OnAfterRender, so
+    /// moving this line there would turn <c>GET /editor</c> into a <c>200 OK</c> with an empty
+    /// <c>Location</c> - a blank page - and bUnit would not notice, because bUnit DOES call
+    /// OnAfterRender: measured on 2026-09-18, all 981 of <c>Wcs.WebEditor.Test</c> stayed green
+    /// through that change.
+    /// The only test that goes red is <c>Wcs.WebEditor.Browser.Test.EditorRouteRedirectTest</c>,
+    /// against a real host.
+    /// </remarks>
+    protected override void OnInitialized() => Navigation.NavigateTo("/editor/drawio", replace: true);
+}

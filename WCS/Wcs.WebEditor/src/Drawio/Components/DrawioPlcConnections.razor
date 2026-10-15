@@ -1,0 +1,1112 @@
+@* Compito 4, row 62: the PLC connections, EDITABLE like the WinForms grid (FrmPCM_PLCS_LIST: the six
+   columns of PlcConnectionRow, rows added and deleted, and on closing the WHOLE list replaces the
+   host's - FrmPCM_PLCS_LIST_FormClosing, ReplacePlcConnectionsAsync).
+   <para>
+   <b>Local until saved.</b> Rows are added, changed and removed here only (a removed row stays on
+   screen, struck, until the save or "Restore"); nothing reaches the host until "Save" and then "Yes" -
+   a question that says what the host's list becomes (added, removed, modified, by Id). Before that,
+   the WinForms checks - an Id greater than zero, not repeated (PlcConnectionRules, the same check the
+   import makes) - with every offending row marked; a new row is born with Id -1, as in the WinForms,
+   so it is marked until it gets a real Id.
+   </para>
+   <para>
+   <b>A connection that devices use cannot be removed</b> (owner's decision, stricter than the
+   WinForms, whose FrmPCM_PLCS_LIST_FormClosing checked the Ids only; since Task 4c the host's PUT
+   refuses it too, with 409, naming the connections and the devices). The engine builds its PLC connections when the plant is LOADED
+   (DeviceConnections.Initialize, called only from Navigator.LoadNavigatorData: the host's start or
+   ExecutableCommands.ReloadRouteDiagram) - not when the engine is started, which only reopens the
+   connections it already has (StartNavigator -> OpenDeviceConnections -> Instance[id]). So a device
+   whose connection is removed keeps the old connection object, and its commands to that PLC fail as
+   soon as a new block of command identifiers has to be reserved (PlcSettingsStore.ReserveCommandIdBlock
+   throws "PLC {id} not found"); only after the plant is loaded again does it fall back to the simulator
+   (DeviceConnections.OpenConnection). The removed row is marked with its devices, and they have to be
+   moved to another connection first. Checked when "Save" is pressed and again inside the gate, against
+   the plant as the page knows it at that moment (<see cref="Graph"/>); the host checks once more,
+   against the plant as IT holds it, under its own write gate - a device moved onto the connection by
+   another client and not yet known here is refused there, and the page says so in the host's words
+   and marks the rows the host names (<see cref="_hostInUse"/>). For the same reason a changed
+   address or port reaches the PLC layer only when the plant is loaded again.
+   </para>
+   <para>
+   <b>A configuration write of the page.</b> The save goes through <see cref="WriteThroughThePage"/>:
+   the page's write gate with its own writer, the edit permit asked for at the moment, and the engine
+   STOPPED - not running, not paused (the page's rule, and since Task 4b the host's too: without the
+   permit it answers 423, with the engine not stopped 409 - which the page sees only when the engine is
+   started from elsewhere between its own check and the PUT, and words as a refusal; since Task 4c also
+   409 for a connection devices still use, told apart by the connections the host lists with it). Just before
+   writing, the host's list is read again: if it is no longer the one the grid was read from, nothing is
+   written. That read and the PUT are NOT atomic - the host offers no version or ETag on this route - so
+   a save by another client landing between the two is overwritten; the window is one request long.
+   After a write the grid is read again, and shows what the host holds.
+   </para>
+   <para>
+   <b>What was typed is never thrown away silently.</b> A refusal, an unknown outcome, a section shut
+   and opened again: the rows stay. A read that finds the host's list changed under pending changes says
+   so, and the operator chooses: take the host's list, or keep mine - which REBASES the changes onto the
+   host's new list (<see cref="KeepMine"/>): rows and cells not touched here take the host's new values,
+   and the question then names what the save still overrides. "Discard changes" is the other way back.
+   </para>
+   <para>
+   <b>Shut, the grid does nothing</b> beyond keeping what was typed: nothing is read and no row is
+   rendered. It is read each time it is opened - the page has no other way of knowing that another
+   client saved the list meanwhile.
+   </para> *@
+@using System.Globalization
+@using System.Net
+@using System.Text.Json
+@using Microsoft.JSInterop
+@using Wcs.Api.Client
+@using Wcs.Api.Contracts.Dtos
+@using Wcs.Common
+@using Wcs.WebEditor.Drawio.Coordination
+@using Wcs.WebEditor.Io
+@using Wcs.WebEditor.Model
+@using Wcs.WebEditor.Session
+@inherits DrawioListSection
+@implements IDisposable
+@inject EditorSessionState Session
+
+@* The button of the bar (passata grafica, 2026-09-29): with changes typed and not saved, a dot on it,
+   and the words that used to follow the name inside it behind a tip (drawio-has-tip: the mouse or
+   the keyboard's focus on the button shows it). *@
+<button type="button" id="drawio-plc-connections-toggle" class="drawio-section-toggle drawio-has-tip" aria-label="@SummaryText"
+        aria-pressed="@(Open ? "true" : "false")" @onclick="ToggleAsync">
+    <DrawioIcon Name="plc" />
+    <span class="drawio-toggle-label">PLC connections</span>
+    @if (Pending)
+    {
+        <span class="drawio-badge drawio-badge-dot" aria-hidden="true"></span>
+        <span class="drawio-tip" role="tooltip">@SummaryText</span>
+    }
+</button>
+<DrawioWindow Id="drawio-plc-connections" Class="drawio-plc-connections" Title="PLC connections" Icon="plc"
+              Count="@(Open && _rows is not null ? LiveRows.Count().ToString(CultureInfo.InvariantCulture) : null)"
+              Help="@(Open ? ScopeNote : null)" Open="Open" OnClose="CloseAsync" Place="Place">
+    @if (Open)
+    {
+        var marks = Marks();
+        var filteredRows = FilteredRows().ToList();
+        var pageCount = PageCount(filteredRows.Count);
+        var currentPage = Math.Min(_page, pageCount);
+        var pageRows = filteredRows.Skip((currentPage - 1) * PageSize).Take(PageSize).ToList();
+        <div class="drawio-plc-connections-body">
+            @* The window's first line (passata grafica, 2026-09-29): what the rows count, then the
+               buttons at the right, "Save" the one in blue. *@
+            <div class="drawio-device-list-tools">
+                <span class="drawio-filter">
+                    <DrawioIcon Name="search" />
+                    <input type="search" id="drawio-plc-filter" class="drawio-device-list-filter"
+                           aria-label="Filter PLC connections" placeholder="Filter by Id, description, address or port"
+                           value="@_filter" @oninput="FilterTyped" />
+                </span>
+                <span id="drawio-plc-count" class="drawio-device-list-count">@(_rows is null ? "Not read yet." : $"{filteredRows.Count} shown · {_rows.Count} total · {LiveRows.Count()} active")</span>
+                <button type="button" id="drawio-plc-add" disabled="@(_rows is null || Busy)" @onclick="AddRow">Add a connection</button>
+                <button type="button" id="drawio-plc-save" class="drawio-btn-primary" disabled="@(!Pending || Busy || _conflict is not null)" @onclick="AskToSave">Save</button>
+                <button type="button" id="drawio-plc-discard" disabled="@(!Pending || Busy)" @onclick="Discard">Discard changes</button>
+                <button type="button" id="drawio-plc-reread" disabled="@(_reading || Busy)" @onclick="ReadAgainPressedAsync">Read again</button>
+            </div>
+            <div class="drawio-plc-messages" tabindex="0" role="region" aria-label="PLC connection messages and confirmations">
+                @if (_reading)
+                {
+                    <p id="drawio-plc-reading" class="drawio-operations-outcome">Reading the PLC connections from the host...</p>
+                }
+                @if (_readError is { } readError)
+                {
+                    <DrawioFailureLine Id="drawio-plc-read-error" Class="drawio-operations-error" Text="@readError.Text" Detail="@readError.Detail" />
+                }
+                @if (_conflict is { } conflict)
+                {
+                    <div id="drawio-plc-conflict" class="drawio-plc-conflict">
+                        <span class="drawio-operations-question">
+                            The PLC connections changed on the host since this grid read them (@ChangesText(PlcConnectionRules.Compare(_host!, conflict)) there),
+                            and your changes are not saved. Keep your changes - rows and cells you did not touch take the host's new values - or take the host's list and lose them?
+                        </span>
+                        <button type="button" id="drawio-plc-keep-mine" @onclick="KeepMine">Keep my changes</button>
+                        <button type="button" id="drawio-plc-take-host" @onclick="TakeTheHosts">Take the host's list</button>
+                    </div>
+                }
+                @if (_confirmation is { } confirmation)
+                {
+                    <div id="drawio-plc-confirmation" class="drawio-plc-confirmation">
+                        <span id="drawio-plc-confirm-question" class="drawio-operations-question">
+                            Save the PLC connections? The whole list replaces the host's: @ChangesText(confirmation.Changes).
+                        </span>
+                        @if (confirmation.Overriding is { Count: > 0 } overriding)
+                        {
+                            <span id="drawio-plc-confirm-overriding" class="drawio-operations-error">
+                                Your values replace what was changed on the host after this grid read it: @Connections(overriding).
+                            </span>
+                        }
+                        @if (confirmation.AddedElsewhere is { Count: > 0 } addedElsewhere)
+                        {
+                            <span id="drawio-plc-confirm-added-elsewhere" class="drawio-operations-error">
+                                Added on the host by somebody else and not in this grid, so this save REMOVES them: @Connections(addedElsewhere).
+                            </span>
+                        }
+                        @if (confirmation.SameIdElsewhere is { Count: > 0 } sameId)
+                        {
+                            <span id="drawio-plc-confirm-same-id" class="drawio-operations-error">
+                                Also added on the host by somebody else with the same Id - your values replace theirs: @Connections(sameId).
+                            </span>
+                        }
+                        @if (confirmation.RemovedButChanged is { Count: > 0 } removedButChanged)
+                        {
+                            <span id="drawio-plc-confirm-removed-changed" class="drawio-operations-error">
+                                Removed here, but changed on the host meanwhile: @Connections(removedButChanged) - this save removes them anyway.
+                            </span>
+                        }
+                        @if (confirmation.PutBack is { Count: > 0 } putBack)
+                        {
+                            <span id="drawio-plc-confirm-put-back" class="drawio-operations-error">
+                                Removed on the host by somebody else and changed here, so this save puts them back: @Connections(putBack).
+                            </span>
+                        }
+                        @* The Yes writes, and is the blue one while the question is open - Save, which only asked,
+                           is switched off meanwhile (Busy) - as the engine's box has it. *@
+                        <button type="button" id="drawio-plc-confirm" class="drawio-btn-primary" @onclick="ConfirmSaveAsync">Yes</button>
+                        <button type="button" id="drawio-plc-cancel" @onclick="() => _confirmation = null">Cancel</button>
+                    </div>
+                }
+                @if (_saving)
+                {
+                    <p id="drawio-plc-saving" class="drawio-operations-outcome">Saving the PLC connections to the host...</p>
+                }
+                @if (_outcome is { } outcome)
+                {
+                    <DrawioFailureLine Id="drawio-plc-outcome" LineClass="drawio-operations-outcome"
+                                       Class="@(_outcomeWritten ? "drawio-device-list-written" : "drawio-device-list-not-written")"
+                                       Text="@outcome.Text" Detail="@outcome.Detail" />
+                }
+            </div>
+            @if (_rows is not null)
+            {
+                <div class="drawio-list-scroll drawio-data-grid-scroll">
+                    <table id="drawio-plc-table" class="drawio-list-table drawio-data-table drawio-plc-table">
+                        <thead>
+                            <tr>
+                                @foreach (var field in Fields)
+                                {
+                                    <th data-field="@field.Key">@field.Label</th>
+                                }
+                                <th>Check</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in pageRows)
+                            {
+                                var mark = marks.GetValueOrDefault(row.Key);
+                                @* "true"/"false" spelled out: aria-invalid is not one of the attributes Blazor treats as an HTML boolean. *@
+                                <tr @key="row.Key" data-row="@row.Key" aria-invalid="@(mark is null ? "false" : "true")"
+                                    data-removed="@(row.Removed ? "true" : "false")" class="@RowClass(row, mark)">
+                                    @foreach (var field in Fields)
+                                    {
+                                        <td data-field="@field.Key">
+                                            @if (field.Key == nameof(PlcConnectionDto.Id))
+                                            {
+                                                <input @ref="row.IdInput" type="text" data-field="@field.Key" disabled="@(Busy || row.Removed)" value="@field.Get(row)"
+                                                       @oninput="e => Typed(row, field, e.Value as string ?? string.Empty)" />
+                                            }
+                                            else
+                                            {
+                                                <input type="text" data-field="@field.Key" disabled="@(Busy || row.Removed)" value="@field.Get(row)"
+                                                       @oninput="e => Typed(row, field, e.Value as string ?? string.Empty)" />
+                                            }
+                                        </td>
+                                    }
+                                    <td data-field="Problem" class="drawio-operations-error">@(mark ?? (row.Removed ? "Removed: deleted from the host when the list is saved." : null))</td>
+                                    <td>
+                                        @if (row.Removed)
+                                        {
+                                            <button type="button" class="drawio-plc-restore" disabled="@Busy" @onclick="() => RestoreRow(row)">Restore</button>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" class="drawio-plc-remove" disabled="@Busy" @onclick="() => RemoveRow(row)">Remove</button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <footer class="drawio-mission-pager drawio-plc-pager" aria-label="PLC connection pages">
+                    <span id="drawio-plc-page-summary" aria-live="polite">@PageLine(filteredRows.Count, currentPage)</span>
+                    <div class="drawio-mission-page-buttons">
+                        <button type="button" id="drawio-plc-first" aria-label="First page" disabled="@(currentPage == 1)" @onclick="() => GoToPage(1, pageCount)">«</button>
+                        <button type="button" id="drawio-plc-previous" aria-label="Previous page" disabled="@(currentPage == 1)" @onclick="() => GoToPage(currentPage - 1, pageCount)">‹</button>
+                        @foreach (var pageNumber in PageChoices(currentPage, pageCount))
+                        {
+                            <button type="button" class="@(pageNumber == currentPage ? "drawio-mission-page-active" : null)"
+                                    aria-label="Page @pageNumber" aria-current="@(pageNumber == currentPage ? "page" : null)"
+                                    disabled="@(filteredRows.Count == 0)" @onclick="() => GoToPage(pageNumber, pageCount)">@pageNumber</button>
+                        }
+                        <button type="button" id="drawio-plc-next" aria-label="Next page" disabled="@(currentPage == pageCount)" @onclick="() => GoToPage(currentPage + 1, pageCount)">›</button>
+                        <button type="button" id="drawio-plc-last" aria-label="Last page" disabled="@(currentPage == pageCount)" @onclick="() => GoToPage(pageCount, pageCount)">»</button>
+                    </div>
+                </footer>
+            }
+        </div>
+    }
+</DrawioWindow>
+
+@code {
+    /// <summary>What the grid is and what a save does: the paragraph that opened the window until the passata grafica, word for word, behind the "?" of its title bar while the window is open.</summary>
+    private static readonly RenderFragment ScopeNote =
+        @<p class="drawio-plc-connections-scope">
+            The PLC connections, as the host has them. Change, add and remove rows here, then press "Save": the whole
+            list replaces the host's, after a question that says what changes. Saving asks for the edit permit and needs
+            the engine stopped. The engine builds its PLC connections when the plant is loaded (host restart or
+            route-diagram reload), not when it is started: a changed address or port takes effect only then, and a
+            connection still used by devices cannot be removed - their commands to that PLC would fail.
+        </p>;
+
+    /// <summary>The plant as the page holds it: its devices, to refuse removing a connection they use.</summary>
+    [Parameter] public PlantGraph? Graph { get; set; }
+
+    /// <summary>
+    /// How the page lets the save through: the write gate with this grid's own writer, the edit permit
+    /// asked for now, the engine stopped - the same contract as DrawioOperations' connection mode.
+    /// Required (final review, M3): without it nothing is saved and the line says so - the section
+    /// used to write straight to the host around the gate, the permit and the engine rule.
+    /// </summary>
+    [Parameter, EditorRequired] public Func<Func<Task>, Task<DrawioSaid?>>? WriteThroughThePage { get; set; }
+
+    /// <summary>A row of the grid: the six columns as TEXT, as typed - parsed only to check or save.</summary>
+    private sealed class Row
+    {
+        public required int Key { get; init; }
+        public ElementReference IdInput;
+
+        /// <summary>
+        /// The connection as the host had it when this row was read from it (or rebased onto it, see
+        /// <see cref="KeepMine"/>); null for a row added here.
+        /// </summary>
+        public PlcConnectionDto? Original { get; set; }
+
+        /// <summary>Removed here: struck on screen and left out of the list saved, until "Restore".</summary>
+        public bool Removed { get; set; }
+
+        public string Id { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string PlcAddress { get; set; } = "";
+        public string PcmPort { get; set; } = "";
+        public string LocalAddress { get; set; } = "";
+        public string LocalPort { get; set; } = "";
+    }
+
+    /// <summary>A column: its key, its label, the row's text, how typing sets it, and a connection's value as that text.</summary>
+    private sealed record Field(string Key, string Label, Func<Row, string> Get, Action<Row, string> Set, Func<PlcConnectionDto, string> Of);
+
+    /// <summary>The WinForms' columns, in its order (FrmPCM_PLCS_LIST.Designer: colId, colDescription, colPLC_Address, colPCMPort, colLocalAddress, colLocalPort).</summary>
+    private static readonly IReadOnlyList<Field> Fields =
+    [
+        new(nameof(PlcConnectionDto.Id), "Id", row => row.Id, (row, text) => row.Id = text,
+            connection => connection.Id.ToString(CultureInfo.InvariantCulture)),
+        new(nameof(PlcConnectionDto.Description), "Description", row => row.Description, (row, text) => row.Description = text,
+            connection => connection.Description ?? ""),
+        new(nameof(PlcConnectionDto.PlcAddress), "PLC address", row => row.PlcAddress, (row, text) => row.PlcAddress = text,
+            connection => connection.PlcAddress ?? ""),
+        new(nameof(PlcConnectionDto.PcmPort), "PCM port", row => row.PcmPort, (row, text) => row.PcmPort = text,
+            connection => connection.PcmPort?.ToString(CultureInfo.InvariantCulture) ?? ""),
+        new(nameof(PlcConnectionDto.LocalAddress), "Local address", row => row.LocalAddress, (row, text) => row.LocalAddress = text,
+            connection => connection.LocalAddress ?? ""),
+        new(nameof(PlcConnectionDto.LocalPort), "Local port", row => row.LocalPort, (row, text) => row.LocalPort = text,
+            connection => connection.LocalPort?.ToString(CultureInfo.InvariantCulture) ?? ""),
+    ];
+
+    /// <summary>
+    /// The question on the screen: the list it would write, the host's list it is a change of, what
+    /// that changes, and - after "Keep my changes" - what it overrides of somebody else's save.
+    /// </summary>
+    private sealed record Confirmation(IReadOnlyList<PlcConnectionDto> Proposed, IReadOnlyList<PlcConnectionDto> Basis,
+        PlcConnectionChanges Changes, IReadOnlyList<long> Overriding, IReadOnlyList<long> AddedElsewhere, IReadOnlyList<long> PutBack,
+        IReadOnlyList<long> SameIdElsewhere, IReadOnlyList<long> RemovedButChanged);
+
+    /// <summary>A connection the save would remove, and the devices that still use it.</summary>
+    private sealed record InUse(long Id, IReadOnlyList<string> Devices);
+
+    /// <summary>The host's list as last read and taken: what the rows are changes OF, and what the question counts against.</summary>
+    private List<PlcConnectionDto>? _host;
+
+    private List<Row>? _rows;
+    private int _nextKey;
+    private const int PageSize = 25;
+    private string _filter = "";
+
+    /// <summary>
+    /// The keys of the rows the filter matched when it was typed (or when the grid took a list); null
+    /// with no filter. Typing in a row does not change it: a row whose new text no longer matches stays
+    /// on screen under the operator's keys - matched live, it vanished at the first such key, with the
+    /// focus, and the rest of the typing went nowhere. The filter applies again when it is typed again.
+    /// </summary>
+    private HashSet<int>? _filterMatches;
+    private int _page = 1;
+    private Row? _rowToFocus;
+
+    private bool _reading;
+    private DrawioSaid? _readError;
+    private int _readGeneration;
+    private bool _wasOpen;
+
+    /// <summary>The host's list, found different from <see cref="_host"/> by a read made while changes were pending: the operator chooses.</summary>
+    private List<PlcConnectionDto>? _conflict;
+
+    /// <summary>
+    /// The connections the host last refused to remove because devices use them (its 409, Task 4c),
+    /// with those devices - the rows are marked with them until the grid takes a list or a new save
+    /// starts. Only what the host named: the page's own check (<see cref="ConnectionsInUse"/>) marks
+    /// what the page knows.
+    /// </summary>
+    private IReadOnlyList<InUse> _hostInUse = [];
+
+    /// <summary>What <see cref="KeepMine"/> found about somebody else's save, by Id - named by the question while it is still true.</summary>
+    private HashSet<long> _overriding = [];
+    private HashSet<long> _addedElsewhere = [];
+    private HashSet<long> _putBack = [];
+    private HashSet<long> _removedButChanged = [];
+
+    private Confirmation? _confirmation;
+    private bool _saving;
+    private DrawioSaid? _outcome;
+    private bool _outcomeWritten;
+    private bool _disposed;
+
+    private bool Busy => _saving || _confirmation is not null;
+
+    private string SummaryText => Pending ? "PLC connections (changed, not saved)" : "PLC connections";
+
+    private IEnumerable<Row> LiveRows => _rows?.Where(row => !row.Removed) ?? [];
+
+    // Paging is a projection of the complete editable list, including rows awaiting removal.
+    private IEnumerable<Row> FilteredRows()
+    {
+        IEnumerable<Row> rows = _rows ?? Enumerable.Empty<Row>();
+        return _filterMatches is not { } matches ? rows : rows.Where(row => matches.Contains(row.Key));
+    }
+
+    /// <summary>Matches the filter against the rows as they are now (see <see cref="_filterMatches"/>).</summary>
+    private void ApplyFilter()
+    {
+        var filter = _filter.Trim();
+        _filterMatches = filter.Length == 0 || _rows is null
+            ? null
+            : [.. _rows.Where(row => Fields.Any(field => field.Get(row).Contains(filter, StringComparison.OrdinalIgnoreCase)))
+                .Select(row => row.Key)];
+    }
+
+    private void ClearFilter()
+    {
+        _filter = "";
+        _filterMatches = null;
+    }
+
+    private new void FilterTyped(ChangeEventArgs args)
+    {
+        _filter = args.Value as string ?? "";
+        ApplyFilter();
+        _page = 1;
+    }
+
+    private static int PageCount(int count) => DataGridPagination.PageCount(count, PageSize);
+    private static string PageLine(int count, int page) =>
+        DataGridPagination.PageLine(count, page, PageSize, "PLC connections");
+    private static IEnumerable<int> PageChoices(int page, int pageCount) =>
+        DataGridPagination.PageChoices(page, pageCount);
+    private void GoToPage(int page, int pageCount) => _page = Math.Clamp(page, 1, pageCount);
+    private void NormalizePage() => _page = Math.Min(_page, PageCount(FilteredRows().Count()));
+
+    /// <summary>Whether the rows say anything else than the host's list as last taken: a row that cannot be read is a change too.</summary>
+    private bool Pending => _rows is not null && _host is not null && !(TryProposed(out var proposed) && SameList(proposed, _host));
+
+    private static string RowClass(Row row, string? mark) =>
+        "drawio-plc-row" + (row.Removed ? " drawio-plc-row-removed" : "") + (mark is null ? "" : " drawio-plc-row-invalid");
+
+    protected override void OnParametersSet()
+    {
+        var opened = Open && !_wasOpen;
+        _wasOpen = Open;
+
+        // Read at every opening (see the file's own remarks), unless a save is on its way: it reads
+        // the list again itself once its outcome is in.
+        var readNow = opened && !_saving;
+        if (readNow) _ = ReadAsync();
+
+        // Of the page, only the plant is shown here: the "Used by ..." marks are computed at render
+        // from the devices' connections (Marks). The page keeps ONE graph and changes it in place - a
+        // device moved to another connection from the device list goes through PlantGraph.AddItem,
+        // a reread through Adopt - so the graph's reference says nothing: its Revision, which every
+        // mutation moves, does. Everything else is the grid's own reads and gestures.
+        ParametersArrived((Graph is null, Graph?.Revision), renderAnyway: readNow);
+    }
+
+    private Task ReadAgainPressedAsync() => ReadAsync();
+
+    /// <summary>
+    /// Reads the host's list. It always ends - with the rows, a question, or a line that says they
+    /// could not be read - and never throws: it runs unobserved from <see cref="OnParametersSet"/>.
+    /// A save that starts meanwhile makes it stale (<see cref="ConfirmSaveAsync"/>).
+    /// </summary>
+    private async Task ReadAsync()
+    {
+        try
+        {
+            await ReadCoreAsync();
+        }
+        finally
+        {
+            ReadEndedForTesting?.Invoke();
+        }
+    }
+
+    private async Task ReadCoreAsync()
+    {
+        var generation = ++_readGeneration;
+        _reading = true;
+        _readError = null;
+        try
+        {
+            var read = await Session.Client.GetPlcConnectionsAsync();
+            if (generation != _readGeneration || _disposed) return;
+            Arrived(read);
+        }
+        catch (Exception ex)
+        {
+            // Whatever it is, the read ends and says so: why in the page's words, and what came back
+            // behind the line's "?" (row 37 of the queue, extended to the whole page on 10/10).
+            if (generation != _readGeneration || _disposed) return;
+            _readError = DrawioSaid.Failed(ReadFailure(DrawioFailureWords.Why(ex)), ex);
+        }
+
+        _reading = false;
+        NormalizePage();
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Only for the tests: called on the renderer when a read has ENDED, whatever its end - taken,
+    /// failed, or dropped as stale. A read dropped changes nothing on the screen, and this is the only
+    /// way a test can know it has landed rather than not arrived yet.
+    /// </summary>
+    internal Action? ReadEndedForTesting { get; set; }
+
+    private string ReadFailure(string why) => _rows is null
+        ? $"The PLC connections could not be read from the host because {why}."
+        : $"The PLC connections could not be read again from the host because {why}: the grid keeps what it had - press \"Read again\" before saving.";
+
+    /// <summary>
+    /// A list read from the host. With nothing pending, the grid simply becomes it. With changes
+    /// pending, they stay: if the host's list is still the one they are changes of, there is nothing to
+    /// say; if it is not, the operator is asked (<see cref="_conflict"/>), and a question already on the
+    /// screen goes - it counted against the list that is no longer the host's.
+    /// </summary>
+    private void Arrived(List<PlcConnectionDto> read)
+    {
+        if (!Pending)
+        {
+            Take(read);
+            return;
+        }
+
+        if (SameList(read, _host!))
+        {
+            _conflict = null;
+            return;
+        }
+
+        _conflict = read;
+        _confirmation = null;
+    }
+
+    /// <summary>The grid becomes <paramref name="list"/>, which is also what the next changes are changes of.</summary>
+    private void Take(IReadOnlyList<PlcConnectionDto> list)
+    {
+        _host = [.. list];
+        _rows = [.. list.Select(RowOf)];
+        _conflict = null;
+        _hostInUse = [];
+        _overriding = [];
+        _addedElsewhere = [];
+        _putBack = [];
+        _removedButChanged = [];
+        ApplyFilter();
+        NormalizePage();
+    }
+
+    private Row RowOf(PlcConnectionDto connection)
+    {
+        var row = new Row { Key = _nextKey++, Original = connection };
+        foreach (var field in Fields) field.Set(row, field.Of(connection));
+        return row;
+    }
+
+    /// <summary>
+    /// "Keep my changes": the changes are REBASED onto the host's new list, so that nothing of
+    /// somebody else's save is reverted by a row or a cell nobody touched here. Per row read from the
+    /// host: untouched, it becomes the host's new row (or goes, if the host no longer has it); changed
+    /// here, its untouched cells take the host's new values and its changed cells stay - and when the
+    /// host changed one of those same cells too, the question names the connection as overridden; changed
+    /// here and removed on the host, it stays and the question says the save puts it back. Removed here,
+    /// it stays removed (and when the host changed it meanwhile, the question says the save removes it
+    /// anyway). The connections the host gained are not in the grid: the question says the save removes
+    /// them - or, when a row added HERE carries the same Id, that its values replace theirs (the
+    /// comparison alone would call that merely "modified").
+    /// </summary>
+    private void KeepMine()
+    {
+        if (_conflict is not { } conflict || _host is not { } oldHost || _rows is not { } rows) return;
+        var now = conflict.ToDictionary(connection => connection.Id);
+
+        foreach (var row in rows.ToList())
+        {
+            if (row.Original is not { } original) continue;
+            now.TryGetValue(original.Id, out var fresh);
+
+            if (row.Removed)
+            {
+                if (fresh is null)
+                {
+                    rows.Remove(row);
+                }
+                else
+                {
+                    // Still removed - but rebased like a live row: restored later, it must carry the
+                    // host's new values, not the old ones as if typed here.
+                    if (fresh != original) _removedButChanged.Add(fresh.Id);
+                    RebaseCells(row, original, fresh);
+                }
+
+                continue;
+            }
+
+            if (Fields.All(field => field.Get(row) == field.Of(original)))
+            {
+                if (fresh is null)
+                {
+                    rows.Remove(row);
+                }
+                else
+                {
+                    foreach (var field in Fields) field.Set(row, field.Of(fresh));
+                    row.Original = fresh;
+                }
+
+                continue;
+            }
+
+            if (fresh is null)
+            {
+                _putBack.Add(original.Id);
+                row.Original = null;
+                continue;
+            }
+
+            RebaseCells(row, original, fresh);
+        }
+
+        _addedElsewhere.UnionWith(now.Keys.Where(id => oldHost.All(connection => connection.Id != id)));
+        _host = conflict;
+        _conflict = null;
+        ApplyFilter();
+        NormalizePage();
+    }
+
+    /// <summary>
+    /// One row onto the host's new version of it: a cell not touched here takes the new value; a cell
+    /// touched here stays, and when the host changed it too the connection is named as overridden.
+    /// </summary>
+    private void RebaseCells(Row row, PlcConnectionDto original, PlcConnectionDto fresh)
+    {
+        foreach (var field in Fields)
+        {
+            if (field.Get(row) == field.Of(original)) field.Set(row, field.Of(fresh));
+            else if (field.Of(fresh) != field.Of(original)) _overriding.Add(fresh.Id);
+        }
+
+        row.Original = fresh;
+    }
+
+    private void TakeTheHosts()
+    {
+        if (_conflict is not { } conflict) return;
+        Take(conflict);
+        _outcome = "Your changes were thrown away: the grid shows the host's list.";
+        _outcomeWritten = false;
+    }
+
+    private void Discard()
+    {
+        if (_host is null || Busy) return;
+        Take(_conflict ?? _host);
+        _outcome = "Your changes were discarded: the grid shows the host's list as last read. Nothing was written.";
+        _outcomeWritten = false;
+    }
+
+    // ---- Local edits ------------------------------------------------------------------------------
+
+    private void Typed(Row row, Field field, string text)
+    {
+        if (Busy || row.Removed) return;
+        field.Set(row, text);
+        NormalizePage();
+    }
+
+    /// <summary>A new row as the WinForms made one (PLCCollectionBindingSource_AddingNew): Id -1 - to be given by whoever configures - and the local defaults.</summary>
+    private void AddRow()
+    {
+        if (_rows is null || Busy) return;
+        ClearFilter();
+        var row = new Row
+        {
+            Key = _nextKey++,
+            Id = "-1",
+            PlcAddress = "127.0.0.1",
+            PcmPort = "2011",
+            LocalAddress = "127.0.0.1",
+            LocalPort = "2012",
+        };
+        _rows.Add(row);
+        _rowToFocus = row;
+        _page = PageCount(_rows.Count);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_rowToFocus is not { } row) return;
+        _rowToFocus = null;
+        if (!Open || Busy || _rows?.Contains(row) != true) return;
+        try
+        {
+            // Native focus scrolls the containing grid to the new editor after its page rendered.
+            await row.IdInput.FocusAsync();
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException or InvalidOperationException)
+        {
+            // The row remains editable even if the browser circuit has gone away.
+        }
+    }
+
+    /// <summary>A row read from the host is struck, not dropped, so that it can be marked and restored; a row added here simply goes.</summary>
+    private void RemoveRow(Row row)
+    {
+        if (Busy) return;
+        if (row.Original is null) _rows?.Remove(row);
+        else row.Removed = true;
+        NormalizePage();
+    }
+
+    private void RestoreRow(Row row)
+    {
+        if (Busy) return;
+        row.Removed = false;
+        NormalizePage();
+    }
+
+    // ---- Checks -----------------------------------------------------------------------------------
+
+    /// <summary>Every mark of the grid, by row key: <see cref="RowProblems"/>, and - when the list can be read - the connections in use that it removes.</summary>
+    private Dictionary<int, string> Marks()
+    {
+        var marks = RowProblems();
+        if (marks.Count > 0 || _host is not { } basis || _rows is not { } rows || !TryProposed(out var proposed)) return marks;
+
+        var removed = PlcConnectionRules.Compare(basis, proposed).Removed;
+        foreach (var used in ConnectionsInUse(removed))
+            foreach (var row in rows.Where(row => row.Original?.Id == used.Id))
+                marks[row.Key] = $"Used by {string.Join(", ", used.Devices)}: move them to another connection before removing this one.";
+
+        foreach (var used in _hostInUse.Where(used => removed.Contains(used.Id)))
+            foreach (var row in rows.Where(row => row.Original?.Id == used.Id && !marks.ContainsKey(row.Key)))
+                marks[row.Key] = $"The host says it is used by {string.Join(", ", used.Devices)}: move them to another connection before removing this one.";
+
+        return marks;
+    }
+
+    /// <summary>
+    /// What is wrong with each row still in the list, by row key: a column that is not a number, then
+    /// the WinForms checks (<see cref="PlcConnectionRules.Problems"/>) on the rows that can be read.
+    /// </summary>
+    private Dictionary<int, string> RowProblems()
+    {
+        var marks = new Dictionary<int, string>();
+        var readable = new List<(Row Row, PlcConnectionDto Connection)>();
+        foreach (var row in LiveRows)
+        {
+            if (TryRead(row, out var connection, out var problem)) readable.Add((row, connection));
+            else marks[row.Key] = problem;
+        }
+
+        foreach (var problem in PlcConnectionRules.Problems([.. readable.Select(pair => pair.Connection)]))
+        {
+            marks[readable[problem.Index].Row.Key] = problem.Kind == PlcConnectionProblemKind.IdNotPositive
+                ? "Every connection needs an Id greater than zero."
+                : $"Id {problem.Id} is on another row too: every connection needs its own Id.";
+        }
+
+        return marks;
+    }
+
+    private bool TryProposed(out List<PlcConnectionDto> proposed)
+    {
+        proposed = [];
+        foreach (var row in LiveRows)
+        {
+            if (!TryRead(row, out var connection, out _)) return false;
+            proposed.Add(connection);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// A row as a connection. A text column left as it came from the host keeps the host's value
+    /// (an empty text and a missing one look the same in a box); changed, an empty text is no value.
+    /// </summary>
+    private static bool TryRead(Row row, out PlcConnectionDto connection, out string problem)
+    {
+        connection = null!;
+        problem = "";
+        if (!long.TryParse(row.Id.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var id))
+        {
+            problem = "The Id is not a whole number.";
+            return false;
+        }
+
+        if (!TryPort(row.PcmPort, out var pcmPort))
+        {
+            problem = "The PCM port is not a whole number.";
+            return false;
+        }
+
+        if (!TryPort(row.LocalPort, out var localPort))
+        {
+            problem = "The local port is not a whole number.";
+            return false;
+        }
+
+        var original = row.Original;
+        connection = new PlcConnectionDto(id,
+            Text(row.Description, original?.Description),
+            Text(row.PlcAddress, original?.PlcAddress),
+            pcmPort,
+            Text(row.LocalAddress, original?.LocalAddress),
+            localPort);
+        return true;
+    }
+
+    private static string? Text(string typed, string? original) =>
+        typed == (original ?? "") ? original : typed.Length == 0 ? null : typed;
+
+    private static bool TryPort(string typed, out int? port)
+    {
+        port = null;
+        if (string.IsNullOrWhiteSpace(typed)) return true;
+        if (!int.TryParse(typed.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)) return false;
+        port = value;
+        return true;
+    }
+
+    /// <summary>The same connections, whatever the order of the rows: the host keeps them by Id.</summary>
+    private static bool SameList(IReadOnlyList<PlcConnectionDto> a, IReadOnlyList<PlcConnectionDto> b) =>
+        a.OrderBy(connection => connection.Id).SequenceEqual(b.OrderBy(connection => connection.Id));
+
+    /// <summary>
+    /// The connections among <paramref name="removed"/> that a device of the plant - as the page knows
+    /// it NOW - still uses, each with those devices by name. See the file's own remarks for why such a
+    /// connection cannot be removed. Zero is "no connection" (the engine opens a connection only for a
+    /// <c>DeviceConnectionId</c> above zero, DeviceConnections.OpenConnection), so a device on zero uses
+    /// none - the host's rule too (PlcSettingsStore.RemovedConnectionsInUseAsync, Task 4c).
+    /// </summary>
+    private IReadOnlyList<InUse> ConnectionsInUse(IReadOnlyList<long> removed)
+    {
+        if (removed.Count == 0 || Graph is not { } graph) return [];
+        var removedIds = removed.ToHashSet();
+        return graph.Items
+            .Select(item => (Item: item, Found: PlcConnectionRules.TryReadReference(item.DeviceConnectionId, out var id), Id: id))
+            .Where(entry => entry.Found && entry.Id > 0 && removedIds.Contains(entry.Id))
+            .GroupBy(entry => entry.Id)
+            .OrderBy(group => group.Key)
+            .Select(group => new InUse(group.Key, [.. group
+                .Select(entry => entry.Item.Name is { Length: > 0 } name ? name : entry.Item.ItemId.ToString())
+                .Order(StringComparer.Ordinal)]))
+            .ToList();
+    }
+
+    /// <summary>The refusal of a save that removes connections devices use: which, by whom, and what to do.</summary>
+    private static string InUseRefusal(IReadOnlyList<InUse> used, string when) =>
+        $"Nothing was saved{when}: {string.Join("; ", used.Select(entry => $"connection {entry.Id} is used by {string.Join(", ", entry.Devices)}"))}. " +
+        "Move those devices to another connection first (from the device list or the properties panel): a connection devices still use cannot be removed, " +
+        "because the engine keeps the old connection for them until the plant is loaded again (host restart or route-diagram reload) and their commands to that PLC would fail. " +
+        "Your changes are still in the grid.";
+
+    // ---- Saving -----------------------------------------------------------------------------------
+
+    /// <summary>"Save": the checks, then the question - nothing is sent yet.</summary>
+    private void AskToSave()
+    {
+        if (_rows is null || _host is not { } basis || Busy || _conflict is not null) return;
+        _outcomeWritten = false;
+
+        var problems = RowProblems();
+        if (problems.Count > 0 || !TryProposed(out var proposed))
+        {
+            ShowTheFirstMarkedRow(problems);
+            _outcome = $"Nothing was saved: {CannotBeSaved(problems.Count)} - marked below.";
+            return;
+        }
+
+        var changes = PlcConnectionRules.Compare(basis, proposed);
+        if (changes.None)
+        {
+            _outcome = "Nothing to save: the grid holds what the host holds.";
+            return;
+        }
+
+        if (ConnectionsInUse(changes.Removed) is { Count: > 0 } used)
+        {
+            _outcome = InUseRefusal(used, "");
+            return;
+        }
+
+        _outcome = null;
+        _confirmation = new Confirmation(proposed, basis, changes,
+            [.. changes.Modified.Where(_overriding.Contains)],
+            [.. changes.Removed.Where(_addedElsewhere.Contains)],
+            [.. changes.Added.Where(_putBack.Contains)],
+            // An Id the host gained meanwhile that the list still holds can only be a row added here.
+            [.. changes.Modified.Where(_addedElsewhere.Contains)],
+            [.. changes.Removed.Where(_removedButChanged.Contains)]);
+    }
+
+    /// <summary>
+    /// "Marked below" must be true: the first row that cannot be saved is brought on screen - the
+    /// filter cleared if it hides it, the page that holds it shown - and its Id takes the focus.
+    /// </summary>
+    private void ShowTheFirstMarkedRow(IReadOnlyDictionary<int, string> problems)
+    {
+        if (_rows?.FirstOrDefault(row => problems.ContainsKey(row.Key)) is not { } first) return;
+        if (!FilteredRows().Contains(first)) ClearFilter();
+        var index = FilteredRows().ToList().IndexOf(first);
+        _page = index / PageSize + 1;
+        _rowToFocus = first;
+    }
+
+    private static string CannotBeSaved(int count) =>
+        count == 1 ? "1 row cannot be saved as it is" : $"{count} rows cannot be saved as they are";
+
+    private static string ChangesText(PlcConnectionChanges changes) =>
+        $"{Counted(changes.Added, "added")}, {Counted(changes.Removed, "removed")}, {Counted(changes.Modified, "modified")}";
+
+    private static string Counted(IReadOnlyList<long> ids, string what) =>
+        ids.Count == 0 ? $"0 {what}" : $"{ids.Count} {what} ({string.Join(", ", ids)})";
+
+    private static string Connections(IReadOnlyList<long> ids) =>
+        (ids.Count == 1 ? "connection " : "connections ") + string.Join(", ", ids);
+
+    private enum SaveStage
+    {
+        Permit,
+        Check,
+        Write,
+    }
+
+    /// <summary>
+    /// "Yes": through the page's gate and permit, the devices and the host's list checked once more,
+    /// the whole list written, and the grid read again. Every outcome is said; what was typed stays
+    /// unless the host took it. A read already on its way is made stale: it began before this save, and
+    /// what it brings is older than what the save reads after writing.
+    /// </summary>
+    private async Task ConfirmSaveAsync()
+    {
+        if (_confirmation is not { } confirmation || _saving) return;
+        _confirmation = null;
+        _saving = true;
+        _readGeneration++;
+        _reading = false;
+        _outcome = null;
+        _outcomeWritten = false;
+        _hostInUse = [];
+        try
+        {
+            await SaveAsync(confirmation);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task SaveAsync(Confirmation confirmation)
+    {
+        var stage = SaveStage.Permit;
+        List<PlcConnectionDto>? underneath = null;
+        IReadOnlyList<InUse>? inUse = null;
+        DrawioSaid? refused;
+        try
+        {
+            async Task Write()
+            {
+                stage = SaveStage.Check;
+                // The plant may have changed since the question (a device moved onto a removed connection).
+                if (ConnectionsInUse(confirmation.Changes.Removed) is { Count: > 0 } used)
+                {
+                    inUse = used;
+                    return;
+                }
+
+                var now = await Session.Client.GetPlcConnectionsAsync();
+                if (!SameList(now, confirmation.Basis))
+                {
+                    underneath = now;
+                    return;
+                }
+
+                stage = SaveStage.Write;
+                await Session.Client.ReplacePlcConnectionsAsync(confirmation.Proposed);
+            }
+
+            refused = WriteThroughThePage is { } through
+                ? await through(Write)
+                : "The PLC connections were NOT saved: this section was not given the page's way through its write gate, edit permit and engine rule, and it does not write around them. Your changes are still in the grid.";
+        }
+        catch (WcsApiException refusal) when (stage == SaveStage.Write &&
+                                              refusal.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Conflict or HttpStatusCode.Locked)
+        {
+            // The request reached the host, which refused it before writing anything (Task 4b's minor:
+            // this used to say "Nothing reached the host").
+            _hostInUse = HostInUse(refusal);
+            // What the refusal means in the sentence, the host's own words behind its "?" with the
+            // rest of the answer (row 37 of the queue, extended to the whole page on 10/10).
+            _outcome = DrawioSaid.Failed(
+                $"The PLC connections were NOT saved: the host refused them - {HostRefusal(refusal, _hostInUse)}. Nothing was written on the host; your changes are still in the grid.",
+                refusal);
+            return;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or WcsApiException or TaskCanceledException or JsonException)
+        {
+            var why = DrawioFailureWords.Why(ex);
+            _outcome = DrawioSaid.Failed(stage switch
+            {
+                SaveStage.Write =>
+                    $"It is NOT known whether the PLC connections were saved, because {why} - the request may have reached the host anyway. Your changes are still in the grid: press \"Read again\" to see what the host holds before saving again.",
+                SaveStage.Check =>
+                    $"Nothing was saved: the host's list could not be read just before writing because {why}, and without it this page cannot tell whether somebody else saved it meanwhile. Your changes are still in the grid - save again.",
+                _ => $"Nothing was saved because {why}. Your changes are still in the grid.",
+            }, ex);
+            return;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Unforeseen. Before the write (the permit, the checks) nothing was sent to the host's
+            // list: said so. At the write, whether it reached the host is not known, and the grid is
+            // read again - with the changes pending, a host list that moved is said, not taken.
+            if (stage != SaveStage.Write)
+            {
+                _outcome = DrawioSaid.Failed(
+                    "Nothing was saved: an unforeseen failure stopped it before anything was written. Your changes are still in the grid - save again.", ex);
+                return;
+            }
+
+            _outcome = DrawioSaid.Failed(
+                "It is NOT known whether the PLC connections were saved: an unforeseen failure stopped it. " +
+                "Your changes are still in the grid; it is read again from the host - check what the host holds before saving again.", ex);
+            if (Open) await ReadAsync();
+            return;
+        }
+
+        if (refused is not null)
+        {
+            _outcome = refused;
+            return;
+        }
+
+        if (inUse is not null)
+        {
+            _outcome = InUseRefusal(inUse, " - the plant changed since the question");
+            return;
+        }
+
+        if (underneath is not null)
+        {
+            _conflict = underneath;
+            _outcome = "Nothing was saved: the host's list changed since this grid read it - somebody else saved it meanwhile. Choose below whether to keep your changes or take the host's list, then save again.";
+            return;
+        }
+
+        var saved = $"Saved to the host: {ChangesText(confirmation.Changes)}.";
+        _outcomeWritten = true;
+        if (!Open)
+        {
+            // Shut while the save was on its way: no read while shut. The grid holds what was sent,
+            // and it is read again - as always - when the section is opened.
+            Take(confirmation.Proposed);
+            _outcome = $"{saved} The grid is read again from the host when this section is opened.";
+            return;
+        }
+
+        try
+        {
+            var read = await Session.Client.GetPlcConnectionsAsync();
+            Take(read);
+            _outcome = SameList(read, confirmation.Proposed)
+                ? $"{saved} The grid shows the list the host holds now."
+                : $"{saved} The host holds a list different from the one sent - the grid shows the host's; check it.";
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Take(confirmation.Proposed);
+            _outcome = DrawioSaid.Failed(
+                $"{saved} But the list could not be read back from the host afterwards because {DrawioFailureWords.Why(ex)}: the grid shows what was sent. Press \"Read again\" before changing anything else.",
+                ex);
+        }
+    }
+
+    /// <summary>
+    /// What the host's no means: for 400 the list is not valid; for 409 either connections that
+    /// devices still use - when the host lists them (<paramref name="inUse"/>, Task 4c, read from the
+    /// problem document's field, not from its words) - or the engine not stopped - the host refuses
+    /// this route in ANY state but Stop (Task 4b, <c>PlantQueries.RequireStopped</c>), so the page
+    /// cannot say "in Run" as it does for the plant's other writes; for 423 that reading of the permit
+    /// (DrawioSelectionCoordinator.HostRefusalMeaning). The host's own words are not quoted here any
+    /// more: they are behind the line's "?" with the rest of its answer (row 37 of the queue, extended
+    /// to the whole page on 10/10).
+    /// </summary>
+    private static string HostRefusal(WcsApiException refused, IReadOnlyList<InUse> inUse) => refused.StatusCode switch
+    {
+        HttpStatusCode.BadRequest => "the list is not valid for the host",
+        HttpStatusCode.Conflict when inUse.Count > 0 =>
+            $"{string.Join("; ", inUse.Select(entry => $"connection {entry.Id} is still used by {string.Join(", ", entry.Devices)}"))} " +
+            "on the host (marked below) - move those devices to another connection first",
+        HttpStatusCode.Conflict => "the engine is not stopped - the PLC connections are saved only with the engine stopped",
+        _ => DrawioSelectionCoordinator.HostRefusalMeaning(refused),
+    };
+
+    /// <summary>
+    /// The connections a 409 of the host lists as still used by devices, with them - read from the
+    /// problem document's own field (<see cref="PlcConnectionProblems.InUseExtension"/>), not from its
+    /// words. Empty for any other refusal, or a body that does not carry the field in that shape.
+    /// </summary>
+    private static IReadOnlyList<InUse> HostInUse(WcsApiException refused)
+    {
+        if (refused.StatusCode != HttpStatusCode.Conflict || string.IsNullOrWhiteSpace(refused.Body)) return [];
+        try
+        {
+            using var problem = JsonDocument.Parse(refused.Body);
+            if (problem.RootElement.ValueKind != JsonValueKind.Object ||
+                !problem.RootElement.TryGetProperty(PlcConnectionProblems.InUseExtension, out var field) ||
+                field.ValueKind != JsonValueKind.Array)
+                return [];
+
+            var listed = field.Deserialize<List<PlcConnectionInUseDto>>(new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? [];
+            return [.. listed.Where(entry => entry is not null).OrderBy(entry => entry.ConnectionId).Select(entry => new InUse(entry.ConnectionId, [.. (entry.Devices ?? [])
+                .Select(device => device.Name is { Length: > 0 } name ? name : device.ItemId.ToString())
+                .Order(StringComparer.Ordinal)]))];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    public void Dispose() => _disposed = true;
+}

@@ -1,0 +1,150 @@
+@* Il collegamento a UNA cella automatica di un dispositivo Automation/CircularDistributor/Buffer/
+   LoadingAndBuffer/Loading (compito 11): FrmAUTOMATIC_ITEM_LINK dell'Editor WinForms reso qui - una
+   sola cella per dispositivo, a differenza delle molte righe di un dispositivo Storage
+   (DoorMappings.razor). Muto come DoorMappings.razor e PropertyPanel: la selezione di lavoro sta qui,
+   il permesso e la pila dell'annulla restano a PlantCanvas. *@
+
+<div class="wms-cells-panel">
+    @if (CurrentCellId is { } currentCellId && currentCellId != 0m)
+    {
+        <p class="wms-linked-cell-current">Linked cell: @currentCellId</p>
+    }
+    else
+    {
+        @* Zero e' il valore che il motore stesso tratta come "nessuna cella collegata" (si veda il
+           remarks di UnlinkBufferCellCommand) - non un dato mancante da nascondere, un dato vero da
+           dire con parole invece che con la cifra nuda. *@
+        <p class="wms-linked-cell-current">No linked cell.</p>
+    }
+
+    @if (LinkableCells.Count == 0)
+    {
+        <p class="wms-cells-empty">No cell of the warehouse system is available for this kind of device.</p>
+    }
+    else if (VisibleLinkableCells.Count == 0)
+    {
+        <p id="drawio-cells-no-match" class="wms-cells-empty">No warehouse cell matches this filter.</p>
+    }
+    else
+    {
+        <div class="wms-cells-table-scroll">
+            <table class="wms-cells-table">
+                <thead>
+                    <tr><th></th><th>Cell</th><th>Warehouse</th><th>Area</th><th>Column</th><th>Floor</th><th>Door</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var cell in VisibleLinkableCells)
+                    {
+                        <tr data-cell-id="@cell.CellId">
+                            <td>
+                                <input type="radio" id="@($"linked-cell-{cell.CellId}")" name="linked-cell" checked="@(_selectedCellId == cell.CellId)"
+                                       disabled="@(!CanEdit)" @onchange="() => _selectedCellId = cell.CellId" />
+                            </td>
+                            <td>@cell.CellId</td>
+                            <td>@cell.Warehouse</td>
+                            <td>@cell.Area</td>
+                            <td>@cell.Column</td>
+                            <td>@cell.Floor</td>
+                            <td>@cell.DoorA</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <div class="wms-cells-actions">
+        <button type="button" id="linked-cells-link-button" disabled="@(!CanEdit || SelectedCell is null)" @onclick="LinkAsync">Link</button>
+        <button type="button" id="linked-cells-unlink-button" disabled="@(!CanEdit || CurrentCellId is null or 0m)" @onclick="() => OnUnlink.InvokeAsync()">Unlink</button>
+    </div>
+
+    @* Il quarto giro del compito 11 (GET /plant/automatic-cells), sola lettura: mostra se questo
+       dispositivo compare fra le celle automatiche con ricollocatore - un dato in piu' rispetto al
+       semplice collegamento, per chi si chiede se la cella scelta ha davvero un ricollocatore dietro
+       (RelocateItemId sta sul dispositivo, non su questa cella). Nullo finche' la lettura non e'
+       tornata o e' fallita: non uno zero che finga un elenco vuoto mai letto davvero. *@
+    @if (AutomaticCells is { } automaticCells)
+    {
+        <div class="wms-automatic-cells">
+            <p>Automatic cells of this device:</p>
+            @if (automaticCells.Count == 0)
+            {
+                <p class="wms-cells-empty">None.</p>
+            }
+            else
+            {
+                <ul>
+                    @foreach (var automaticCell in automaticCells)
+                    {
+                        <li data-cell-id="@automaticCell.CellId">Cell @automaticCell.CellId (relocator @automaticCell.RelocatorItemId)</li>
+                    }
+                </ul>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public Guid ItemId { get; set; }
+
+    [Parameter]
+    public bool CanEdit { get; set; }
+
+    /// <summary>Le celle del gestionale candidate, gia' lette da PlantCanvas (GET /wms/cells filtrato per area e automaticOnly:true, come FrmAUTOMATIC_ITEM_LINK) - questo componente non parla con l'host.</summary>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<WmsCell> Cells { get; set; } = [];
+
+    /// <summary>Il PlantItemConfigDto.LinkedCellId corrente, o nullo se non ancora letto - zero e' un valore legittimo (nessuna cella), distinto da "non ancora caricato".</summary>
+    [Parameter]
+    public decimal? CurrentCellId { get; set; }
+
+    /// <summary>Le celle automatiche di questo dispositivo (GET /plant/automatic-cells, gia' filtrate per ItemId da PlantCanvas) - nullo finche' la lettura non e' tornata.</summary>
+    [Parameter]
+    public IReadOnlyList<AutomaticCell>? AutomaticCells { get; set; }
+
+    [Parameter]
+    public string Filter { get; set; } = "";
+
+    /// <summary>Invocato con la cella scelta al clic su "Link" - PlantCanvas decide come scriverla (POST .../link, poi PUT della configurazione, permesso, pila dell'annulla).</summary>
+    [Parameter]
+    public EventCallback<WmsCell> OnLink { get; set; }
+
+    [Parameter]
+    public EventCallback OnUnlink { get; set; }
+
+    /// <summary>L'ultimo <see cref="CurrentCellId"/> gia' copiato nella selezione di lavoro - solo quando cambia davvero, non a ogni resa: altrimenti un clic su una riga diversa da quella collegata tornerebbe indietro appena Blazor ridisegna, come SelectDoorCode dell'Editor WinForms precompila la scelta senza fissarla.</summary>
+    private decimal? _syncedCurrentCellId;
+
+    private decimal? _selectedCellId;
+
+    /// <summary>Solo le celle con una porta A: senza porta A non c'e' codice porta da mandare a LinkBufferCellAsync (DoorMappingLink.DoorCode), come OpenCellToLink dell'Editor WinForms scarta una riga senza CODICE_PORTA_A.</summary>
+    private IReadOnlyList<WmsCell> LinkableCells => Cells.Where(c => c.DoorA is not null).ToList();
+
+    private IReadOnlyList<WmsCell> VisibleLinkableCells =>
+        LinkableCells.Where(cell => WmsCellFilter.Matches(cell, Filter)).ToList();
+
+    /// <summary>
+    /// La riga di <see cref="LinkableCells"/> che corrisponde a <see cref="_selectedCellId"/>, o nulla se
+    /// quell'identificativo non e' (piu') fra le candidate - per esempio la cella gia' collegata
+    /// (<see cref="CurrentCellId"/>, precaricata da <see cref="OnParametersSet"/>) quando il filtro
+    /// dell'apertura del pannello (area diversa, <c>automaticOnly</c>, nessuna porta A) l'ha esclusa dalla
+    /// lista. Il pulsante "Link" e <see cref="LinkAsync"/> si accendono su QUESTA - sulla riga
+    /// trovata - non sul solo identificativo scelto: altrimenti il pulsante risulterebbe acceso ma muto,
+    /// perche' <see cref="LinkAsync"/> non ha nessuna riga da mandare a <see cref="OnLink"/>.
+    /// </summary>
+    private WmsCell? SelectedCell => _selectedCellId is { } id ? LinkableCells.FirstOrDefault(c => c.CellId == id) : null;
+
+    protected override void OnParametersSet()
+    {
+        if (_syncedCurrentCellId == CurrentCellId) return;
+        _syncedCurrentCellId = CurrentCellId;
+        _selectedCellId = CurrentCellId is { } id && id != 0m ? id : null;
+    }
+
+    private Task LinkAsync()
+    {
+        if (!CanEdit || SelectedCell is not { } cell) return Task.CompletedTask;
+        return OnLink.InvokeAsync(cell);
+    }
+}

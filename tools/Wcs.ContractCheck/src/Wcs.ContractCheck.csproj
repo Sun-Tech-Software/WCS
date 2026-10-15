@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Generates the machine-readable contracts of guide/contracts (the host API and the WMS contract)
+       from the code, and checks the committed ones against it: any difference fails, and a breaking
+       difference fails unless the contract's major version was raised. Usage in Program.cs. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Wcs.ContractCheck</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The host document comes from the real application, started in memory: the same package the
+         host's own tests use, already in the repository. -->
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\WCS\Wcs.Host\src\Wcs.Host.csproj" />
+    <ProjectReference Include="..\..\..\WCS\Wcs.Wms.Client\src\Wcs.Wms.Client.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Wcs.ContractCheck.Test" />
+  </ItemGroup>
+</Project>

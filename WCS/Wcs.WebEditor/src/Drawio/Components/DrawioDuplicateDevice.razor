@@ -1,0 +1,60 @@
+@* Row 63 (compito 5, fix round 2): the panel's "Duplicate device" - the plant-level duplicate of the
+   WinForms "Duplicate Item" (DrawioDuplicationCoordinator says what it copies and what not). Two
+   steps, as every gesture of this page that changes the plant: the button asks, naming the device
+   and the name the new one will have, and only "Duplicate" answers yes. The question is the page's
+   (DrawioEditor), not this component's, so that the right-click menu's entry can ask it too - the
+   entry calls this same action, it does not have one of its own. *@
+@using Wcs.WebEditor.Drawio.Coordination
+
+<section id="drawio-duplicate" class="drawio-duplicate">
+    @if (Armed)
+    {
+        <div id="drawio-duplicate-confirmation" class="drawio-duplicate-confirmation" tabindex="-1">
+            <p id="drawio-duplicate-question" class="drawio-duplicate-question">
+                @if (NewName is { } newName)
+                {
+                    @($"Duplicate {SourceName} as a new device named \"{newName}\"? It gets {SourceName}'s whole configuration except the identifier, the name, the ASI (set to XXXX, as the WinForms Editor does) and the linked warehouse cell (not copied: link it from the panel if needed), no junctions, and it is drawn {Offset} to the right of it and {Offset} below.")
+                }
+                else
+                {
+                    @($"Duplicate {SourceName}? The page cannot tell the new device's name yet (the plant or its type registry is not loaded): the duplication will say so if it cannot go ahead.")
+                }
+            </p>
+            @if (NotNow is { } notNow)
+            {
+                <p id="drawio-duplicate-not-now" class="drawio-operations-error">@notNow</p>
+            }
+            <button type="button" id="drawio-duplicate-confirm" disabled="@(Busy || NotNow is not null)" @onclick="() => OnConfirm.InvokeAsync()">Duplicate</button>
+            <button type="button" id="drawio-duplicate-cancel" @onclick="() => OnCancel.InvokeAsync()">Cancel</button>
+        </div>
+    }
+    else
+    {
+        <button type="button" id="drawio-duplicate-ask" disabled="@Busy" @onclick="() => OnAsk.InvokeAsync()">Duplicate device</button>
+    }
+</section>
+
+@code {
+    private static readonly string Offset = DrawioDuplicationCoordinator.Offset.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    [Parameter, EditorRequired] public string SourceName { get; set; } = "";
+
+    /// <summary>The name the duplicate would be born with (DrawioDuplicationCoordinator.NameForTheDuplicateOf), or null when the page cannot tell.</summary>
+    [Parameter] public string? NewName { get; set; }
+
+    /// <summary>The question is on screen.</summary>
+    [Parameter] public bool Armed { get; set; }
+
+    /// <summary>A duplication is on its way.</summary>
+    [Parameter] public bool Busy { get; set; }
+
+    /// <summary>
+    /// Why the answer is held now - the engine the page shows is not stopped (owner's decision of 27/9
+    /// on Pause) - or null. The write checks again; this only says it before the press.
+    /// </summary>
+    [Parameter] public string? NotNow { get; set; }
+
+    [Parameter] public EventCallback OnAsk { get; set; }
+    [Parameter] public EventCallback OnConfirm { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+}

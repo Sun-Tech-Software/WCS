@@ -1,0 +1,126 @@
+@* The plant's file - export and import (rows 43 and 44) - as a section of the page's strip, the
+   first one (owner's decision of 27/9: until then it was a closed box of its own in the band above
+   the strip, next to the checks). It is first because it is about the plant as a whole, before
+   anything that is done on it; and it is the section nearest to where it used to be.
+   <para>
+   <b>Opened and shut by the page</b>, in a floating window over the canvas (DrawioWindow, spec
+   2026-09-29), open together with any of the other sections: the button of the strip and the
+   window's X both ask the page, and the page hands back <see cref="Open"/>. Shut to begin with, as
+   it was in the band: one of its two commands replaces the whole plant.
+   </para>
+   <para>
+   <b>The body stays in the page while shut</b>, as Operations' does - and here it is not only a
+   matter of size: the import's confirmation is a dialog of ImportExport, and taking the component
+   off the page would throw away a file the operator has chosen and not yet confirmed. So a pending
+   import survives the window being shut: the hidden window hides its dialog with it (display:none
+   hides what is inside, whatever its positioning), nothing can press "Confirm" while it is hidden,
+   and the button of the strip says that an import is waiting - opening the window again shows the
+   confirmation again. It is never confirmed or cancelled by shutting the window: only "Confirm"
+   writes, and only "Cancel" (or a click outside the dialog, as always) throws it away. What it
+   compares is not frozen either (fix round of 27/9): the file is compared with the plant again when
+   the window is opened again, when the plant the page holds moves, and in any case at "Confirm",
+   before anything is written - see ImportExport.OnParametersSetAsync. The button's sentence follows
+   it - in its tip and its name for a screen reader, the visible word is "Plant file" - waiting, being
+   written, not written, compared again, or not comparable again because the plant could not be read.
+   </para>
+   ImportExport is rendered only once the page has the plant (<see cref="Graph"/>), as it was when
+   the band rendered this box: the page never goes back to no plant, so once rendered it stays. *@
+@using Wcs.WebEditor.Drawio.Coordination
+@using Wcs.WebEditor.Io
+@using Wcs.WebEditor.Model
+@using static Wcs.Common.Enums
+
+@* The button of the bar (passata grafica, 2026-09-29): the icon and the name, and while an import is
+   waiting a "!" on it - the sentence that says what the import is doing, which used to be the
+   button's whole text, is inside it behind a tip (drawio-has-tip: the mouse or the keyboard's focus
+   on the button shows it), and is its name for a screen reader. *@
+<button type="button" id="drawio-plant-file-toggle" class="drawio-section-toggle drawio-has-tip" aria-label="@SummaryText"
+        aria-pressed="@(Open ? "true" : "false")" @onclick="() => OnToggle.InvokeAsync()">
+    <DrawioIcon Name="plant-file" />
+    <span class="drawio-toggle-label">Plant file</span>
+    @if (_pending is not null)
+    {
+        <span class="drawio-badge" aria-hidden="true">!</span>
+        <span class="drawio-tip" role="tooltip">@SummaryText</span>
+    }
+</button>
+@* The paragraph that said what the two commands do opened the window until the passata grafica: it is
+   behind the "?" of the title bar now, word for word, and the commands are the window's first line. *@
+<DrawioWindow Id="drawio-plant-file" Class="drawio-plant-file" Title="Plant file" Icon="plant-file"
+              Open="Open" OnClose="() => OnClose.InvokeAsync()" Place="Place"
+              Resizable="false" AutoSize="true" PreferredSize="PlantFileSize">
+    <Help>
+        <p id="drawio-plant-file-scope" class="drawio-plant-file-scope">
+            The export reads the plant from the host - every device with its configuration, the junctions, the
+            door maps, the positions, the PLC connections and the free drawing added by hand - into one file.
+            The import replaces the whole plant with a file's, all or nothing, and cannot be undone: it asks for
+            the edit permit at the confirmation, and says first what it is about to lose. It goes through only
+            with the engine stopped (Stop), and not while the plant has missions or rows in the extraction
+            queue. A file exported before 2026-09-19 does not carry the free drawing and leaves it alone - the
+            confirmation says which kind you chose. A file waiting for its confirmation keeps waiting while this
+            section is shut.
+        </p>
+    </Help>
+    <ChildContent>
+        <div class="drawio-plant-file-body">
+            <div id="drawio-plant-file-commands" class="drawio-plant-file-commands">
+                @if (Graph is { } graph)
+                {
+                    <ImportExport Graph="graph" CanEdit="true" EngineStatus="EngineStatus"
+                                  WriteThroughThePage="WriteThroughThePage"
+                                  ReloadUrl="/editor/drawio"
+                                  Shown="Open"
+                                  OnPendingImportChanged="PendingImportChanged" />
+                }
+                else
+                {
+                    <span id="drawio-plant-file-loading" class="drawio-plant-file-loading">Loading the plant...</span>
+                }
+            </div>
+        </div>
+    </ChildContent>
+</DrawioWindow>
+
+@code {
+    private static readonly DrawioWindowSize PlantFileSize = new(680, 420);
+
+    /// <summary>Whether the page has this section's window open.</summary>
+    [Parameter] public bool Open { get; set; }
+
+    /// <summary>
+    /// The button of the strip was pressed: the page opens the window, brings it to the front if it is
+    /// open behind another, or shuts it if it is the one in front - and leaves the other windows as they are.
+    /// </summary>
+    [Parameter] public EventCallback OnToggle { get; set; }
+
+    /// <summary>The window's X was pressed, or Esc in it: the page shuts the window, and does nothing if it is already shut.</summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>Where the window opens when this browser remembers nothing about it (see DrawioWindowPlace).</summary>
+    [Parameter, EditorRequired] public DrawioWindowPlace Place { get; set; } = null!;
+
+    /// <summary>The plant as the page holds it, null until it is loaded: the commands wait for it.</summary>
+    [Parameter] public PlantGraph? Graph { get; set; }
+
+    /// <summary>The engine's state as the page shows it, null when not known (see ImportExport.EngineStatus).</summary>
+    [Parameter] public NavigatorStatusTypes? EngineStatus { get; set; }
+
+    /// <summary>The page's own way through for the import's write (see ImportExport.WriteThroughThePage).</summary>
+    [Parameter] public Func<Func<Task>, Task<DrawioSaid?>>? WriteThroughThePage { get; set; }
+
+    /// <summary>Where the file waiting in the import's confirmation stands, or null when none is waiting.</summary>
+    private PlantImportStatus? _pending;
+
+    /// <summary>What the button of the bar says of the import - in its tip and in its name for a screen reader - so that a shut window still tells what its hidden dialog would.</summary>
+    private string SummaryText => _pending switch
+    {
+        null => "Plant file",
+        { Phase: PlantImportPhase.Writing } => $"Plant file (the import of \"{_pending.FileName}\" is being written...)",
+        { Phase: PlantImportPhase.NotWritten } => $"Plant file (the import of \"{_pending.FileName}\" was not written - open to see why)",
+        { Phase: PlantImportPhase.NotCompared } => $"Plant file (the import of \"{_pending.FileName}\" could not be compared again with the plant - open to see why)",
+        { Phase: PlantImportPhase.PlantChanged } => $"Plant file (the plant changed: the import of \"{_pending.FileName}\" has to be confirmed again)",
+        _ => $"Plant file (an import is waiting for confirmation: \"{_pending.FileName}\")",
+    };
+
+    private void PendingImportChanged(PlantImportStatus? status) => _pending = status;
+}

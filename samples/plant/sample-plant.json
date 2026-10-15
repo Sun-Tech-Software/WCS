@@ -1,0 +1,264 @@
+{
+  "items": [
+    {
+      "itemId": "5a000000-0000-4000-8000-000000000001",
+      "name": "IN01",
+      "deviceType": 1,
+      "asi": "1001",
+      "subitem": "0001",
+      "partition": "0001",
+      "connectionType": 0,
+      "delayBlind": 500,
+      "autoExecuteStep": true,
+      "lookWhereAllocateLoadUnit": 2,
+      "linkedCellId": 800
+    },
+    {
+      "itemId": "5a000000-0000-4000-8000-000000000002",
+      "name": "CV01",
+      "deviceType": 0,
+      "asi": "1002",
+      "subitem": "0001",
+      "partition": "0001",
+      "connectionType": 0,
+      "delayBlind": 500,
+      "autoExecuteStep": true
+    },
+    {
+      "itemId": "5a000000-0000-4000-8000-000000000003",
+      "name": "CV02",
+      "deviceType": 0,
+      "asi": "1003",
+      "subitem": "0001",
+      "partition": "0001",
+      "connectionType": 0,
+      "delayBlind": 500,
+      "autoExecuteStep": true
+    },
+    {
+      "itemId": "5a000000-0000-4000-8000-000000000004",
+      "name": "SC01",
+      "deviceType": 0,
+      "asi": "2001",
+      "subitem": "0001",
+      "partition": "0001",
+      "connectionType": 0,
+      "delayBlind": 500,
+      "autoExecuteStep": true,
+      "recordStorageLength": 2,
+      "storagePartition": "0000",
+      "motionType": 1
+    },
+    {
+      "itemId": "5a000000-0000-4000-8000-000000000005",
+      "name": "ST01",
+      "deviceType": 3,
+      "asi": "3001",
+      "subitem": "0001",
+      "partition": "0001",
+      "connectionType": 0,
+      "delayBlind": 0,
+      "autoExecuteStep": false,
+      "relocateItemId": "5a000000-0000-4000-8000-000000000004"
+    },
+    {
+      "itemId": "5a000000-0000-4000-8000-000000000006",
+      "name": "CV03",
+      "deviceType": 0,
+      "asi": "1004",
+      "subitem": "0001",
+      "partition": "0001",
+      "connectionType": 0,
+      "delayBlind": 500,
+      "autoExecuteStep": true
+    },
+    {
+      "itemId": "5a000000-0000-4000-8000-000000000007",
+      "name": "OUT01",
+      "deviceType": 2,
+      "asi": "1005",
+      "subitem": "0001",
+      "partition": "0001",
+      "connectionType": 0,
+      "delayBlind": 500,
+      "autoExecuteStep": true,
+      "linkedCellId": 900
+    }
+  ],
+  "geometries": [
+    {
+      "itemId": "5a000000-0000-4000-8000-000000000001",
+      "x": 40,
+      "y": 200,
+      "width": 80,
+      "height": 60,
+      "rotation": 0
+    },
+    {
+      "itemId": "5a000000-0000-4000-8000-000000000002",
+      "x": 160,
+      "y": 200,
+      "width": 80,
+      "height": 60,
+      "rotation": 0
+    },
+    {
+      "itemId": "5a000000-0000-4000-8000-000000000003",
+      "x": 280,
+      "y": 200,
+      "width": 80,
+      "height": 60,
+      "rotation": 0
+    },
+    {
+      "itemId": "5a000000-0000-4000-8000-000000000004",
+      "x": 420,
+      "y": 200,
+      "width": 80,
+      "height": 60,
+      "rotation": 0
+    },
+    {
+      "itemId": "5a000000-0000-4000-8000-000000000005",
+      "x": 340,
+      "y": 60,
+      "width": 240,
+      "height": 60,
+      "rotation": 0
+    },
+    {
+      "itemId": "5a000000-0000-4000-8000-000000000006",
+      "x": 560,
+      "y": 200,
+      "width": 80,
+      "height": 60,
+      "rotation": 0
+    },
+    {
+      "itemId": "5a000000-0000-4000-8000-000000000007",
+      "x": 680,
+      "y": 200,
+      "width": 80,
+      "height": 60,
+      "rotation": 0
+    }
+  ],
+  "junctions": [
+    {
+      "junctionId": "5a000000-0000-4000-9000-000000000001",
+      "sourceItemId": "5a000000-0000-4000-8000-000000000001",
+      "destinationItemId": "5a000000-0000-4000-8000-000000000002",
+      "priority": 0
+    },
+    {
+      "junctionId": "5a000000-0000-4000-9000-000000000002",
+      "sourceItemId": "5a000000-0000-4000-8000-000000000002",
+      "destinationItemId": "5a000000-0000-4000-8000-000000000003",
+      "priority": 0
+    },
+    {
+      "junctionId": "5a000000-0000-4000-9000-000000000003",
+      "sourceItemId": "5a000000-0000-4000-8000-000000000003",
+      "destinationItemId": "5a000000-0000-4000-8000-000000000004",
+      "priority": 0
+    },
+    {
+      "junctionId": "5a000000-0000-4000-9000-000000000004",
+      "sourceItemId": "5a000000-0000-4000-8000-000000000004",
+      "destinationItemId": "5a000000-0000-4000-8000-000000000005",
+      "priority": 0
+    },
+    {
+      "junctionId": "5a000000-0000-4000-9000-000000000005",
+      "sourceItemId": "5a000000-0000-4000-8000-000000000005",
+      "destinationItemId": "5a000000-0000-4000-8000-000000000004",
+      "priority": 0
+    },
+    {
+      "junctionId": "5a000000-0000-4000-9000-000000000006",
+      "sourceItemId": "5a000000-0000-4000-8000-000000000004",
+      "destinationItemId": "5a000000-0000-4000-8000-000000000006",
+      "priority": 0
+    },
+    {
+      "junctionId": "5a000000-0000-4000-9000-000000000007",
+      "sourceItemId": "5a000000-0000-4000-8000-000000000006",
+      "destinationItemId": "5a000000-0000-4000-8000-000000000007",
+      "priority": 0
+    }
+  ],
+  "doorMappings": [
+    {
+      "id": 0,
+      "itemId": "5a000000-0000-4000-8000-000000000005",
+      "doorCode": "A0101",
+      "cellId": 101,
+      "side": "A",
+      "operationActive": 0,
+      "storingLocked": false
+    },
+    {
+      "id": 0,
+      "itemId": "5a000000-0000-4000-8000-000000000005",
+      "doorCode": "A0102",
+      "cellId": 102,
+      "side": "A",
+      "operationActive": 0,
+      "storingLocked": false
+    },
+    {
+      "id": 0,
+      "itemId": "5a000000-0000-4000-8000-000000000005",
+      "doorCode": "A0201",
+      "cellId": 103,
+      "side": "A",
+      "operationActive": 0,
+      "storingLocked": false
+    },
+    {
+      "id": 0,
+      "itemId": "5a000000-0000-4000-8000-000000000005",
+      "doorCode": "A0202",
+      "cellId": 104,
+      "side": "A",
+      "operationActive": 0,
+      "storingLocked": false
+    },
+    {
+      "id": 0,
+      "itemId": "5a000000-0000-4000-8000-000000000005",
+      "doorCode": "A0301",
+      "cellId": 105,
+      "side": "A",
+      "operationActive": 0,
+      "storingLocked": false
+    },
+    {
+      "id": 0,
+      "itemId": "5a000000-0000-4000-8000-000000000005",
+      "doorCode": "A0302",
+      "cellId": 106,
+      "side": "A",
+      "operationActive": 0,
+      "storingLocked": false
+    },
+    {
+      "id": 0,
+      "itemId": "5a000000-0000-4000-8000-000000000001",
+      "doorCode": "BAY-IN01",
+      "cellId": 800,
+      "side": "A",
+      "operationActive": 0,
+      "storingLocked": false
+    },
+    {
+      "id": 0,
+      "itemId": "5a000000-0000-4000-8000-000000000007",
+      "doorCode": "BAY-OUT01",
+      "cellId": 900,
+      "side": "A",
+      "operationActive": 0,
+      "storingLocked": false
+    }
+  ]
+}
