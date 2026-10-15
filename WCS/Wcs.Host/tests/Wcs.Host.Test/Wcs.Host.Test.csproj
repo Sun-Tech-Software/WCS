@@ -6,9 +6,9 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.13" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.13" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
       <PrivateAssets>all</PrivateAssets>
@@ -22,7 +22,7 @@
     <PackageReference Include="bunit" Version="2.10.3" />
     <!-- ConnectionFactoryLoaderTest compiles a driver and its dependency into a folder the runtime
          does not know, as a third-party driver dropped next to Wcs.Host.exe. -->
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
   </ItemGroup>
   <ItemGroup>
     <!-- Il riscontro delle sette sagome, letto da DeviceShapeGoldenTest accanto all'assembly. -->

@@ -17,7 +17,7 @@
          (pulsante con stato premuto, suggerimento, traboccamento) al posto di trenta <button> nudi
          tenuti insieme da CSS nostro. Licenza MIT, net10.0 fra i target. La versione sta qui e non
          in un Directory.Packages.props perche' questo repository non ne ha uno. -->
-    <PackageReference Include="Microsoft.FluentUI.AspNetCore.Components" Version="4.14.4" />
+    <PackageReference Include="Microsoft.FluentUI.AspNetCore.Components" Version="5.0.1" />
   </ItemGroup>
   <ItemGroup>
     <!-- L'Editor web e' un client come gli altri: conosce il contratto e il client, non il motore.
