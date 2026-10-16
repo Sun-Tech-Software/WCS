@@ -1,6 +1,6 @@
 # Writing a WMS adapter
 
-An *adapter* is the HTTP service that answers the [43 routes](../reference/wms-routes.md) on behalf
+An *adapter* is the HTTP service that answers the [45 routes](../reference/wms-routes.md) on behalf
 of your WMS. It can be part of your WMS or a separate service in front of its database. This page
 takes you from the sample WMS to a real adapter, in the order that gets a load unit stored first.
 
@@ -8,13 +8,13 @@ Read [the WMS contract](wms-contract.md) alongside: it shows every request and a
 
 ## 1. Start from the sample
 
-[`samples/Wcs.SampleWms`](../../samples/Wcs.SampleWms/README.md) answers all 43 routes from an
+[`samples/Wcs.SampleWms`](../../samples/Wcs.SampleWms/README.md) answers all 45 routes from an
 in-memory warehouse, and the WCS stores and extracts load units against it (that is the
 [quick start](../quick-start.md)). Its files map one to one onto what you write:
 
 | Sample file | What it is | In your adapter |
 |---|---|---|
-| [`WarehouseEndpoints.cs`](../../samples/Wcs.SampleWms/WarehouseEndpoints.cs) | the 43 routes, each mapped to one method, with what it means | keep as it is |
+| [`WarehouseEndpoints.cs`](../../samples/Wcs.SampleWms/WarehouseEndpoints.cs) | the 45 routes, each mapped to one method, with what it means | keep as it is |
 | [`ApiKeyFilter.cs`](../../samples/Wcs.SampleWms/ApiKeyFilter.cs) | the `X-Api-Key` check, before any body is bound | keep, read the key from your secret store |
 | [`Receipts.cs`](../../samples/Wcs.SampleWms/Receipts.cs) | one receipt per `OperationId` | replace the dictionary with a table, written in the same transaction as the change |
 | [`SampleWarehouse.cs`](../../samples/Wcs.SampleWms/SampleWarehouse.cs) | the warehouse and its rules | **replace** with queries and updates on your database |
@@ -55,7 +55,7 @@ builder.Services.AddProblemDetails();
 
 var app = builder.Build();
 app.UseApiKey();               // X-Api-Key on /api/wcs/warehouse, before any binding (401 otherwise)
-app.MapWarehouseContract();    // the 43 routes
+app.MapWarehouseContract();    // the 45 routes
 app.Run();
 ```
 
@@ -127,7 +127,9 @@ checks that the sample's two halves still agree; write the same check for your p
 
 **Then the rest**: shipping notes (9, 10, 11, 16-19) if you have them (answer `[]` to
 `notes/pending-work` otherwise); operator decisions (5, 6, 7, 20); readings for commands (25, 29-33,
-37-41); the two editor routes (42, 43).
+37-41); the two editor routes (42, 43). The check of a precise cell (44) and the missing note
+assignments (45) are optional: without them, answer `404` or `501` and the WCS behaves as it did before
+the routes existed.
 
 A route you have not implemented yet must answer a 5xx such as **`503`** (or `501`), not `404` or any
 other 4xx: the WCS retries every 5xx (and `408`, `429`), and parks or drops any other 4xx ([answers, refusals and failures](wms-contract.md#answers-refusals-and-failures)).
@@ -210,7 +212,7 @@ Assert.True(refused.IsPermanentRejection);
 
 A test project needs a reference to
 [`Wcs.Wms.Client`](../../WCS/Wcs.Wms.Client/src/Wcs.Wms.Client.csproj) (which brings
-`Wcs.Wms.Contracts`). The sample's test `EveryOperationOfTheContractAnswers` calls all 43 operations
+`Wcs.Wms.Contracts`). The sample's test `EveryOperationOfTheContractAnswers` calls all 45 operations
 this way; copy it and change the expected values to your data.
 
 Then point a WCS host at your adapter and repeat the quick start with your plant:

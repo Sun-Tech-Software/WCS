@@ -1146,6 +1146,12 @@ public class HttpWarehouseTest
     [InlineData(HttpStatusCode.BadRequest, "{}", true)]
     [InlineData(HttpStatusCode.OK, "", false)]
     [InlineData(HttpStatusCode.OK, "{}", false)]
+    // A number the contract does not know (an outcome of a newer warehouse) is a rejection, not
+    // «not held»: asking again gives the same answer (item 55).
+    [InlineData(HttpStatusCode.OK, "2", true)]
+    [InlineData(HttpStatusCode.OK, "255", true)]
+    // Out of the byte range it does not even read: a failure, as any unreadable body.
+    [InlineData(HttpStatusCode.OK, "-1", false)]
     public async Task AFailedGiveBackOfALoadUnitsCellBecomesWarehouseUnavailable(HttpStatusCode status, string body, bool rejection)
     {
         var ex = await Assert.ThrowsAsync<WarehouseUnavailableException>(
@@ -1153,6 +1159,62 @@ public class HttpWarehouseTest
 
         Assert.Equal("ReleaseLoadUnitCell", ex.Operation);
         Assert.Equal(rejection, ex.IsPermanentRejection);
+    }
+
+    /// <summary>
+    /// Item 55: the check of a precise cell is a POST on its own route with the body of the reservation,
+    /// and its outcome is in the body of the 200; a 404 is a warehouse without the check, null.
+    /// </summary>
+    [Theory]
+    [InlineData(HttpStatusCode.OK, "{\"Outcome\":0,\"Reservation\":null,\"Reason\":null}", StorageCellReservationOutcome.Reserved)]
+    [InlineData(HttpStatusCode.OK, "{\"Outcome\":3,\"Reservation\":null,\"Reason\":\"busy\"}", StorageCellReservationOutcome.CellNotAvailable)]
+    [InlineData(HttpStatusCode.NotFound, "", null)]
+    [InlineData(HttpStatusCode.NotImplemented, "", null)]
+    public async Task TheCheckOfAPreciseCellIsAPostOnItsRouteAndA404MeansNoCheck(HttpStatusCode status, string body,
+        StorageCellReservationOutcome? expected)
+    {
+        var (warehouse, handler) = BuildWithHandler(status, body);
+
+        var result = await warehouse.CheckStorageCellAsync(new ReserveStorageCellRequest(Guid.NewGuid(), 4711m, "A6", "WS", "U"));
+
+        Assert.Equal(expected, result?.Outcome);
+        Assert.Equal(HttpMethod.Post, handler.LastRequest!.Method);
+        Assert.Equal("/api/wcs/warehouse/reservations/cell/check", handler.LastRequest.RequestUri!.AbsolutePath);
+        Assert.Contains("\"DoorCode\":\"A6\"", handler.LastRequestBody!);
+    }
+
+    /// <summary>Item D119: the missing assignments are a POST with the ids; 404 or 501 is a WMS without the route.</summary>
+    [Theory]
+    [InlineData(HttpStatusCode.OK, "[902]", true)]
+    [InlineData(HttpStatusCode.NotFound, "", false)]
+    [InlineData(HttpStatusCode.NotImplemented, "", false)]
+    public async Task TheMissingNoteAssignmentsAreAPostAndA404MeansNoRoute(HttpStatusCode status, string body, bool answered)
+    {
+        var (warehouse, handler) = BuildWithHandler(status, body);
+
+        var missing = await warehouse.GetMissingNoteAssignmentsAsync([901m, 902m]);
+
+        Assert.Equal(answered ? [902m] : null, missing);
+        Assert.Equal("/api/wcs/warehouse/notes/missing-among", handler.LastRequest!.RequestUri!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task AWarehouseUnavailableAtTheCheckIsAFailureNotAMissingCheck()
+    {
+        var ex = await Assert.ThrowsAsync<WarehouseUnavailableException>(() => Build(HttpStatusCode.ServiceUnavailable, "")
+            .CheckStorageCellAsync(new ReserveStorageCellRequest(Guid.NewGuid(), 4711m, "A6", "WS", "U")));
+
+        Assert.Equal("CheckStorageCell", ex.Operation);
+    }
+
+    [Fact]
+    public async Task AnUnknownGiveBackOutcomeSaysWhatTheWarehouseAnswered()
+    {
+        var ex = await Assert.ThrowsAsync<WarehouseUnavailableException>(
+            () => Build(HttpStatusCode.OK, "2").ReleaseLoadUnitCellAsync(GiveBack()));
+
+        Assert.Contains("answered 2", ex.Message);
+        Assert.Contains(nameof(LoadUnitCellReleaseOutcome), ex.Message);
     }
 
     /// <summary>

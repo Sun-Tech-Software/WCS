@@ -1055,9 +1055,18 @@ public sealed class Navigator
         var previousState = StateWriter;
         var previousPlcLog = PlcLogWriter;
 
+        // Il database del WCS: si apre (o si crea) nella cartella configurata, con lo schema portato
+        // all'ultima migrazione. Il precedente, se c'era, si chiude dopo che il suo scrittore ha
+        // finito. Prima dello storico: un mese che esce dalla ritenzione lascia qui i riferimenti
+        // delle sue lavorazioni (voce D103), anche al primo cambio di mese, che avviene nell'apertura.
+        var previousStore = Store;
+        var store = WcsDatabase.Open(DatabaseDirectory);
+        Store = store;
+
         // Lo storico: un file al mese nella stessa cartella, con la ritenzione configurata.
         var previousHistoryStore = History;
-        History = WcsHistoryDatabase.Open(DatabaseDirectory, HistoryMonthsToKeep);
+        History = WcsHistoryDatabase.Open(DatabaseDirectory, HistoryMonthsToKeep,
+            keepReferences: references => RetiredHandledReferences.Keep(store, references));
 
         HistoryWriter = new QueuedDatabaseWriter<HistoryWrite>(
             new WcsHistoryBatchExecutor(History).ExecuteAsync,
@@ -1085,11 +1094,6 @@ public sealed class Navigator
                 ex == null ? $"PlcLogWriter: {message}" : $"PlcLogWriter: {message} {ex.Message}",
                 LogEntryType.Warning));
 
-        // Il database del WCS: si apre (o si crea) nella cartella configurata, con lo schema portato
-        // all'ultima migrazione. Il precedente, se c'era, si chiude dopo che il suo scrittore ha
-        // finito.
-        var previousStore = Store;
-        Store = WcsDatabase.Open(DatabaseDirectory);
 
         // La geometria del disegno entra nel modello una volta sola, all'avvio: da qui in poi la
         // verita' e' il modello e PUT /plant/diagram non accetta piu'. Idempotente - al secondo

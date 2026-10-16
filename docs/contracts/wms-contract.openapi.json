@@ -1286,6 +1286,55 @@
         "x-wcs-operation-id": false
       }
     },
+    "/api/wcs/warehouse/notes/missing-among": {
+      "post": {
+        "operationId": "GetMissingNoteAssignments",
+        "description": "`IWarehouse.GetMissingNoteAssignmentsAsync`. The body is written in PascalCase (`{\"LoadUnitId\":5001}`); read its names case-insensitively. Optional: a WMS that does not offer it answers 404 or 501, and the WCS goes on without it. Not sent when `assignmentIds` is empty: the WCS gives the answer itself.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PausedAmongRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer. Any 2xx status is accepted; a body that does not read, or `null`, is a failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "format": "decimal"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not offered: the WCS goes on without it."
+          },
+          "501": {
+            "description": "Not offered, as a 404."
+          },
+          "4XX": {
+            "description": "A permanent refusal (every 4xx except 408 and 429, and the 404 above): answer it only for a request that can never succeed. The WCS logs it and does not read the body; a durable queue parks the row."
+          },
+          "5XX": {
+            "description": "A temporary failure, like 408, 429, a timeout or a dropped connection: the WCS leaves the work waiting and asks again, or retries from its durable queue."
+          }
+        },
+        "x-wcs-request-casing": "PascalCase",
+        "x-wcs-not-found": "none",
+        "x-wcs-optional": true,
+        "x-wcs-answer-body": "read",
+        "x-wcs-operation-id": false
+      }
+    },
     "/api/wcs/warehouse/notes/paused-among": {
       "post": {
         "operationId": "GetPausedNoteAssignments",
@@ -1512,6 +1561,51 @@
         },
         "x-wcs-request-casing": "PascalCase",
         "x-wcs-not-found": "failure",
+        "x-wcs-answer-body": "read",
+        "x-wcs-operation-id": false
+      }
+    },
+    "/api/wcs/warehouse/reservations/cell/check": {
+      "post": {
+        "operationId": "CheckStorageCell",
+        "description": "`IWarehouse.CheckStorageCellAsync`. The body is written in PascalCase (`{\"LoadUnitId\":5001}`); read its names case-insensitively. Optional: a WMS that does not offer it answers 404 or 501, and the WCS goes on without it.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReserveStorageCellRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer. Any 2xx status is accepted; a body that does not read, or `null`, is a failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageCellReservationResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not offered: the WCS goes on without it."
+          },
+          "501": {
+            "description": "Not offered, as a 404."
+          },
+          "4XX": {
+            "description": "A permanent refusal (every 4xx except 408 and 429, and the 404 above): answer it only for a request that can never succeed. The WCS logs it and does not read the body; a durable queue parks the row."
+          },
+          "5XX": {
+            "description": "A temporary failure, like 408, 429, a timeout or a dropped connection: the WCS leaves the work waiting and asks again, or retries from its durable queue."
+          }
+        },
+        "x-wcs-request-casing": "PascalCase",
+        "x-wcs-not-found": "none",
+        "x-wcs-optional": true,
         "x-wcs-answer-body": "read",
         "x-wcs-operation-id": false
       }

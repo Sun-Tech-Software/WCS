@@ -54,15 +54,15 @@ public sealed partial class GuideReferenceTest(HostFixture fixture)
 
         var rows = WmsRow().Matches(ReadReference("wms-routes.md")).ToList();
 
-        Assert.Equal(43, routes.Count);
-        Assert.Equal(43, methods.Count);
+        Assert.Equal(45, routes.Count);
+        Assert.Equal(45, methods.Count);
         Assert.True(routes.SetEquals(rows.Select(r => r.Groups["path"].Value)),
             "guide/reference/wms-routes.md and WarehouseRoutes disagree. Not documented: " +
             string.Join(", ", routes.Except(rows.Select(r => r.Groups["path"].Value))));
         Assert.True(methods.SetEquals(rows.Select(r => r.Groups["member"].Value)),
             "guide/reference/wms-routes.md and IWarehouse disagree. Not documented: " +
             string.Join(", ", methods.Except(rows.Select(r => r.Groups["member"].Value))));
-        Assert.Equal(43, rows.Select(r => r.Groups["number"].Value).Distinct().Count());
+        Assert.Equal(45, rows.Select(r => r.Groups["number"].Value).Distinct().Count());
     }
 
     [Fact]

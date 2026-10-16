@@ -72,6 +72,24 @@ public sealed class HttpWarehouse(HttpClient http, HttpWarehouseOptions options)
         PostAsync<ReserveStorageCellRequest, StorageCellReservationResult>("ReserveStorageCell",
             WarehouseRoutes.ReserveStorageCell, request, cancellationToken);
 
+    /// <remarks>
+    /// Item 55: a 404, or a 501 (the guide tells an adapter to answer 5xx for a route it has not
+    /// implemented yet), is a warehouse without the check, <see langword="null"/>. Any other failure,
+    /// a 503 among them, is a failure.
+    /// </remarks>
+    public async Task<StorageCellReservationResult?> CheckStorageCellAsync(ReserveStorageCellRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await PostOrNullAsync<ReserveStorageCellRequest, StorageCellReservationResult>("CheckStorageCell",
+                WarehouseRoutes.CheckStorageCell, request, cancellationToken);
+        }
+        catch (WarehouseUnavailableException ex) when (ex.StatusCode == HttpStatusCode.NotImplemented)
+        {
+            return null;
+        }
+    }
+
     public Task<LoadUnitLocation?> LocateLoadUnitAsync(decimal loadUnitId, CancellationToken cancellationToken = default) =>
         GetOrNullAsync<LoadUnitLocation>("LocateLoadUnit", FillId(WarehouseRoutes.LoadUnitLocation, loadUnitId), cancellationToken);
 
@@ -89,6 +107,21 @@ public sealed class HttpWarehouse(HttpClient http, HttpWarehouseOptions options)
     /// un 200 e quindi un 404 e' un guasto, e l'elenco vuoto risponde <b>qui</b> senza un giro di
     /// rete. A distinguere le due domande e' la rotta: la chiave non e' la stessa.
     /// </remarks>
+    /// <remarks>Item D119: a 404 or a 501 is a warehouse without the route, <see langword="null"/>.</remarks>
+    public async Task<IReadOnlyList<decimal>?> GetMissingNoteAssignmentsAsync(IReadOnlyList<decimal> assignmentIds, CancellationToken cancellationToken = default)
+    {
+        if (assignmentIds.Count == 0) return [];
+        try
+        {
+            return await PostOrNullAsync<PausedAmongRequest, IReadOnlyList<decimal>>("GetMissingNoteAssignments",
+                WarehouseRoutes.MissingNoteAssignments, new PausedAmongRequest(assignmentIds), cancellationToken);
+        }
+        catch (WarehouseUnavailableException ex) when (ex.StatusCode == HttpStatusCode.NotImplemented)
+        {
+            return null;
+        }
+    }
+
     public Task<IReadOnlyList<decimal>> GetPausedNoteAssignmentsAsync(IReadOnlyList<decimal> assignmentIds, CancellationToken cancellationToken = default) =>
         assignmentIds.Count == 0
             ? Task.FromResult<IReadOnlyList<decimal>>([])
@@ -300,6 +333,19 @@ public sealed class HttpWarehouse(HttpClient http, HttpWarehouseOptions options)
             ? Task.FromResult<LoadUnitIdentity?>(null)
             : GetOrNullAsync<LoadUnitIdentity>("ResolveLoadUnitByCode", FillSegment(WarehouseRoutes.LoadUnitByCode, code), cancellationToken);
 
+    /// <summary>
+    /// An answer that is an enum must be one of its values: System.Text.Json takes any number, and a
+    /// value added by a newer warehouse would otherwise fall into whatever branch the caller has for
+    /// «anything else» (item 55: an unknown cell release outcome was read as NotHeld).
+    /// </summary>
+    private static T Known<T>(string operation, T value)
+    {
+        if (typeof(T).IsEnum && !Enum.IsDefined(typeof(T), value!))
+            throw new WarehouseUnavailableException(operation,
+                $"the warehouse answered {Convert.ToInt64(value)}, which is not a {typeof(T).Name} this WCS knows");
+        return value;
+    }
+
     private async Task<T> GetAsync<T>(string operation, string path, CancellationToken cancellationToken)
     {
         try
@@ -308,8 +354,8 @@ public sealed class HttpWarehouse(HttpClient http, HttpWarehouseOptions options)
             using var response = await http.SendAsync(request, cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            return await response.Content.ReadFromJsonAsync<T>(cancellationToken)
-                   ?? throw new WarehouseUnavailableException(operation);
+            return Known(operation, await response.Content.ReadFromJsonAsync<T>(cancellationToken)
+                   ?? throw new WarehouseUnavailableException(operation));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -401,8 +447,8 @@ public sealed class HttpWarehouse(HttpClient http, HttpWarehouseOptions options)
             using var response = await http.SendAsync(request, cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            return await response.Content.ReadFromJsonAsync<TResponse>(cancellationToken)
-                   ?? throw new WarehouseUnavailableException(operation);
+            return Known(operation, await response.Content.ReadFromJsonAsync<TResponse>(cancellationToken)
+                   ?? throw new WarehouseUnavailableException(operation));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

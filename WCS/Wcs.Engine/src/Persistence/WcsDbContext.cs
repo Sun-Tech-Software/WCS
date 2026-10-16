@@ -25,6 +25,7 @@ public sealed class WcsDbContext(DbContextOptions<WcsDbContext> options) : DbCon
     public DbSet<ReservationToGiveBack> ReservationsToGiveBack => Set<ReservationToGiveBack>();
     public DbSet<PendingCellGiveBack> PendingCellGiveBacks => Set<PendingCellGiveBack>();
     public DbSet<CellToMarkFull> CellsToMarkFull => Set<CellToMarkFull>();
+    public DbSet<RetiredHandledReference> RetiredHandledReferences => Set<RetiredHandledReference>();
     public DbSet<CommandRecord> Commands => Set<CommandRecord>();
     public DbSet<DoorMapping> DoorMappings => Set<DoorMapping>();
     public DbSet<PlcConnection> PlcConnections => Set<PlcConnection>();
@@ -183,6 +184,12 @@ public sealed class WcsDbContext(DbContextOptions<WcsDbContext> options) : DbCon
             reservation.ToTable("ReservationsToGiveBack");
             reservation.HasKey(row => row.Id);
             reservation.HasIndex(row => row.MissionId).IsUnique();
+        });
+
+        modelBuilder.Entity<RetiredHandledReference>(reference =>
+        {
+            reference.ToTable("RetiredHandledReferences");
+            reference.HasKey(row => new { row.Kind, row.Value });
         });
 
         modelBuilder.Entity<CellToMarkFull>(cell =>

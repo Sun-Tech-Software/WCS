@@ -37,7 +37,7 @@ public sealed class SampleWarehouseContractTest : IAsyncLifetime
     }
 
     /// <summary>
-    /// Every one of the 43 operations of the contract answers through the WCS's client, with the
+    /// Every one of the 45 operations of the contract answers through the WCS's client, with the
     /// sample's initial warehouse: the routes are mapped, the bodies bind (the client sends some of them
     /// in PascalCase, some in camelCase) and the answers read.
     /// </summary>
@@ -92,6 +92,8 @@ public sealed class SampleWarehouseContractTest : IAsyncLifetime
         Assert.Equal(5, (await _wms.ListStorageCellCandidatesAsync(Candidates(5003))).Count);
         Assert.Equal(StorageCellReservationOutcome.UnknownDoor,
             (await _wms.ReserveStorageCellAsync(new ReserveStorageCellRequest(Guid.Empty, 5003, "Z9999", "ws", "user"))).Outcome);
+        Assert.Equal(StorageCellReservationOutcome.UnknownDoor,
+            (await _wms.CheckStorageCellAsync(new ReserveStorageCellRequest(Guid.Empty, 5003, "Z9999", "ws", "user")))!.Outcome);
         await _wms.ReleaseStorageReservationAsync(mission);
 
         // Facts and pending work.
@@ -100,6 +102,7 @@ public sealed class SampleWarehouseContractTest : IAsyncLifetime
         Assert.Empty(await _wms.GetPendingNoteWorkAsync(false));
         await _wms.RejectNoteAssignmentAsync(new RejectNoteAssignmentRequest(7, 5002, "not reachable"));
         Assert.Equal([7m], await _wms.GetPausedNoteAssignmentsAsync([7]));
+        Assert.Equal([7m], await _wms.GetMissingNoteAssignmentsAsync([7]));
         await _wms.ReportLoadUnitLeftExtractionQueueAsync(new LoadUnitLeftExtractionQueueRequest(5002, 0));
         Assert.Empty(await _wms.GetPendingExtractionWorkAsync());
         Assert.Equal([3m], await _wms.GetPausedExtractionRowsAsync([3]));
@@ -111,6 +114,25 @@ public sealed class SampleWarehouseContractTest : IAsyncLifetime
         Assert.Equal(new PickedExtractionBecameDepositResult(PickedExtractionReopenOutcome.NothingToReopen, PickedExtractionReopenOutcome.NothingToReopen, null),
             await _wms.ReportPickedExtractionBecameDepositAsync(
                 new PickedExtractionBecameDepositRequest(Guid.NewGuid(), mission, 5002, 0, Guid.Empty, 0, "user", "sent to storage")));
+    }
+
+    /// <summary>
+    /// Item 55: the check of a precise cell answers what the reservation would, and holds nothing: the
+    /// cell checked is still a candidate, and the reservation that follows takes it.
+    /// </summary>
+    [Fact]
+    public async Task TheCheckOfAPreciseCellHoldsNothing()
+    {
+        var door = (await _wms.ListStorageCellCandidatesAsync(Candidates(5003)))[0].DoorCode;
+        var request = new ReserveStorageCellRequest(Guid.NewGuid(), 5003, door, "ws", "user");
+
+        var check = await _wms.CheckStorageCellAsync(request);
+
+        Assert.Equal(StorageCellReservationOutcome.Reserved, check!.Outcome);
+        Assert.Null(check.Reservation);
+        Assert.Contains(await _wms.ListStorageCellCandidatesAsync(Candidates(5003)), c => c.DoorCode == door);
+        Assert.Equal(StorageCellReservationOutcome.Reserved, (await _wms.ReserveStorageCellAsync(request)).Outcome);
+        await _wms.ReleaseStorageReservationAsync(request.MissionId);
     }
 
     /// <summary>

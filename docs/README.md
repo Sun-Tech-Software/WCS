@@ -42,7 +42,7 @@ NuGet packages yet; your code references the libraries from a clone or a submodu
 1. [Quick start](quick-start.md): run it once, end to end, with the sample WMS.
 2. [Overview and boundary](integration/overview-and-boundary.md): who owns what, the pull model, the
    two sequences (storing, extracting).
-3. [The WMS contract](integration/wms-contract.md): the 43 routes your WMS serves, on the wire.
+3. [The WMS contract](integration/wms-contract.md): the 45 routes your WMS serves, on the wire.
 4. [Writing a WMS adapter](integration/writing-a-wms-adapter.md): from the sample WMS to yours, and how
    to test it with the WCS's own client.
 5. [Modelling a plant](integration/plant-modelling.md): your devices, and how they meet your cells.
@@ -63,7 +63,7 @@ NuGet packages yet; your code references the libraries from a clone or a submodu
 
 | | |
 |---|---|
-| [WMS routes](reference/wms-routes.md) | the 43 routes the WCS calls, one line each, and the enumerations on the wire |
+| [WMS routes](reference/wms-routes.md) | the 45 routes the WCS calls, one line each, and the enumerations on the wire |
 | [Host API](reference/host-api.md) | the 66 operations of `/api/v1` and the SignalR hub |
 | [Commands](reference/commands.md) | the command codes (`POST /api/v1/commands`) |
 | [Configuration](reference/configuration.md) | every setting, its default, whether it is required |

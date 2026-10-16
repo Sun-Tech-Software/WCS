@@ -429,6 +429,31 @@ public sealed class FakeWarehouse : IWarehouse
             [.. StorageCellCandidates.GetValueOrDefault(request.LoadUnitId, []).Take(StorageCellCandidatesRequest.Limit)]));
     }
 
+    /// <summary>Whether <see cref="CheckStorageCellAsync"/> is offered (item 55): false answers null, as a warehouse without the route.</summary>
+    public bool OffersStorageCellCheck { get; set; } = true;
+
+    /// <summary>The requests of <see cref="CheckStorageCellAsync"/>, in order.</summary>
+    public List<ReserveStorageCellRequest> StorageCellCheckRequests { get; } = [];
+
+    /// <summary>
+    /// What <see cref="ReserveStorageCellAsync"/> would answer, holding nothing: the refusal of
+    /// <see cref="ReserveStorageCellAnswer"/>, otherwise «it would» for a door of
+    /// <see cref="ReservableStorageCells"/> and «unknown door» for any other.
+    /// </summary>
+    public Task<StorageCellReservationResult?> CheckStorageCellAsync(ReserveStorageCellRequest request, CancellationToken ct = default)
+    {
+        StorageCellCheckRequests.Add(request);
+        return Task.FromResult(Answer<StorageCellReservationResult?>(nameof(CheckStorageCellAsync), () =>
+        {
+            if (!OffersStorageCellCheck) return null;
+            if (ReserveStorageCellAnswer?.Invoke(request) is { } answer) return answer with { Reservation = null };
+            return ReservableStorageCells.ContainsKey(request.DoorCode)
+                ? new StorageCellReservationResult(StorageCellReservationOutcome.Reserved, null, null)
+                : new StorageCellReservationResult(StorageCellReservationOutcome.UnknownDoor, null,
+                    $"no cell has the door {request.DoorCode}");
+        }));
+    }
+
     public Task<StorageCellReservationResult> ReserveStorageCellAsync(ReserveStorageCellRequest request, CancellationToken ct = default)
     {
         StorageCellReservationRequests.Add(request);
@@ -486,6 +511,19 @@ public sealed class FakeWarehouse : IWarehouse
     /// <c>ASSEGNAZIONE_NOTE</c> - che avrebbe risposto lo stesso qualcosa di plausibile.
     /// </summary>
     public List<IReadOnlyList<decimal>> PausedNoteAssignmentsAsked { get; } = [];
+
+    /// <summary>The assignments that no longer exist (item D119).</summary>
+    public HashSet<decimal> MissingNoteAssignments { get; } = [];
+
+    /// <summary>Whether <see cref="GetMissingNoteAssignmentsAsync"/> is offered: false answers null, as a warehouse without the route.</summary>
+    public bool OffersMissingNoteAssignments { get; set; } = true;
+
+    public Task<IReadOnlyList<decimal>?> GetMissingNoteAssignmentsAsync(IReadOnlyList<decimal> assignmentIds, CancellationToken ct = default)
+    {
+        if (assignmentIds.Count == 0) return Task.FromResult<IReadOnlyList<decimal>?>([]);
+        return Task.FromResult(Answer<IReadOnlyList<decimal>?>(nameof(GetMissingNoteAssignmentsAsync), () =>
+            OffersMissingNoteAssignments ? [.. assignmentIds.Distinct().Where(MissingNoteAssignments.Contains)] : null));
+    }
 
     public Task<IReadOnlyList<decimal>> GetPausedNoteAssignmentsAsync(IReadOnlyList<decimal> assignmentIds, CancellationToken ct = default)
     {

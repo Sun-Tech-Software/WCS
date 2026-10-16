@@ -60,7 +60,7 @@ The WCS is not a safety system and does not protect people from machines: see
 | browsers | WCS host | `/editor`, `/_blazor`, `/_framework`, `/_content/Wcs.WebEditor`, `/_content/Microsoft.FluentUI.AspNetCore.Components` | HTTP(S), WebSocket (Blazor Server) | none to load the pages; the key is typed in the page | the key travels from the browser to the host inside the Blazor connection and stays on the server |
 | anyone who reaches the port | WCS host | `/openapi/v1.json` | HTTP(S) | none | mapped in every environment except Production |
 | web editor (inside the host) | WCS host | `Kestrel:Endpoints:Http:Url` (or `Https:Url`) | HTTP(S) | the key typed in the editor | the host calls itself; keep the loopback endpoint |
-| WCS host | WMS adapter | `Wms:ApiAddress` + `/api/wcs/warehouse/...` | HTTP or HTTPS, as the address says | `X-Api-Key` = `Wms:ApiKey` | the 43 routes of the [WMS contract](wms-contract.md) |
+| WCS host | WMS adapter | `Wms:ApiAddress` + `/api/wcs/warehouse/...` | HTTP or HTTPS, as the address says | `X-Api-Key` = `Wms:ApiKey` | the 45 routes of the [WMS contract](wms-contract.md) |
 | WCS host (driver) | PLCs, gateways | as the driver settings say (`plcAddress`, `pcmPort`, `localAddress`, `localPort`) | the driver's own | the driver's own | the loopback driver opens no socket |
 | WCS host | disk | `Wcs:DatabaseDirectory` (default `Data` next to the executable) | file | file system permissions | SQLite files; keep them readable only by the service account and administrators |
 

@@ -3564,6 +3564,89 @@ public sealed class ChangeDestinationStepStartsTest : IDisposable
     }
 
     /// <summary>
+    /// Item 55: the extraction still in the cell 5 of S sent by the operator to the precise cell A6. The
+    /// warehouse refuses the cell already at the check, before the reports: the mission stays the
+    /// extraction it was, with its assignment and its queue row, and the warehouse hears nothing. Before
+    /// the check the reports went first and the refusal of the reservation closed the mission.
+    /// </summary>
+    [Fact]
+    public async Task APreciseCellRefusedAtTheCheckLeavesTheExtractionAsItWas()
+    {
+        var mission = await AnExtractionInItsCellWithTheStorageS2();
+        _warehouse.ReserveStorageCellAnswer = _ => new StorageCellReservationResult(
+            StorageCellReservationOutcome.CellNotAvailable, null, "la cella A6 e' occupata");
+
+        var result = await MissionGateway.ChangeDestinationAsync(mission.MissionId, _plant["S2"].ItemGuid,
+            MissionGatewayChoice.Keep, MissionDestinationOptions.Cell(StorageDoorCode));
+
+        Assert.Equal(MissionDestinationOutcome.CellRefused, result.Outcome);
+        Assert.Equal(MissionCellRefusal.CellNotAvailable, result.CellRefusal);
+        Assert.Equal("la cella A6 e' occupata", result.CellRefusalReason);
+        Assert.False(result.MissionClosed);
+        Assert.Same(mission, ActiveMissions.Instance[mission.MissionId]);
+        Assert.Equal(MissionTypes.Extraction, mission.MissionType);
+        Assert.Equal(Assignment, mission.GuidAssignmentLu);
+        Assert.NotEqual(0m, mission.ExtractionQueueId);
+        Assert.Single(await ExtractionQueueQueries.ListAsync(processed: null, loadUnitId: LoadUnitId, take: 10));
+        Assert.Equal([nameof(IWarehouse.CheckStorageCellAsync)],
+            _warehouse.Calls.Where(call => TheReservationOrAReport(call) || call is nameof(IWarehouse.CheckStorageCellAsync)
+                or nameof(IWarehouse.ReserveStorageCellAsync)));
+        Assert.Empty(_warehouse.StorageCellReservationRequests);
+        Assert.False(TheRowOf(mission)!.ChangeOfCellReportsSent);
+    }
+
+    /// <summary>
+    /// Item 55: the same change with the cell A6 free. The check says it would, then the reports, then
+    /// the reservation: the mission becomes the change of cell towards A6.
+    /// </summary>
+    [Fact]
+    public async Task APreciseCellPassingTheCheckIsReservedAfterTheReports()
+    {
+        var mission = await AnExtractionInItsCellWithTheStorageS2();
+        _warehouse.ReservableStorageCells[StorageDoorCode] = new StorageReservation(Guid.Empty,
+            StorageReservationOutcome.CellFound, StorageCellId, StorageDoorCode, Partition: "0063", StorageDepth: 150,
+            NeedsCompaction: false);
+
+        var result = await MissionGateway.ChangeDestinationAsync(mission.MissionId, _plant["S2"].ItemGuid,
+            MissionGatewayChoice.Keep, MissionDestinationOptions.Cell(StorageDoorCode));
+
+        Assert.Equal(MissionDestinationOutcome.Changed, result.Outcome);
+        Assert.Equal(MissionTypes.ChangeStoreLocation, mission.MissionType);
+        Assert.Equal(StorageDoorCode, mission.StorageDoorCode);
+        Assert.Equal(
+            [
+                nameof(IWarehouse.CheckStorageCellAsync),
+                nameof(IWarehouse.ReportMissionLeftAssignmentUnservedAsync),
+                nameof(IWarehouse.ReportMissionLeftAssignmentUnservedAsync),
+                nameof(IWarehouse.ReportLoadUnitLeftExtractionQueueAsync),
+                nameof(IWarehouse.ReserveStorageCellAsync)
+            ],
+            _warehouse.Calls.Where(call => TheReservationOrAReport(call) || call is nameof(IWarehouse.CheckStorageCellAsync)
+                or nameof(IWarehouse.ReserveStorageCellAsync)));
+    }
+
+    /// <summary>
+    /// Item 55: a warehouse without the check (404, null). The change goes on as before the check
+    /// existed: the reports, then the reservation, whose refusal closes the mission.
+    /// </summary>
+    [Fact]
+    public async Task WithoutTheCheckARefusalAfterTheReportsStillClosesTheMission()
+    {
+        var mission = await AnExtractionInItsCellWithTheStorageS2();
+        _warehouse.OffersStorageCellCheck = false;
+        _warehouse.ReserveStorageCellAnswer = _ => new StorageCellReservationResult(
+            StorageCellReservationOutcome.CellNotAvailable, null, "la cella A6 e' occupata");
+
+        var result = await MissionGateway.ChangeDestinationAsync(mission.MissionId, _plant["S2"].ItemGuid,
+            MissionGatewayChoice.Keep, MissionDestinationOptions.Cell(StorageDoorCode));
+
+        Assert.Equal(MissionDestinationOutcome.CellRefused, result.Outcome);
+        Assert.True(result.MissionClosed);
+        Assert.Null(ActiveMissions.Instance[mission.MissionId]);
+        Assert.Single(_warehouse.StorageCellReservationRequests);
+    }
+
+    /// <summary>
     /// Una segnalazione del cambio cella puo' essere arrivata al gestionale e il cambio non va in porto
     /// (specifica, risposta dell'8/10 al punto 2): la prima va in tempo scaduto, resta senza la causa di
     /// trasporto (la regola della specifica: se non si sa, conta come arrivata) o ha un 5xx - il

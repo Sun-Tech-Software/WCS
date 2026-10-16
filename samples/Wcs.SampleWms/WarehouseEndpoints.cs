@@ -3,7 +3,7 @@ using Wcs.Wms.Contracts;
 namespace Wcs.SampleWms;
 
 /// <summary>
-/// The 43 routes of the WCS -> WMS contract, under <c>/api/wcs/warehouse</c>, each one mapped to the
+/// The 45 routes of the WCS -> WMS contract, under <c>/api/wcs/warehouse</c>, each one mapped to the
 /// <see cref="SampleWarehouse"/> method that answers it.
 /// </summary>
 /// <remarks>
@@ -150,6 +150,8 @@ public static class WarehouseEndpoints
         // 7. Reserve the precise cell the operator chose. Refusals are outcomes in the body.
         api.MapPost(WarehouseRoutes.ReserveStorageCell, (ReserveStorageCellRequest request, SampleWarehouse wms) =>
             Results.Ok(wms.ReserveStorageCell(request)));
+        api.MapPost(WarehouseRoutes.CheckStorageCell, (ReserveStorageCellRequest request, SampleWarehouse wms) =>
+            Results.Ok(wms.CheckStorageCell(request)));
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -257,6 +259,8 @@ public static class WarehouseEndpoints
         // 11. Which of these note assignments are no longer in progress.
         api.MapPost(WarehouseRoutes.PausedNoteAssignments, (PausedAmongRequest request, SampleWarehouse wms) =>
             Results.Ok(wms.GetPausedNoteAssignments(request.Ids)));
+        api.MapPost(WarehouseRoutes.MissingNoteAssignments, (PausedAmongRequest request, SampleWarehouse wms) =>
+            Results.Ok(wms.GetMissingNoteAssignments(request.Ids)));
 
         // 10, 16, 17, 18, 19. Facts about shipping-note assignments: the WCS rejected one, a mission left
         // it unserved, a mission served it, a queued row cannot be served, the served rows are confirmed.

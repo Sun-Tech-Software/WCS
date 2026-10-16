@@ -96,7 +96,8 @@ internal static class WmsContractDocument
     /// <summary>One operation as the client really performs it.</summary>
     internal sealed record Operation(
         MethodInfo Method, string HttpMethod, string Route, IReadOnlyList<(string Name, ParameterInfo Parameter)> Query,
-        Type? RequestType, string? Casing, Type? ResponseType, bool NotFoundIsNone, IReadOnlyList<string> NotSentWhenEmpty);
+        Type? RequestType, string? Casing, Type? ResponseType, bool NotFoundIsNone, IReadOnlyList<string> NotSentWhenEmpty,
+        bool Optional = false);
 
     public static async Task<JsonObject> GenerateAsync()
     {
@@ -120,6 +121,11 @@ internal static class WmsContractDocument
         var notFoundIsNone = notFound.Outcome == Outcome.ReturnedNull;
         if (!notFoundIsNone && notFound.Outcome != Outcome.Failure)
             throw new InvalidOperationException($"{method.Name} neither failed nor answered none on a 404.");
+
+        // Optional (item 55): the client reads a 501 too as «not offered», so a WMS that has not
+        // implemented the operation - and answers 404 or 501, as the guide says - keeps working.
+        var optional = notFoundIsNone &&
+                       (await CallAsync(method, HttpStatusCode.NotImplemented, empty: false)).Outcome == Outcome.ReturnedNull;
 
         var notSent = new List<string>();
         foreach (var parameter in method.GetParameters().Where(p => p.ParameterType == typeof(string) || IsList(p.ParameterType)))
@@ -147,7 +153,7 @@ internal static class WmsContractDocument
             (requestType, casing) = ReadBody(method, request, body);
 
         var returned = method.ReturnType.IsGenericType ? method.ReturnType.GetGenericArguments()[0] : null;
-        return new Operation(method, request.Method, route, query, requestType, casing, returned, notFoundIsNone, notSent);
+        return new Operation(method, request.Method, route, query, requestType, casing, returned, notFoundIsNone, notSent, optional);
     }
 
     private static (Type, string) ReadBody(MethodInfo method, RecordedRequest request, string body)
@@ -354,9 +360,11 @@ internal static class WmsContractDocument
         var notes = new List<string> { $"`IWarehouse.{operation.Method.Name}`." };
         if (operation.Casing != null)
             notes.Add($"The body is written in {operation.Casing} (`{{\"{(operation.Casing == PascalCase ? "LoadUnitId" : "loadUnitId")}\":5001}}`); read its names case-insensitively.");
-        notes.Add(operation.NotFoundIsNone
-            ? "A 404 means \"there is none\"."
-            : "A 404 is a failure like any other unexpected status.");
+        notes.Add(operation.Optional
+            ? "Optional: a WMS that does not offer it answers 404 or 501, and the WCS goes on without it."
+            : operation.NotFoundIsNone
+                ? "A 404 means \"there is none\"."
+                : "A 404 is a failure like any other unexpected status.");
         if (operation.ResponseType == null) notes.Add("The answer body is not read.");
         foreach (var parameter in operation.NotSentWhenEmpty)
             notes.Add($"Not sent when `{parameter}` is empty: the WCS gives the answer itself.");
@@ -405,7 +413,12 @@ internal static class WmsContractDocument
                     ["application/json"] = new JsonObject { ["schema"] = schemas.Reference(operation.ResponseType, SchemaUse.Answer) },
                 },
             };
-        if (operation.NotFoundIsNone)
+        if (operation.Optional)
+        {
+            responses["404"] = new JsonObject { ["description"] = "Not offered: the WCS goes on without it." };
+            responses["501"] = new JsonObject { ["description"] = "Not offered, as a 404." };
+        }
+        else if (operation.NotFoundIsNone)
             responses["404"] = new JsonObject { ["description"] = "There is none: the WCS reads it as an empty answer, not as a failure." };
         if (hasOperationId)
             responses["409"] = new JsonObject
@@ -428,6 +441,7 @@ internal static class WmsContractDocument
 
         if (operation.Casing != null) result["x-wcs-request-casing"] = operation.Casing;
         result["x-wcs-not-found"] = operation.NotFoundIsNone ? "none" : "failure";
+        if (operation.Optional) result["x-wcs-optional"] = true;
         result["x-wcs-answer-body"] = operation.ResponseType == null ? "ignored" : "read";
         result["x-wcs-operation-id"] = hasOperationId;
         if (queue.Table != null) result["x-wcs-durable-queue"] = queue.Table;

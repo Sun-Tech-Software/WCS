@@ -45,8 +45,15 @@ internal static class ContractComparer
             changes.Add(new(clientSide ? ChangeKind.Breaking : ChangeKind.NonBreaking, key,
                 clientSide ? "operation removed" : "operation removed: the WCS no longer calls it"));
         foreach (var key in @new.Keys.Except(old.Keys))
-            changes.Add(new(clientSide ? ChangeKind.NonBreaking : ChangeKind.Breaking, key,
-                clientSide ? "operation added" : "operation added: an existing WMS does not serve it"));
+        {
+            // An optional operation (x-wcs-optional) is one the WCS does without: a WMS that does not
+            // serve it answers 404 or 501 and keeps working.
+            var optional = @new[key]["x-wcs-optional"]?.GetValue<bool>() == true;
+            changes.Add(new(clientSide || optional ? ChangeKind.NonBreaking : ChangeKind.Breaking, key,
+                clientSide ? "operation added"
+                : optional ? "optional operation added: an existing WMS answers 404 or 501"
+                : "operation added: an existing WMS does not serve it"));
+        }
 
         foreach (var key in old.Keys.Intersect(@new.Keys))
         {
@@ -54,7 +61,7 @@ internal static class ContractComparer
             CompareParameters(context, key, o, n, requests);
             CompareBody(context, key, o["requestBody"], n["requestBody"], requests);
             CompareResponses(context, key, o, n, answers, clientSide);
-            foreach (var extension in new[] { "x-wcs-request-casing", "x-wcs-not-found", "x-wcs-engine-state", "x-wcs-edit-lease" })
+            foreach (var extension in new[] { "x-wcs-request-casing", "x-wcs-not-found", "x-wcs-engine-state", "x-wcs-edit-lease", "x-wcs-optional" })
                 if (Text(o[extension]) != Text(n[extension]))
                     changes.Add(new(ChangeKind.Breaking, key, $"{extension}: {Text(o[extension]) ?? "none"} -> {Text(n[extension]) ?? "none"}"));
         }

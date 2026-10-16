@@ -1110,6 +1110,19 @@ namespace Wcs.Engine.Persistence.Migrations
                     b.ToTable("ReservationsToGiveBack", (string)null);
                 });
 
+            modelBuilder.Entity("Wcs.Engine.Persistence.Entities.RetiredHandledReference", b =>
+                {
+                    b.Property<byte>("Kind")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("Value")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Kind", "Value");
+
+                    b.ToTable("RetiredHandledReferences", (string)null);
+                });
+
             modelBuilder.Entity("Wcs.Engine.Persistence.Entities.DoorMapping", b =>
                 {
                     b.HasOne("Wcs.Engine.Persistence.Entities.PlantItem", null)

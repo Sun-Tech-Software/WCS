@@ -31,6 +31,14 @@ public static class WarehouseRoutes
     /// cell is an answer.
     /// </summary>
     public const string ReserveStorageCell = "reservations/cell";
+
+    /// <summary>
+    /// Item 55: whether the warehouse would reserve that precise cell now, without reserving it
+    /// (<see cref="ReserveStorageCellRequest"/>, the same body). 200 with the outcome the reservation would
+    /// give (<see cref="StorageCellReservationResult"/>, without the reservation); a warehouse that does not
+    /// offer the check answers 404 or 501.
+    /// </summary>
+    public const string CheckStorageCell = "reservations/cell/check";
     public const string LoadUnitLocation = "load-units/{loadUnitId}/location";
     public const string PendingNoteWork = "notes/pending-work";
     public const string RejectNoteAssignment = "notes/reject-assignment";
@@ -45,6 +53,12 @@ public static class WarehouseRoutes
     /// assenza da segnalare con un 404.
     /// </summary>
     public const string PausedNoteAssignments = "notes/paused-among";
+
+    /// <summary>
+    /// Item D119: among the shipping-note assignments given (<see cref="PausedAmongRequest"/>), the ones
+    /// that no longer exist. Optional: a warehouse that does not offer it answers 404 or 501.
+    /// </summary>
+    public const string MissingNoteAssignments = "notes/missing-among";
 
     /// <summary>
     /// La segnalazione, non l'ordine: l'unita' di carico ha lasciato la coda di estrazione del WCS.

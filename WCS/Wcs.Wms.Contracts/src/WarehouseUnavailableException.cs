@@ -18,6 +18,23 @@ namespace Wcs.Wms.Contracts;
 public sealed class WarehouseUnavailableException(string operation, Exception? inner = null)
     : Exception($"Il gestionale non ha risposto a «{operation}».", inner)
 {
+    private readonly bool _rejectedByContract;
+    private readonly string? _detail;
+
+    /// <summary>
+    /// The warehouse answered, but with something the contract does not know (an outcome added by a
+    /// newer version): asking again gives the same answer, so it is a permanent rejection like a 4xx,
+    /// and <paramref name="detail"/> says what came back.
+    /// </summary>
+    public WarehouseUnavailableException(string operation, string detail) : this(operation)
+    {
+        _rejectedByContract = true;
+        _detail = detail;
+    }
+
+    /// <inheritdoc />
+    public override string Message => _detail is null ? base.Message : $"«{Operation}»: {_detail}";
+
     /// <summary>Il nome dell'operazione che non è riuscita, per il registro.</summary>
     public string Operation { get; } = operation;
 
@@ -30,9 +47,10 @@ public sealed class WarehouseUnavailableException(string operation, Exception? i
 
     /// <summary>
     /// Il gestionale ha risposto e ha rifiutato: un 4xx, esclusi 408 (timeout della richiesta) e 429
-    /// (troppe richieste), che sono il suo modo di dire «riprova più tardi».
+    /// (troppe richieste), che sono il suo modo di dire «riprova più tardi»; oppure ha risposto un
+    /// valore che il contratto non conosce.
     /// </summary>
-    public bool IsPermanentRejection =>
+    public bool IsPermanentRejection => _rejectedByContract ||
         StatusCode is { } code && (int)code is >= 400 and < 500 &&
         code is not HttpStatusCode.RequestTimeout and not HttpStatusCode.TooManyRequests;
 }

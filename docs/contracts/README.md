@@ -7,7 +7,7 @@ messages, or to see at a glance what changed between two versions of the WCS.
 | File | What it describes | Who implements it |
 |---|---|---|
 | [`wcs-host.openapi.json`](wcs-host.openapi.json) | the host API: every operation under `/api/v1` | the WCS; your systems call it ([guide](../integration/host-api.md)) |
-| [`wms-contract.openapi.json`](wms-contract.openapi.json) | the WMS contract: the 43 routes under `/api/wcs/warehouse/` | your WMS, or an adapter in front of it; the WCS calls it ([guide](../integration/wms-contract.md)) |
+| [`wms-contract.openapi.json`](wms-contract.openapi.json) | the WMS contract: the 45 routes under `/api/wcs/warehouse/` | your WMS, or an adapter in front of it; the WCS calls it ([guide](../integration/wms-contract.md)) |
 | [`examples/`](examples) | JSON request and answer bodies, validated against the two documents | |
 
 The guides explain when and why each operation is used; these files are the exact shapes. When the

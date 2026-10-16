@@ -95,6 +95,25 @@ public interface IWarehouse
     /// </remarks>
     Task<StorageCellReservationResult> ReserveStorageCellAsync(ReserveStorageCellRequest request, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Item 55: whether <see cref="ReserveStorageCellAsync"/> would reserve that cell now - the same
+    /// checks, nothing written. <see cref="StorageCellReservationOutcome.Reserved"/> means «it would», with
+    /// no reservation in the result; a refusal is the one the reservation would give, with its reason.
+    /// <see langword="null"/>: the warehouse does not offer the check, and the caller goes on as before
+    /// it existed. Raises <see cref="WarehouseUnavailableException"/> if the warehouse does not answer.
+    /// </summary>
+    /// <remarks>
+    /// The WCS asks it for the change of cell of an extraction still in its cell, before telling the
+    /// warehouse that the extraction is left: those reports must come before the reservation (leaving
+    /// the extraction queue removes every reserved position of the load unit), so a refusal of the
+    /// reservation would come after them and close the mission. A cell refused by the check leaves the
+    /// mission the extraction it was. Between the check and the reservation the cell can still be taken.
+    /// The default answers <see langword="null"/>: an adapter written before the check keeps compiling
+    /// and behaves as before.
+    /// </remarks>
+    Task<StorageCellReservationResult?> CheckStorageCellAsync(ReserveStorageCellRequest request, CancellationToken cancellationToken = default) =>
+        Task.FromResult<StorageCellReservationResult?>(null);
+
     /// <summary>Dove si trova questa unità di carico, e a che profondità.</summary>
     Task<LoadUnitLocation?> LocateLoadUnitAsync(decimal loadUnitId, CancellationToken cancellationToken = default);
 
@@ -180,6 +199,21 @@ public interface IWarehouse
     /// Le assegnazioni da esaminare (<c>ASSEGNAZIONE_NOTE.ID_ASSEGNAZIONE_UDC</c>).
     /// </param>
     Task<IReadOnlyList<decimal>> GetPausedNoteAssignmentsAsync(IReadOnlyList<decimal> assignmentIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Item D119: among the shipping-note assignments given (<c>ASSEGNAZIONE_NOTE.ID_ASSEGNAZIONE_UDC</c>),
+    /// the ones that no longer exist - deleted by an operator or by another pick after the WCS queued
+    /// them. <see cref="GetPausedNoteAssignmentsAsync"/> cannot say it: it starts from the assignments,
+    /// and a deleted one is simply not there. The WCS takes those rows out of its extraction queue, which
+    /// would otherwise move a load unit nobody asked for any more.
+    /// </summary>
+    /// <remarks>
+    /// <see langword="null"/>: the warehouse does not offer it, and the WCS goes on as before. An id is
+    /// missing only when it can never come back (an identity key); the empty list is answered without
+    /// asking. The default answers <see langword="null"/>: an adapter written before it keeps compiling.
+    /// </remarks>
+    Task<IReadOnlyList<decimal>?> GetMissingNoteAssignmentsAsync(IReadOnlyList<decimal> assignmentIds, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<decimal>?>(null);
 
     /// <summary>
     /// <b>Una segnalazione, non un ordine:</b> questa unita' di carico ha lasciato la coda di

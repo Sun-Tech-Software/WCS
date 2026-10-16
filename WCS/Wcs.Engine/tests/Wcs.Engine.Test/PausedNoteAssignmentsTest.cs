@@ -137,6 +137,45 @@ public sealed class PausedNoteAssignmentsTest : IDisposable
     }
 
     /// <summary>
+    /// Item D119: the assignment 902 was deleted in the WMS after its row was queued. The question
+    /// about pauses starts from the assignments and does not see it, so the row stayed and the device
+    /// picked a load unit nobody asked for. Now the WMS says it is gone: the row leaves the queue,
+    /// nothing is reported for an assignment that does not exist, and the question about pauses is
+    /// asked only for the others.
+    /// </summary>
+    [Fact]
+    public async Task AnAssignmentNoLongerInTheWarehouseTakesItsRowOutOfTheQueue()
+    {
+        await QueuedAsync(1, 901);
+        await QueuedAsync(2, 902);
+        await QueuedAsync(3, assignmentId: null);
+
+        _warehouse.MissingNoteAssignments.Add(902);
+
+        await DbInfo.DeleteLuInExtranctionByPausedNote();
+
+        Assert.Equal(new decimal[] { 1, 3 }, await QueuedLoadUnitsAsync());
+        Assert.Empty(_warehouse.RejectedNoteAssignments);
+        Assert.Equal(new decimal[] { 901 }, Assert.Single(_warehouse.PausedNoteAssignmentsAsked));
+    }
+
+    /// <summary>Item D119: a WMS without the route (404 or 501) leaves the queue as before.</summary>
+    [Fact]
+    public async Task WithoutTheRouteForMissingAssignmentsTheQueueStaysAsBefore()
+    {
+        await QueuedAsync(1, 901);
+        await QueuedAsync(2, 902);
+
+        _warehouse.OffersMissingNoteAssignments = false;
+        _warehouse.MissingNoteAssignments.Add(902);
+
+        await DbInfo.DeleteLuInExtranctionByPausedNote();
+
+        Assert.Equal(new decimal[] { 1, 2 }, await QueuedLoadUnitsAsync());
+        Assert.Equal(new decimal[] { 901, 902 }, Assert.Single(_warehouse.PausedNoteAssignmentsAsked));
+    }
+
+    /// <summary>
     /// La meta' che deve riuscire al contrario, senza la quale una pulizia che cancellasse tutto
     /// passerebbe quella qui sopra: nessuna delle assegnazioni e' in pausa, la coda resta intera, e
     /// la domanda e' comunque <b>stata fatta</b>, e al confine: la scansione di prima era una

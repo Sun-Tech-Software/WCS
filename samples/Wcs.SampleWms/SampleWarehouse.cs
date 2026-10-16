@@ -381,25 +381,49 @@ public sealed class SampleWarehouse
         {
             ExpireOrphanHolds();
 
-            var cell = _cells.Values.FirstOrDefault(c => SameDoor(c.DoorCodeA, request.DoorCode));
-            if (cell == null)
-            {
-                return _cells.Values.Any(c => SameDoor(c.DoorCodeB, request.DoorCode))
-                    ? new StorageCellReservationResult(StorageCellReservationOutcome.NotADoorA, null, $"{request.DoorCode} is a door B")
-                    : new StorageCellReservationResult(StorageCellReservationOutcome.UnknownDoor, null, $"no cell has the door {request.DoorCode}");
-            }
+            var (cell, refusal) = PreciseCell(request);
+            if (refusal != null) return refusal;
 
-            if (!_loadUnits.ContainsKey(request.LoadUnitId))
-                return new StorageCellReservationResult(StorageCellReservationOutcome.UnknownLoadUnit, null,
-                    $"load unit {request.LoadUnitId} is unknown");
-
-            if (!FreeStorageCells(request.LoadUnitId, cell.WarehouseId, [], [], []).Contains(cell))
-                return new StorageCellReservationResult(StorageCellReservationOutcome.CellNotAvailable, null,
-                    $"cell {cell.Id} is taken, locked or not a storage cell");
-
-            Hold(request.MissionId, request.LoadUnitId, cell, WarehouseRoutes.ReserveStorageCell);
-            return new StorageCellReservationResult(StorageCellReservationOutcome.Reserved, Reservation(request.MissionId, cell), null);
+            Hold(request.MissionId, request.LoadUnitId, cell!, WarehouseRoutes.ReserveStorageCell);
+            return new StorageCellReservationResult(StorageCellReservationOutcome.Reserved, Reservation(request.MissionId, cell!), null);
         }
+    }
+
+    /// <summary>
+    /// <c>POST reservations/cell/check</c> (item 55): what <see cref="ReserveStorageCell"/> would answer
+    /// now, holding nothing. «Reserved» means it would, without a reservation in the result.
+    /// </summary>
+    public StorageCellReservationResult CheckStorageCell(ReserveStorageCellRequest request)
+    {
+        lock (_gate)
+        {
+            ExpireOrphanHolds();
+
+            var (_, refusal) = PreciseCell(request);
+            return refusal ?? new StorageCellReservationResult(StorageCellReservationOutcome.Reserved, null, null);
+        }
+    }
+
+    /// <summary>The checks of a precise cell, shared by the reservation and its check: the cell, or the refusal.</summary>
+    private (SampleCell? Cell, StorageCellReservationResult? Refusal) PreciseCell(ReserveStorageCellRequest request)
+    {
+        var cell = _cells.Values.FirstOrDefault(c => SameDoor(c.DoorCodeA, request.DoorCode));
+        if (cell == null)
+        {
+            return (null, _cells.Values.Any(c => SameDoor(c.DoorCodeB, request.DoorCode))
+                ? new StorageCellReservationResult(StorageCellReservationOutcome.NotADoorA, null, $"{request.DoorCode} is a door B")
+                : new StorageCellReservationResult(StorageCellReservationOutcome.UnknownDoor, null, $"no cell has the door {request.DoorCode}"));
+        }
+
+        if (!_loadUnits.ContainsKey(request.LoadUnitId))
+            return (null, new StorageCellReservationResult(StorageCellReservationOutcome.UnknownLoadUnit, null,
+                $"load unit {request.LoadUnitId} is unknown"));
+
+        if (!FreeStorageCells(request.LoadUnitId, cell.WarehouseId, [], [], []).Contains(cell))
+            return (null, new StorageCellReservationResult(StorageCellReservationOutcome.CellNotAvailable, null,
+                $"cell {cell.Id} is taken, locked or not a storage cell"));
+
+        return (cell, null);
     }
 
     // ------------------------------------------------------------------------------------------
@@ -693,6 +717,12 @@ public sealed class SampleWarehouse
     /// assignments. The sample has none in progress, so every id asked is answered as paused.
     /// </summary>
     public IReadOnlyList<decimal> GetPausedNoteAssignments(IReadOnlyList<decimal> assignmentIds) => [.. assignmentIds.Distinct()];
+
+    /// <summary>
+    /// <c>POST notes/missing-among</c> (item D119, optional): the assignments given that no longer exist.
+    /// The sample keeps no shipping-note assignments, so none of them exists.
+    /// </summary>
+    public IReadOnlyList<decimal> GetMissingNoteAssignments(IReadOnlyList<decimal> assignmentIds) => [.. assignmentIds.Distinct()];
 
     /// <summary>
     /// <c>POST load-units/left-extraction-queue</c>: the fact "the load unit left the WCS's extraction

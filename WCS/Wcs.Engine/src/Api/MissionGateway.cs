@@ -1454,6 +1454,32 @@ public static class MissionGateway
         // commit si rifanno dopo le domande qui sopra (la cella tenuta, l'indirizzo), perche' una
         // missione tolta, spostata o partita intanto non lasci l'ordine per un cambio che non avverra'
         // (revisione finale della voce 39).
+        // Item 55: a precise cell is checked before the reports. They must come before the reservation,
+        // so a refusal of the reservation would come after them and close the mission; refused here, the
+        // mission stays the extraction it was. A warehouse without the check answers null, as before.
+        // The cell the mission holds, chosen again, is not checked: the warehouse would not find it free
+        // while the load unit holds it (see letGoFirst below).
+        if (changeOfCell && preciseDoor != null &&
+            !(progress.HeldItsCell && string.Equals(proposedDoor, mission.StorageDoorCode, StringComparison.Ordinal)))
+        {
+            StorageCellReservationResult? check;
+            try
+            {
+                check = await warehouse.CheckStorageCellAsync(new ReserveStorageCellRequest(mission.MissionId,
+                    mission.LuId, proposedDoor, Navigator.WorkstationId, Navigator.UserId));
+            }
+            catch (WarehouseUnavailableException ex)
+            {
+                return DestinationChange.Refused(MissionDestinationOutcome.WarehouseUnavailable,
+                    $"il gestionale non risponde alla verifica della cella della porta {proposedDoor}: {ex.Message}",
+                    LogEntryType.Warning);
+            }
+
+            if (check is { Outcome: not StorageCellReservationOutcome.Reserved })
+                return CellRefused(CellRefusalOf(check.Outcome),
+                    check.Reason ?? $"il gestionale non prenoterebbe la cella della porta {proposedDoor} ({check.Outcome})");
+        }
+
         if (changeOfCell && StillWhereTheChangeStarted(mission, origin) is { } beforeTheReports)
             return beforeTheReports;
 
@@ -1529,13 +1555,8 @@ public static class MissionGateway
                 }
 
                 if (answer.Outcome != StorageCellReservationOutcome.Reserved)
-                    return CellRefused(answer.Outcome switch
-                    {
-                        StorageCellReservationOutcome.UnknownDoor => MissionCellRefusal.UnknownDoor,
-                        StorageCellReservationOutcome.NotADoorA => MissionCellRefusal.NotADoorA,
-                        StorageCellReservationOutcome.UnknownLoadUnit => MissionCellRefusal.UnknownLoadUnit,
-                        _ => MissionCellRefusal.CellNotAvailable
-                    }, answer.Reason ?? $"il gestionale non prenota la cella della porta {proposedDoor} ({answer.Outcome})");
+                    return CellRefused(CellRefusalOf(answer.Outcome),
+                        answer.Reason ?? $"il gestionale non prenota la cella della porta {proposedDoor} ({answer.Outcome})");
 
                 // Reserved: the cell the mission held is no longer its own.
                 LetGoOfTheHeldCell(progress);
@@ -3919,6 +3940,15 @@ public static class MissionGateway
         new(MissionDestinationOutcome.CellRefused, CellRefusal: why, CellRefusalReason: reason);
 
     /// <summary>The refusal of a precise cell, with the reason for the operator and for the log.</summary>
+    /// <summary>The refusal of a precise cell, from the warehouse's outcome (reservation or check).</summary>
+    private static MissionCellRefusal CellRefusalOf(StorageCellReservationOutcome outcome) => outcome switch
+    {
+        StorageCellReservationOutcome.UnknownDoor => MissionCellRefusal.UnknownDoor,
+        StorageCellReservationOutcome.NotADoorA => MissionCellRefusal.NotADoorA,
+        StorageCellReservationOutcome.UnknownLoadUnit => MissionCellRefusal.UnknownLoadUnit,
+        _ => MissionCellRefusal.CellNotAvailable
+    };
+
     private static DestinationChange CellRefused(MissionCellRefusal why, string reason) =>
         new(CellRefusedResult(why, reason), reason);
 

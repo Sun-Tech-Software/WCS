@@ -79,12 +79,16 @@ public static class HistoryQueries
 
     /// <summary>
     /// Esiste una UDC movimentata con uno di questi riferimenti? Non c'e' un intervallo: si guardano
-    /// i mesi in linea dal piu' recente e si risponde al primo che la trova.
+    /// i riferimenti dei mesi usciti dalla ritenzione, conservati nel wcs.db (voce D103), poi i mesi in
+    /// linea dal piu' recente, e si risponde al primo che la trova.
     /// </summary>
     public static async Task<bool> HandledLoadUnitExistsAsync(decimal? processId, decimal? loadUnitProcessId, decimal? noteHeaderId)
     {
         var history = Navigator.History
                       ?? throw new EngineStoreUnavailableException("Lo storico del WCS non e' aperto: la lettura non e' possibile.");
+        if (Navigator.Store != null &&
+            await StoreAccess.ReadAsync(c => RetiredHandledReferences.ExistAsync(c, processId, loadUnitProcessId, noteHeaderId)))
+            return true;
         foreach (var (year, month) in history.MonthsAvailable().Reverse())
         {
             await using var context = history.CreateReadContext(year, month);

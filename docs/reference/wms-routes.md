@@ -1,6 +1,6 @@
 # Reference: the WCS -> WMS routes
 
-The 43 routes the WCS calls on your WMS. They are the 43 methods of
+The 45 routes the WCS calls on your WMS. They are the 45 methods of
 [`IWarehouse`](../../WCS/Wcs.Wms.Contracts/src/IWarehouse.cs); the paths are the constants of
 [`WarehouseRoutes`](../../WCS/Wcs.Wms.Contracts/src/WarehouseRoutes.cs) and the bodies are the records
 of the [`Dto`](../../WCS/Wcs.Wms.Contracts/src/Dto) folder. The client that sends them is
@@ -47,6 +47,7 @@ Every path is relative to `{Wms:ApiAddress}/api/wcs/warehouse/`, and every reque
 | 5 | POST | `reservations/release-load-unit-cell` | `ReleaseLoadUnitCellAsync` | `ReleaseLoadUnitCellRequest` (Pascal) | `LoadUnitCellReleaseOutcome` (a number) | failure | a change of cell or a defragmentation redirected by the operator gives its cell back. Queue: **durable** |
 | 6 | POST | `reservations/candidates` | `ListStorageCellCandidatesAsync` | `StorageCellCandidatesRequest` (Pascal) | `StorageCellCandidate[]` (at most 20) | failure | an operator lists the cells a load unit could go to (host `GET /api/v1/missions/{id}/storage-cells`) |
 | 7 | POST | `reservations/cell` | `ReserveStorageCellAsync` | `ReserveStorageCellRequest` (Pascal) | `StorageCellReservationResult` | failure | an operator sends a mission to a precise cell (host `PUT /api/v1/missions/{id}/destination` with `cellDoorCode`) |
+| 44 | POST | `reservations/cell/check` | `CheckStorageCellAsync` | `ReserveStorageCellRequest` (Pascal) | `StorageCellReservationResult`, without the reservation | **optional**: 404 or 501, and the WCS goes on as before | before route 7, when the operator sends an extraction still in its cell to a precise cell: would the warehouse reserve it? Writes nothing |
 
 ## Load units
 
@@ -75,6 +76,7 @@ Every path is relative to `{Wms:ApiAddress}/api/wcs/warehouse/`, and every reque
 | 20 | POST | `assignments/picked-extraction-became-deposit` | `ReportPickedExtractionBecameDepositAsync` | `PickedExtractionBecameDepositRequest` (Pascal) | `PickedExtractionBecameDepositResult` | failure | **fact**: an extraction already picked was sent back to storage. Queue: **durable** |
 | 9 | GET | `notes/pending-work` | `GetPendingNoteWorkAsync` | query `?limitOneShippingNotePerBuffer=` | `PendingNote[]` | failure | every turn of the master loop, in Run |
 | 11 | POST | `notes/paused-among` | `GetPausedNoteAssignmentsAsync` | `PausedAmongRequest` (Pascal) | `decimal[]` | failure | queue cleanup for shipping-note assignments (never sent with an empty list) |
+| 45 | POST | `notes/missing-among` | `GetMissingNoteAssignmentsAsync` | `PausedAmongRequest` (Pascal) | `decimal[]`: the ids that no longer exist | **optional**: 404 or 501, and the WCS goes on as before | the same queue cleanup, before route 11: the rows of a deleted assignment leave the queue (never sent with an empty list) |
 | 10 | POST | `notes/reject-assignment` | `RejectNoteAssignmentAsync` | `RejectNoteAssignmentRequest` (camel) | 2xx, body ignored | failure | **fact**: the WCS will not serve this note assignment, with the reason |
 | 16 | POST | `assignments/mission-left-unserved` | `ReportMissionLeftAssignmentUnservedAsync` | `MissionLeftAssignmentUnservedRequest` (camel) | 2xx, body ignored | failure | **fact**: a mission left the engine without serving its assignment |
 | 17 | POST | `assignments/mission-served` | `ReportMissionServedAssignmentAsync` | `MissionServedAssignmentRequest` (camel) | 2xx, body ignored | failure | **fact**: the load unit reached the workstation, the assignment is served |

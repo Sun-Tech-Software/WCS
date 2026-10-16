@@ -35,6 +35,7 @@ public sealed partial class WcsHistoryDatabase : IDisposable
     private readonly object _rotation = new();
 
     private (int Year, int Month) _currentMonth;
+    private Action<IReadOnlyCollection<Entities.RetiredHandledReference>>? _keepReferences;
     private DbContextOptions<WcsHistoryDbContext>? _currentOptions;
 
     private WcsHistoryDatabase(string? directory, int monthsToKeep, Func<DateTime> clock, SqliteConnection? inMemoryConnection)
@@ -55,10 +56,19 @@ public sealed partial class WcsHistoryDatabase : IDisposable
     /// Apre lo storico nella cartella indicata: il file del mese corrente viene creato o portato
     /// all'ultima migrazione, i file oltre la ritenzione cancellati.
     /// </summary>
-    public static WcsHistoryDatabase Open(string directory, int monthsToKeep = 12, Func<DateTime>? clock = null)
+    /// <param name="keepReferences">
+    /// Item D103: called with the references of a month before its file leaves the retention, to keep
+    /// them where they do not rotate (<c>wcs.db</c>). If it raises, the file stays and the next change of
+    /// month tries again. Null: the file goes without them, as before.
+    /// </param>
+    public static WcsHistoryDatabase Open(string directory, int monthsToKeep = 12, Func<DateTime>? clock = null,
+        Action<IReadOnlyCollection<Entities.RetiredHandledReference>>? keepReferences = null)
     {
         Directory.CreateDirectory(directory);
-        var database = new WcsHistoryDatabase(directory, Math.Max(1, monthsToKeep), clock ?? (() => DateTime.Now), null);
+        var database = new WcsHistoryDatabase(directory, Math.Max(1, monthsToKeep), clock ?? (() => DateTime.Now), null)
+        {
+            _keepReferences = keepReferences
+        };
         database.EnsureCurrentMonth();
         return database;
     }
@@ -251,6 +261,25 @@ public sealed partial class WcsHistoryDatabase : IDisposable
             if (new DateTime(month.Year, month.Month, 1) >= oldest) continue;
 
             var name = Path.GetFileName(file);
+
+            // Item D103: what the month says about processes stays in wcs.db before the file goes; if
+            // it cannot be kept, the file stays too - a guard on picks must not lose its answer.
+            if (_keepReferences is { } keep)
+            {
+                try
+                {
+                    using (var context = CreateReadContext(month.Year, month.Month))
+                        keep(RetiredHandledReferences.Of(context));
+                }
+                catch (Exception failure)
+                {
+                    Report($"storico: {name} e' oltre la ritenzione di {MonthsToKeep} mesi ma i riferimenti delle " +
+                           $"sue lavorazioni non si sono potuti conservare ({failure.Message}); resta in linea e si " +
+                           "riprova al prossimo cambio di mese");
+                    continue;
+                }
+            }
+
             try
             {
                 SqliteConnection.ClearAllPools();

@@ -40,7 +40,7 @@ flowchart LR
         driver["Field driver<br/>(IConnectionFactory)"]
     end
     plc["PLCs"]
-    engine -- "1. IWarehouse over HTTP<br/>43 routes, X-Api-Key" --> adapter
+    engine -- "1. IWarehouse over HTTP<br/>45 routes, X-Api-Key" --> adapter
     ui -- "2. commands, reads, events<br/>X-Api-Key" --> api
     api --- engine
     engine --- db

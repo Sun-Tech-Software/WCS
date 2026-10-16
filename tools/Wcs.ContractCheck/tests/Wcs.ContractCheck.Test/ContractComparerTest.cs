@@ -56,6 +56,18 @@ public sealed class ContractComparerTest
     public void AnAddedOperationBreaksAWmsWhichDoesNotServeItYet(string provider, ChangeKind expected) =>
         Assert.Equal(expected, Single(Document(provider, TwoFields, TwoFields), Document(provider, TwoFields, TwoFields, extraPaths: OtherPath)).Kind);
 
+    /// <summary>Item 55: an operation the WCS does without (404 or 501 = not offered) breaks no WMS.</summary>
+    [Fact]
+    public void AnAddedOptionalOperationBreaksNoWms()
+    {
+        const string optional = """, "/other": { "get": { "operationId": "Other", "x-wcs-optional": true, "responses": { "200": { "description": "ok" } } } }""";
+
+        var change = Single(Document("wms", TwoFields, TwoFields), Document("wms", TwoFields, TwoFields, extraPaths: optional));
+
+        Assert.Equal(ChangeKind.NonBreaking, change.Kind);
+        Assert.Contains("optional", change.ToString());
+    }
+
     [Theory]
     [InlineData("wcs", true, ChangeKind.Breaking)]
     [InlineData("wcs", false, ChangeKind.NonBreaking)]

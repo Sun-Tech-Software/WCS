@@ -1,6 +1,6 @@
 # Wcs.SampleWms
 
-A WMS that answers the WCS: the 43 routes of the WCS -> WMS contract, over an in-memory warehouse.
+A WMS that answers the WCS: the 45 routes of the WCS -> WMS contract, over an in-memory warehouse.
 Run it to see the WCS store and extract load units (the walk-through is in [`../README.md`](../README.md));
 read it to write the adapter that puts your own WMS behind the same routes.
 
@@ -19,7 +19,7 @@ dotnet run --project samples/Wcs.SampleWms --urls http://localhost:6142
 
 | File | What it holds |
 |---|---|
-| `WarehouseEndpoints.cs` | The 43 routes, each mapped to one method of `SampleWarehouse`, with what it means for the WCS. Start here. |
+| `WarehouseEndpoints.cs` | The 45 routes, each mapped to one method of `SampleWarehouse`, with what it means for the WCS. Start here. |
 | `SampleWarehouse.cs` | The warehouse and its rules: cells, load units, positions, reservations, extraction orders. **The class to replace** with queries and updates on your WMS's database. |
 | `Receipts.cs` | One receipt per `OperationId` for the four writes the WCS sends from a durable queue. |
 | `ApiKeyFilter.cs` | The `X-Api-Key` check (401 otherwise). |

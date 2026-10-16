@@ -1,10 +1,10 @@
 # The WMS contract
 
-The WCS asks your WMS questions and tells it facts through **43 HTTP routes** that your WMS (or an
+The WCS asks your WMS questions and tells it facts through **45 HTTP routes** that your WMS (or an
 adapter in front of it) serves. This page is the contract: when each route is called, what goes on
 the wire, what the WCS does with each answer, and what it does when the answer does not come.
 The one-line-per-route table is in the [reference](../reference/wms-routes.md); a working
-implementation of all 43 is [`samples/Wcs.SampleWms`](../../samples/Wcs.SampleWms/README.md). The
+implementation of all 45 is [`samples/Wcs.SampleWms`](../../samples/Wcs.SampleWms/README.md). The
 same contract in machine-readable form, generated from the client and versioned
 (`WarehouseContract.Version`), is [`wms-contract.openapi.json`](../contracts/wms-contract.openapi.json),
 with validated [examples](../contracts/README.md#examples).
@@ -86,7 +86,7 @@ Requests are written by two different serializers of the WCS's client:
 
 | Casing | Routes |
 |---|---|
-| PascalCase (`{"LoadUnitId":5001}`) | `reservations`, `reservations/release-load-unit-cell`, `reservations/candidates`, `reservations/cell`, `notes/paused-among`, `extractions/paused-among`, `assignments/picked-extraction-became-deposit`, `load-units/find`, `load-units/find-by-reference`, `load-units/pickup-door`, `cells/busy-state`, `cells/storing-constraints` (the POSTs that return a body) |
+| PascalCase (`{"LoadUnitId":5001}`) | `reservations`, `reservations/release-load-unit-cell`, `reservations/candidates`, `reservations/cell`, `reservations/cell/check`, `notes/paused-among`, `notes/missing-among`, `extractions/paused-among`, `assignments/picked-extraction-became-deposit`, `load-units/find`, `load-units/find-by-reference`, `load-units/pickup-door`, `cells/busy-state`, `cells/storing-constraints` (the POSTs that return a body) |
 | camelCase (`{"loadUnitId":5001}`) | `reservations/release`, `notes/reject-assignment`, `load-units/left-extraction-queue`, `extractions/outcomes`, `assignments/mission-left-unserved`, `assignments/mission-served`, `assignments/queued-extraction-unservable`, `assignments/confirm-served`, `load-units/allocate`, `load-units/release`, `cells/lock`, `cells/clear-positions` (the POSTs whose answer body is ignored) |
 
 ASP.NET Core minimal APIs and MVC bind both casings out of the box. In another stack, read
@@ -96,8 +96,8 @@ property names case-insensitively.
 `"RequestedByWorkstationId":"KazamControl"`, `"workstationId":"KazamControl"` and
 `"requestedByUserId":"KazamControl.Process"`. These values are constants of the engine.
 
-**Requests that never reach the wire.** `notes/paused-among` and `extractions/paused-among` are not
-sent with an empty list (the answer is the empty list); `load-units/by-code/{code}` and
+**Requests that never reach the wire.** `notes/paused-among`, `notes/missing-among` and
+`extractions/paused-among` are not sent with an empty list (the answer is the empty list); `load-units/by-code/{code}` and
 `load-units/by-code/{code}/stored` are not sent with an empty code (the answers are "none" and
 `false`).
 
@@ -111,6 +111,7 @@ answers, and the six readings below also a `404` (`x-wcs-not-found: none`).
 | `2xx` with the expected body | uses it |
 | `2xx` on a route whose body is ignored (marked "2xx, body ignored" in the [reference](../reference/wms-routes.md)) | done; the body is not read |
 | `404` on one of the six readings that allow it: `reservations/{missionId}`, `load-units/{id}/location`, `load-units/find`, `load-units/{id}/description`, `load-unit-types/{id}/handling-mode`, `load-units/by-code/{code}` | reads it as "there is none" |
+| `404` or `501` on one of the two optional routes, `reservations/cell/check` (44) and `notes/missing-among` (45) | the route is not offered: the WCS goes on as it did before the route existed |
 | `404` anywhere else, any other `4xx` or `5xx`, a timeout, a dropped connection, a body that is not the expected JSON, a `null` body | a failure: the client raises [`WarehouseUnavailableException`](../../WCS/Wcs.Wms.Contracts/src/WarehouseUnavailableException.cs) |
 
 What a failure does depends on where it happens. A reading that fails leaves the work where it is:
@@ -658,6 +659,30 @@ Content-Type: application/json; charset=utf-8
 {"outcome":3,"reservation":null,"reason":"cell 101 is taken, locked or not a storage cell"}
 ```
 
+`POST reservations/cell/check` (route 44, optional): the same body, and the answer route 7 would give
+now, without reserving anything (`reservation` is always null). The WCS asks it only when the operator
+sends an extraction whose load unit is still in its cell to a precise cell: it must tell your WMS that
+the extraction is left before reserving (leaving the extraction queue removes every reserved position of
+the load unit), so a cell refused by route 7 would come after that and close the mission. A cell refused
+here leaves the mission the extraction it was. A WMS without this route answers 404 (or 501), and the
+WCS goes on as before; any other failure stops the change before the reports. The cell can still be
+taken between the check and the reservation.
+
+```http
+POST /api/wcs/warehouse/reservations/cell/check HTTP/1.1
+Content-Type: application/json; charset=utf-8
+X-Api-Key: sample-wms-key
+
+{"MissionId":"22222222-2222-4222-8222-222222222222","LoadUnitId":5005.0,"DoorCode":"A0102","RequestedByWorkstationId":"KazamControl","RequestedByUserId":"KazamControl.Process"}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+
+{"outcome":0,"reservation":null,"reason":null}
+```
+
 `outcome` is required in the answer. When the change is undone, the WCS gives the cell back through
 its durable queue (`reservations/release-load-unit-cell`, route 5, shown above): answer `0`
 (Released) or `1` (NotHeld, the cell was not held for that load unit any more); both are answers.
@@ -687,6 +712,13 @@ apply. Then the facts, all camelCase, all answered `2xx` with the body ignored:
 
 `POST notes/paused-among` (route 11), PascalCase `{"Ids":[7.0]}`, works like
 `extractions/paused-among`.
+
+`POST notes/missing-among` (route 45, optional), the same body: which of these assignments no longer
+exist. Route 11 cannot say it - it starts from the assignments, and a deleted one is not there - and
+the queued row of an assignment deleted by an operator or by another pick would otherwise move a load
+unit nobody asked for. The WCS asks it first, takes those rows out of its queue (nothing is reported:
+the assignment is gone) and asks route 11 about the others. Answer an id only if it can never exist
+again (an identity key). The sample keeps no shipping-note assignments, so it answers every id.
 
 ## Load units by code, and other readings
 

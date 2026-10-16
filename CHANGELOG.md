@@ -10,7 +10,27 @@ released, and how its section here becomes the text of the GitHub release, is in
 
 ## [Unreleased]
 
+### Added
+
+- WMS contract: two **optional** routes, 44 and 45; a WMS that does not offer them answers `404` or
+  `501` and the WCS behaves as before. `POST reservations/cell/check`
+  (`IWarehouse.CheckStorageCellAsync`): whether the warehouse would reserve a precise cell, without
+  reserving it. `POST notes/missing-among` (`IWarehouse.GetMissingNoteAssignmentsAsync`): which of the
+  given shipping-note assignments no longer exist. Both have a default implementation in `IWarehouse`,
+  so an existing adapter keeps compiling. `Wcs.ContractCheck` treats an added optional operation as
+  compatible.
+
 ### Fixed
+
+- Engine: an extraction still in its cell sent to a precise cell the warehouse refuses stays the
+  extraction it was: the cell is checked (route 44) before the warehouse is told about the change of
+  cell, which used to close the mission when the reservation was refused afterwards.
+- Engine: the queued row of a shipping-note assignment deleted in the WMS leaves the extraction queue
+  (route 45) instead of moving a load unit nobody asked for.
+- Engine: «does this process have handled load units?» also answers for the months that left the
+  history retention: their references are kept in `wcs.db` before the month file is deleted.
+- `Wcs.Wms.Client`: an enum answer the contract does not know (an outcome of a newer WMS) is a
+  permanent rejection, not the value of the caller's «anything else» branch.
 
 - Engine: the second extraction trigger point selects the storing missions coming from its own
   group; it compared against the first point's group, so with only the second point loaded every

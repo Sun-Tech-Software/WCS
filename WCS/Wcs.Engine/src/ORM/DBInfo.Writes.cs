@@ -289,7 +289,27 @@ internal static partial class DbInfo
 
         if (queued.Count == 0) return;
 
-        var paused = (await Navigator.RequireWarehouse(nameof(DeleteLuInExtranctionByPausedNote))
+        var warehouse = Navigator.RequireWarehouse(nameof(DeleteLuInExtranctionByPausedNote));
+        var assignments = queued.Select(r => r.AssignmentId!.Value).Distinct().ToList();
+
+        // Item D119: an assignment deleted in the WMS after its row was queued is not «paused» - the
+        // question below starts from the assignments, and it is not there - so the row stayed and was
+        // picked for a load unit nobody asked for. The WMS that offers it says which ones are gone
+        // (an identity key: they never come back); the row leaves the queue, with nothing to report.
+        var missing = (await warehouse.GetMissingNoteAssignmentsAsync(assignments))?.ToHashSet() ?? [];
+        foreach (var row in queued.Where(r => missing.Contains(r.AssignmentId!.Value)))
+        {
+            WriteLog(
+                $"Coda di estrazione: la riga {row.Id} (UDC {row.LoadUnitId:0}) serviva l'assegnazione {row.AssignmentId:0}, " +
+                "che nel gestionale non esiste piu': la riga esce dalla coda e l'UDC non si estrae",
+                LogEntryType.Warning);
+            await DeleteExtractionItemQueueById(row.Id);
+        }
+
+        queued = [.. queued.Where(r => !missing.Contains(r.AssignmentId!.Value))];
+        if (queued.Count == 0) return;
+
+        var paused = (await warehouse
             .GetPausedNoteAssignmentsAsync(queued.Select(r => r.AssignmentId!.Value).Distinct().ToList()))
             .ToHashSet();
 
