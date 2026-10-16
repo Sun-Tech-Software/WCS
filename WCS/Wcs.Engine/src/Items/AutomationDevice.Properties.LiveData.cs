@@ -625,25 +625,9 @@ public sealed partial class AutomationDevice
                         lUsToReceive = lUsToReceive.Where(x => x.MissionType == MissionTypes.Rejection).ToList();
                         break;
                     case true when lUsToReceive.Any(x => x.MissionType == MissionTypes.Storing):
-                        {
-                            if (TriggerItemToExtractPoint1Item is { LUsLoaded.Count: > 0 } && LUsToReceive.Any(x =>
-                                    x.PositionItem != null &&
-                                    x.PositionItem.BelongedGroup == TriggerItemToExtractPoint1Item))
-                                lUsToReceive = lUsToReceive.Where(x =>
-                                        x.PositionItem != null &&
-                                        x.PositionItem.BelongedGroup == TriggerItemToExtractPoint1Item)
-                                    .ToList();
-                            else if (TriggerItemToExtractPoint2Item is { LUsLoaded.Count: > 0 } && LUsToReceive.Any(x =>
-                                         x.PositionItem != null &&
-                                         x.PositionItem.BelongedGroup == TriggerItemToExtractPoint1Item))
-                                lUsToReceive = lUsToReceive.Where(x =>
-                                        x.PositionItem != null &&
-                                        x.PositionItem.BelongedGroup == TriggerItemToExtractPoint2Item)
-                                    .ToList();
-                            else
-                                lUsToReceive = lUsToReceive.Where(x => x.MissionType == MissionTypes.Storing).ToList();
-                            break;
-                        }
+                        lUsToReceive = StoringByExtractTrigger(lUsToReceive, TriggerItemToExtractPoint1Item,
+                            TriggerItemToExtractPoint2Item);
+                        break;
                     default:
                         {
                             if (LastLevelLoaded > 0 && lUsToReceive.Any(x =>
@@ -678,6 +662,24 @@ public sealed partial class AutomationDevice
 
             return result;
         }
+    }
+
+    /// <summary>
+    ///     The storing missions to receive first when the device feeds a storage: those coming from the
+    ///     group of the first extraction trigger point if it holds a load unit, otherwise those from the
+    ///     group of the second one, otherwise every storing mission.
+    /// </summary>
+    internal static List<PathMission> StoringByExtractTrigger(List<PathMission> lUsToReceive,
+        AutomationDevice? point1, AutomationDevice? point2)
+    {
+        foreach (var point in new[] { point1, point2 })
+        {
+            if (point is not { LUsLoaded.Count: > 0 }) continue;
+            var fromPoint = lUsToReceive.Where(x => x.PositionItem?.BelongedGroup == point).ToList();
+            if (fromPoint.Count > 0) return fromPoint;
+        }
+
+        return lUsToReceive.Where(x => x.MissionType == MissionTypes.Storing).ToList();
     }
 
     /// <summary>
@@ -860,8 +862,9 @@ public sealed partial class AutomationDevice
 
                     var stepToDo = sourceItem.LoadedLu?.StepToDo;
 
+                    // A load unit whose route is not built yet goes nowhere for now: the other sources still count.
                     if (stepToDo is null)
-                        return result;
+                        continue;
 
                     var destinationItem = stepToDo.DestinationItem;
 
@@ -882,7 +885,7 @@ public sealed partial class AutomationDevice
                     var stepToDo = sourceItem.LoadedLu.StepToDo;
 
                     if (stepToDo == null)
-                        return result;
+                        continue;
 
                     var destinationItem = stepToDo.DestinationItem;
 

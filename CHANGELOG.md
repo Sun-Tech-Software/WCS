@@ -10,7 +10,26 @@ released, and how its section here becomes the text of the GitHub release, is in
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- Engine: the second extraction trigger point selects the storing missions coming from its own
+  group; it compared against the first point's group, so with only the second point loaded every
+  storing mission was received.
+- Engine: a loaded source whose load unit has no route yet no longer hides the sources after it
+  from the device that receives from them.
+- Engine: updates and removals of commands and extraction queue rows are announced to the event
+  hub only after the save succeeds, as insertions already were.
+- Host: `PUT /api/v1/plant/graph` with a null list or a null entry, and
+  `PUT /api/v1/items/geometry` with a null entry, answer 400 instead of 500.
+- `Wcs.Api.Client`: a `BaseAddress` that is not a bare http(s) origin is refused when the client
+  is built; a successful response with a `null` body is a `WcsApiException` naming the request.
+- `Wcs.DbTool`: `verify` and `restore` refuse a manifest whose file names are not bare WCS
+  database names, are listed twice, or whose format is unknown, before touching any file.
+
+### Changed
+
+- Host: a warning at startup when `Wcs:ApiKey` or `Wcs:ReadOnlyApiKey` is shorter than 32
+  characters.
 
 ## [0.1.0-preview.1] - 2026-10-15
 

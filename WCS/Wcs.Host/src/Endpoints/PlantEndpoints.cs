@@ -141,6 +141,9 @@ internal static class PlantEndpoints
 
         api.MapPut(ApiRoutes.ItemsGeometry, async (PlantItemGeometryUpdateDto[] items) =>
         {
+            if (items.Any(i => i is null))
+                return Results.Problem("L'elenco dei dispositivi non può contenere elementi nulli",
+                    statusCode: StatusCodes.Status400BadRequest);
             if (items.Any(i => i.ExpectedGeometryVersion is null))
                 return Results.Problem("ExpectedGeometryVersion è obbligatoria per ogni dispositivo",
                     statusCode: StatusCodes.Status400BadRequest);

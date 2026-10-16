@@ -139,6 +139,19 @@ internal static class GraphEndpoints
     /// </summary>
     private static string? Validate(PlantGraphDto graph)
     {
+        // JSON can say null where the contract says a list: a file with "items": null is a bad
+        // request, not a crash of the host.
+        if (graph.Items is null || graph.Items.Any(x => x is null))
+            return "items è obbligatorio e non può contenere elementi nulli";
+        if (graph.Geometries is null || graph.Geometries.Any(x => x is null))
+            return "geometries è obbligatorio e non può contenere elementi nulli";
+        if (graph.Junctions is null || graph.Junctions.Any(x => x is null))
+            return "junctions è obbligatorio e non può contenere elementi nulli";
+        if (graph.DoorMappings is null || graph.DoorMappings.Any(x => x is null))
+            return "doorMappings è obbligatorio e non può contenere elementi nulli";
+        if (graph.PlcConnections?.Any(x => x is null) == true)
+            return "plcConnections non può contenere elementi nulli";
+
         var itemIds = new HashSet<Guid>();
         foreach (var item in graph.Items)
         {

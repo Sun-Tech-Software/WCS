@@ -51,6 +51,7 @@ TransportSecurityPolicy.Enforce(app.Configuration, hostOptions.AllowInsecureRemo
 SimulatorFallbackPolicy.Enforce(hostOptions.AllowSimulatorForMissingConnections, app.Environment, app.Logger);
 
 ApiKeySecurity.Validate(hostOptions);
+ApiKeySecurity.WarnIfWeak(hostOptions, app.Logger);
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();

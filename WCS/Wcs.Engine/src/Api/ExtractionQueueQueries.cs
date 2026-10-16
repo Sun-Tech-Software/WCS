@@ -48,7 +48,7 @@ public static class ExtractionQueueQueries
             if (row == null) return;
             found = true;
             row.Priority = priority;
-            Navigator.EventSink?.ExtractionQueueChanged(row, EngineQueueChange.Updated);
+            context.Deferred.Add(() => Navigator.EventSink?.ExtractionQueueChanged(row, EngineQueueChange.Updated));
         });
         return found;
     }

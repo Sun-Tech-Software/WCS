@@ -108,7 +108,7 @@ public static class CommandGateway
                 if (showStatus != null)
                 {
                     existing.ShowStatus = showStatus.Value;
-                    Navigator.EventSink?.CommandChanged(existing);
+                    context.Deferred.Add(() => Navigator.EventSink?.CommandChanged(existing));
                     outcome = UpdateResults.Updated;
                     return;
                 }
@@ -120,7 +120,7 @@ public static class CommandGateway
             existing.ErrorDescription = errorDescription;
             if (info != null) existing.Info = info;
             if (showStatus != null) existing.ShowStatus = showStatus.Value;
-            Navigator.EventSink?.CommandChanged(existing);
+            context.Deferred.Add(() => Navigator.EventSink?.CommandChanged(existing));
         });
         return outcome;
     }

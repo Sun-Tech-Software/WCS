@@ -23,7 +23,7 @@ public sealed class PlantEventsConnection : IAsyncDisposable
     public PlantEventsConnection(WcsClientOptions options, HttpMessageHandler? inner = null)
     {
         _connection = new HubConnectionBuilder()
-            .WithUrl(new Uri(options.BaseAddress, ApiRoutes.Hub.TrimStart('/')), o =>
+            .WithUrl(new Uri(options.Origin(), ApiRoutes.Hub.TrimStart('/')), o =>
             {
                 o.Headers[ApiRoutes.ApiKeyHeader] = options.ApiKey;
                 if (inner != null) o.HttpMessageHandlerFactory = _ => inner;

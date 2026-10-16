@@ -223,7 +223,9 @@ procedure are in [security and threat model](security-and-threat-model.md); the 
 production plant is the [production readiness checklist](production-readiness-checklist.md).
 
 - [ ] `Wcs:ApiKey` and `Wms:ApiKey` are long random values, kept in `appsettings.Secrets.json` or
-      environment variables, never in a tracked file. The host refuses the placeholder.
+      environment variables, never in a tracked file. The host refuses the placeholder, and logs a
+      warning at startup when `Wcs:ApiKey` or `Wcs:ReadOnlyApiKey` is shorter than 32 characters
+      (32 random bytes in hex are 64).
 - [ ] Monitoring and viewers use `Wcs:ReadOnlyApiKey` (GET and hub only).
 - [ ] Keys travel only in headers (`X-Api-Key`; the hub refuses `access_token` in the URL).
 - [ ] The host listens on the loopback, or on HTTPS; `Wcs:AllowInsecureRemoteHttp` only on a

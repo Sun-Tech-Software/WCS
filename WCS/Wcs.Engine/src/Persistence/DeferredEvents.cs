@@ -9,8 +9,8 @@ namespace Wcs.Engine.Persistence;
 /// <remarks>
 /// Una riga inserita prende la chiave dal database dentro <c>SaveChanges</c>: annunciarla prima
 /// manda fuori un identificatore 0, che nessun client sa riconciliare con la chiave vera della
-/// risposta HTTP. Gli store accodano qui l'annuncio degli inserimenti; gli aggiornamenti possono
-/// restare immediati, perche' la chiave c'e' gia'. Un lotto che fallisce non arriva mai a
+/// risposta HTTP. Gli store accodano qui anche aggiornamenti e cancellazioni: annunciati subito,
+/// un lotto fallito li renderebbe falsi senza nessun evento che li smentisca. Un lotto che fallisce non arriva mai a
 /// <see cref="Raise"/>: il contesto viene buttato con la sua coda, e la scrittura ritentata la
 /// riaccoda su un contesto nuovo.
 /// </remarks>

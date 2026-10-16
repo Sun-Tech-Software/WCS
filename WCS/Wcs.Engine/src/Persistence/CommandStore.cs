@@ -78,7 +78,8 @@ internal static class CommandStore
     /// <remarks>
     /// L'evento di un inserimento parte dopo il salvataggio (<see cref="DeferredEvents"/>): prima
     /// la riga non ha ancora la chiave che il database le assegna, e un evento con Id 0 non si
-    /// riconcilia con nulla. L'evento di un aggiornamento parte subito: la chiave c'e' gia'.
+    /// riconcilia con nulla. Anche l'evento di un aggiornamento aspetta il salvataggio: un lotto
+    /// fallito non deve far vedere ai client uno stato mai scritto.
     /// </remarks>
     public static async Task UpsertAsync(WcsDbContext context, CommandRecord snapshot)
     {
@@ -107,7 +108,7 @@ internal static class CommandStore
         snapshot.FromApi = existing.FromApi;
         snapshot.ApiStatus = existing.ApiStatus;
         context.Entry(existing).CurrentValues.SetValues(snapshot);
-        Navigator.EventSink?.CommandChanged(existing);
+        context.Deferred.Add(() => Navigator.EventSink?.CommandChanged(existing));
     }
 
     /// <summary>Stato ed eventuale errore di un comando, e lo stato di visualizzazione azzerato, come faceva <c>SetStatus</c>.</summary>
@@ -119,7 +120,7 @@ internal static class CommandStore
         existing.Status = (short)status;
         existing.ShowStatus = 0;
         if (!string.IsNullOrEmpty(errorDescription)) existing.ErrorDescription = errorDescription;
-        Navigator.EventSink?.CommandChanged(existing);
+        context.Deferred.Add(() => Navigator.EventSink?.CommandChanged(existing));
     }
 
     private static Guid? NullIfEmpty(Guid value) => value == Guid.Empty ? null : value;

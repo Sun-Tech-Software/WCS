@@ -99,11 +99,9 @@ internal static class ExtractionQueueStore
     /// inserita porta la chiave assegnata dal database.
     /// </summary>
     /// <remarks>
-    /// L'evento di un inserimento parte dopo il salvataggio (<see cref="DeferredEvents"/>): prima
-    /// la riga non ha ancora la chiave che il database le assegna, e un evento con Id 0 non si
-    /// riconcilia con nulla. L'evento di un aggiornamento parte quando l'operazione entra nel
-    /// contesto: vale come «sta per essere scritto», e un lotto fallito lo rende falso per pochi
-    /// millisecondi — l'imprecisione accettata dalla specifica; la chiave, comunque, c'e' gia'.
+    /// Ogni evento parte dopo il salvataggio (<see cref="DeferredEvents"/>): un inserimento prima
+    /// non ha ancora la chiave che il database gli assegna, e un aggiornamento o una cancellazione
+    /// annunciati prima di un lotto che poi fallisce mostrerebbero ai client uno stato mai scritto.
     /// </remarks>
     public static async Task UpsertAsync(WcsDbContext context, ExtractionQueueItem item)
     {
@@ -123,7 +121,7 @@ internal static class ExtractionQueueStore
         else
         {
             context.Entry(existing).CurrentValues.SetValues(item);
-            Navigator.EventSink?.ExtractionQueueChanged(existing, EngineQueueChange.Updated);
+            context.Deferred.Add(() => Navigator.EventSink?.ExtractionQueueChanged(existing, EngineQueueChange.Updated));
         }
     }
 
@@ -133,7 +131,7 @@ internal static class ExtractionQueueStore
         if (existing != null)
         {
             context.ExtractionQueue.Remove(existing);
-            Navigator.EventSink?.ExtractionQueueChanged(existing, EngineQueueChange.Removed);
+            context.Deferred.Add(() => Navigator.EventSink?.ExtractionQueueChanged(existing, EngineQueueChange.Removed));
         }
     }
 
@@ -142,7 +140,7 @@ internal static class ExtractionQueueStore
         var rows = await context.ExtractionQueue.Where(i => i.LoadUnitId == loadUnitId).ToListAsync();
         context.ExtractionQueue.RemoveRange(rows);
         foreach (var row in rows)
-            Navigator.EventSink?.ExtractionQueueChanged(row, EngineQueueChange.Removed);
+            context.Deferred.Add(() => Navigator.EventSink?.ExtractionQueueChanged(row, EngineQueueChange.Removed));
     }
 
     public static async Task SetProcessedAsync(WcsDbContext context, long id, bool processed)
@@ -151,7 +149,7 @@ internal static class ExtractionQueueStore
         if (existing != null)
         {
             existing.Processed = processed;
-            Navigator.EventSink?.ExtractionQueueChanged(existing, EngineQueueChange.Updated);
+            context.Deferred.Add(() => Navigator.EventSink?.ExtractionQueueChanged(existing, EngineQueueChange.Updated));
         }
     }
 

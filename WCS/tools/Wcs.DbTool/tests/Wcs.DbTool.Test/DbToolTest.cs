@@ -86,6 +86,55 @@ public sealed class DbToolTest
         Assert.Contains("sha256", folder.ToString());
     }
 
+    [Theory]
+    [InlineData("traversal", "is not a bare file name")]
+    [InlineData("rooted", "is not a bare file name")]
+    [InlineData("not-a-database", "is not a WCS database name")]
+    [InlineData("twice", "is listed twice")]
+    [InlineData("format", "format 2")]
+    public void AManifestWrittenByHandIsRefusedBeforeAnyFileIsTouched(string change, string expected)
+    {
+        using var temp = new TemporaryDirectory();
+        var source = Path.Combine(temp.Path, "source");
+        var backup = Path.Combine(temp.Path, "backup");
+        var data = Path.Combine(temp.Path, "Data");
+        CreateOperationalDatabase(source, marker: "backup");
+        Assert.Equal(0, BackupCommand.Run(source, backup, new StringWriter()));
+        CreateOperationalDatabase(data, marker: "live");
+
+        // A database next to the backup, listed with its real hash: only its name gives it away.
+        var outside = Path.Combine(temp.Path, "outside");
+        Directory.CreateDirectory(outside);
+        var stray = Path.Combine(outside, "wcs-history-2026-01.db");
+        CopyShared(Path.Combine(backup, WcsDatabase.OperationalFileName), stray);
+        var manifestPath = Path.Combine(backup, BackupManifest.FileName);
+        var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(manifestPath))!;
+        var files = manifest["files"]!.AsArray();
+        var entry = files[0]!.DeepClone();
+        switch (change)
+        {
+            case "traversal": entry["name"] = Path.Combine("..", "outside", "wcs-history-2026-01.db"); files.Add(entry); break;
+            case "rooted": entry["name"] = stray; files.Add(entry); break;
+            case "not-a-database": entry["name"] = "notes.txt"; files.Add(entry); break;
+            case "twice": entry["name"] = WcsDatabase.OperationalFileName.ToUpperInvariant(); files.Add(entry); break;
+            case "format": manifest["format"] = 2; break;
+        }
+        File.WriteAllText(manifestPath, manifest.ToJsonString());
+        var before = Snapshot(data);
+
+        var verify = new StringWriter();
+        Assert.Equal(1, VerifyCommand.Run(backup, verify));
+        Assert.Contains(expected, verify.ToString());
+        var restore = new StringWriter();
+        Assert.Equal(1, RestoreCommand.Run(backup, data, restore, assumeStopped: true,
+            clock: () => new DateTime(2026, 10, 16, 12, 0, 0)));
+        Assert.Contains(expected, restore.ToString());
+
+        Assert.Equal(before, Snapshot(data));
+        Assert.False(Directory.Exists(data + ".replaced-20261016-120000"));
+        Assert.Equal(["wcs-history-2026-01.db"], Directory.GetFiles(outside).Select(Path.GetFileName));
+    }
+
     [Fact]
     public void RestoreRefusesADataFolderWhoseDatabaseIsOpen()
     {

@@ -22,7 +22,7 @@ public sealed class WcsClient : IDisposable
     {
         _http = new HttpClient(new ApiKeyHandler(options.ApiKey, new EditHolderHandler(() => _editHolder, inner)))
         {
-            BaseAddress = new Uri(options.BaseAddress, ApiRoutes.Prefix.TrimStart('/') + "/"),
+            BaseAddress = new Uri(options.Origin(), ApiRoutes.Prefix.TrimStart('/') + "/"),
             Timeout = options.Timeout
         };
     }
@@ -51,7 +51,7 @@ public sealed class WcsClient : IDisposable
     {
         var response = await _http.PostAsJsonAsync(R(ApiRoutes.Commands), request, ct);
         await EnsureAsync(response);
-        return (await response.Content.ReadFromJsonAsync<CommandDto>(ct))!;
+        return await ReadRequiredAsync<CommandDto>(response, ct);
     }
     public Task<List<CommandDto>> GetCommandsAsync(short? status = null, string? workstationId = null, string? userId = null,
         DateTime? from = null, DateTime? to = null, Guid? itemId = null, short? showStatus = null, int? minType = null,
@@ -287,7 +287,7 @@ public sealed class WcsClient : IDisposable
             geometry,
             ct);
         await EnsureGeometryWriteAsync(response, ct);
-        return (await response.Content.ReadFromJsonAsync<PlantItemGeometryVersionDto>(ct))!;
+        return await ReadRequiredAsync<PlantItemGeometryVersionDto>(response, ct);
     }
 
     /// <summary>
@@ -300,14 +300,14 @@ public sealed class WcsClient : IDisposable
     {
         var response = await _http.PutAsJsonAsync(R(ApiRoutes.ItemsGeometry), geometries, ct);
         await EnsureGeometryWriteAsync(response, ct);
-        return (await response.Content.ReadFromJsonAsync<List<PlantItemGeometryVersionDto>>(ct))!;
+        return await ReadRequiredAsync<List<PlantItemGeometryVersionDto>>(response, ct);
     }
     public async Task SetConnectionTypeForAllAsync(ConnectionTypes connectionType, CancellationToken ct = default) => await EnsureAsync(await _http.PostAsJsonAsync(R(ApiRoutes.Items) + "/connection-type", new ConnectionTypeUpdate(connectionType), ct));
     public async Task<JunctionDto> AddJunctionAsync(JunctionRequest request, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync(R(ApiRoutes.Junctions), request, ct);
         await EnsureAsync(response);
-        return (await response.Content.ReadFromJsonAsync<JunctionDto>(ct))!;
+        return await ReadRequiredAsync<JunctionDto>(response, ct);
     }
     public async Task<bool> SetJunctionPriorityAsync(Guid junctionId, JunctionRequest request, CancellationToken ct = default)
     {
@@ -349,7 +349,7 @@ public sealed class WcsClient : IDisposable
         body.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
         var response = await _http.PostAsync(R(ApiRoutes.PlantGraphLegacyGeometry), body, ct);
         await EnsureAsync(response);
-        return (await response.Content.ReadFromJsonAsync<LegacyGeometryImportDto>(ct))!;
+        return await ReadRequiredAsync<LegacyGeometryImportDto>(response, ct);
     }
 
     /// <summary>
@@ -364,7 +364,7 @@ public sealed class WcsClient : IDisposable
         var response = await _http.PostAsJsonAsync(R(ApiRoutes.EditLock), new EditLockRequest(holder), ct);
         if (response.StatusCode != HttpStatusCode.OK && response.StatusCode != HttpStatusCode.Conflict)
             await EnsureAsync(response);
-        return (await response.Content.ReadFromJsonAsync<EditLockDto>(ct))!;
+        return await ReadRequiredAsync<EditLockDto>(response, ct);
     }
 
     /// <summary>Rinnova il permesso: stessa rotta e stessa risposta di <see cref="AcquireEditLockAsync"/>, chiamata a intervalli regolari entro la durata concessa (la cadenza esatta e' decisa da chi chiama, non da questo client).</summary>
@@ -378,7 +378,7 @@ public sealed class WcsClient : IDisposable
     {
         var response = await _http.GetAsync(url, ct);
         await EnsureAsync(response);
-        return (await response.Content.ReadFromJsonAsync<T>(ct))!;
+        return await ReadRequiredAsync<T>(response, ct);
     }
 
     private async Task<T?> GetOrNullAsync<T>(string url, CancellationToken ct) where T : class
@@ -388,6 +388,15 @@ public sealed class WcsClient : IDisposable
         await EnsureAsync(response);
         return await response.Content.ReadFromJsonAsync<T>(ct);
     }
+
+    /// <summary>
+    /// The body of a successful response that the contract says is never null. A <c>null</c> (a host
+    /// of another version, a proxy) fails here, naming the request, not later in the caller.
+    /// </summary>
+    private static async Task<T> ReadRequiredAsync<T>(HttpResponseMessage response, CancellationToken ct) =>
+        await response.Content.ReadFromJsonAsync<T>(ct)
+        ?? throw new WcsApiException(response.StatusCode,
+            $"null body from {response.RequestMessage?.Method} {response.RequestMessage?.RequestUri}");
 
     private static async Task EnsureAsync(HttpResponseMessage response)
     {

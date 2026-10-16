@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:66f2bc4a-a898-44e6-8f0d-24e28d477a5c",
+  "serialNumber": "urn:uuid:23da7239-caba-46af-9805-d1f9baabb926",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-10-15T21:01:22Z",
+    "timestamp": "2026-10-16T06:43:05Z",
     "tools": {
       "components": [
         {
@@ -51,8 +51,8 @@
       "copyright": "Kiel University and others (Eclipse Layout Kernel contributors)",
       "externalReferences": [
         {
-          "url": "https://github.com/eclipse/elk",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/eclipse/elk"
         }
       ],
       "properties": [
@@ -83,8 +83,8 @@
       "copyright": "draw.io (presumed)",
       "externalReferences": [
         {
-          "url": "https://github.com/jgraph/drawio",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/jgraph/drawio"
         }
       ],
       "properties": [
@@ -118,8 +118,8 @@
       "copyright": "Copyright (c) 2010, Kimberly Geswein (kimberlygeswein.com)",
       "externalReferences": [
         {
-          "url": "https://fonts.google.com/specimen/Architects+Daughter",
-          "type": "website"
+          "type": "website",
+          "url": "https://fonts.google.com/specimen/Architects+Daughter"
         }
       ],
       "properties": [
@@ -157,8 +157,8 @@
       "copyright": "Copyright 2008-2016 Object.NET, Inc.",
       "externalReferences": [
         {
-          "url": "https://github.com/bridgedotnet/Bridge",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/bridgedotnet/Bridge"
         }
       ],
       "properties": [
@@ -196,8 +196,8 @@
       "copyright": "(c) 2009-2013 by Jeff Mott. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://code.google.com/archive/p/crypto-js/",
-          "type": "website"
+          "type": "website",
+          "url": "https://code.google.com/archive/p/crypto-js/"
         }
       ],
       "properties": [
@@ -236,8 +236,8 @@
       "purl": "pkg:npm/@dagrejs/dagre@3.0.0",
       "externalReferences": [
         {
-          "url": "https://github.com/dagrejs/dagre",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/dagrejs/dagre"
         }
       ],
       "properties": [
@@ -274,8 +274,8 @@
       "purl": "pkg:npm/dompurify@3.4.12",
       "externalReferences": [
         {
-          "url": "https://github.com/cure53/DOMPurify",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/cure53/DOMPurify"
         }
       ],
       "properties": [
@@ -310,8 +310,8 @@
       "purl": "pkg:github/jgraph/drawio@v31.1.2",
       "externalReferences": [
         {
-          "url": "https://github.com/jgraph/drawio",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/jgraph/drawio"
         }
       ],
       "properties": [
@@ -347,8 +347,8 @@
       "copyright": "JGraph Holdings Ltd / draw.io AG; vendor icons are trademarks of their owners",
       "externalReferences": [
         {
-          "url": "https://github.com/jgraph/drawio",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/jgraph/drawio"
         }
       ],
       "properties": [
@@ -385,8 +385,8 @@
       "purl": "pkg:npm/jszip@3.10.0",
       "externalReferences": [
         {
-          "url": "https://github.com/Stuk/jszip",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/Stuk/jszip"
         }
       ],
       "properties": [
@@ -424,8 +424,8 @@
       "purl": "pkg:npm/cose-base",
       "externalReferences": [
         {
-          "url": "https://github.com/iVis-at-Bilkent/cose-base",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/iVis-at-Bilkent/cose-base"
         }
       ],
       "properties": [
@@ -464,8 +464,8 @@
       "purl": "pkg:npm/libavoid-js@0.5.0-beta.5",
       "externalReferences": [
         {
-          "url": "https://github.com/mjwybrow/adaptagrams",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/mjwybrow/adaptagrams"
         }
       ],
       "properties": [
@@ -503,8 +503,8 @@
       "purl": "pkg:npm/lodash",
       "externalReferences": [
         {
-          "url": "https://github.com/lodash/lodash",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/lodash/lodash"
         }
       ],
       "properties": [
@@ -542,8 +542,8 @@
       "copyright": "Copyright (c) 2006-2017, JGraph Holdings Ltd; Copyright (c) 2006-2017, draw.io AG",
       "externalReferences": [
         {
-          "url": "https://github.com/jgraph/drawio",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/jgraph/drawio"
         }
       ],
       "properties": [
@@ -576,8 +576,8 @@
       "copyright": "Copyright (c) 2014 Burtsev Alexey",
       "externalReferences": [
         {
-          "url": "https://github.com/Burtsev-Alexey/net-object-deep-copy",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/Burtsev-Alexey/net-object-deep-copy"
         }
       ],
       "properties": [
@@ -606,8 +606,8 @@
       "scope": "required",
       "externalReferences": [
         {
-          "url": "https://github.com/jgraph/drawio",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/jgraph/drawio"
         }
       ],
       "properties": [
@@ -640,8 +640,8 @@
       "purl": "pkg:npm/pako@2.2.0",
       "externalReferences": [
         {
-          "url": "https://github.com/nodeca/pako",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/nodeca/pako"
         }
       ],
       "properties": [
@@ -679,8 +679,8 @@
       "purl": "pkg:npm/roughjs",
       "externalReferences": [
         {
-          "url": "https://github.com/rough-stuff/rough",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/rough-stuff/rough"
         }
       ],
       "properties": [
@@ -719,8 +719,8 @@
       "purl": "pkg:npm/spin.js@2.0.0",
       "externalReferences": [
         {
-          "url": "https://github.com/fgnass/spin.js",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/fgnass/spin.js"
         }
       ],
       "properties": [
@@ -758,8 +758,8 @@
       "purl": "pkg:npm/webcola",
       "externalReferences": [
         {
-          "url": "https://github.com/tgdwyer/WebCola",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/tgdwyer/WebCola"
         }
       ],
       "properties": [
@@ -796,8 +796,8 @@
       ],
       "externalReferences": [
         {
-          "url": "https://anglesharp.github.io/",
-          "type": "website"
+          "type": "website",
+          "url": "https://anglesharp.github.io/"
         }
       ],
       "properties": [
@@ -831,8 +831,8 @@
       "copyright": "Egil Hansen",
       "externalReferences": [
         {
-          "url": "https://anglesharp.github.io/",
-          "type": "website"
+          "type": "website",
+          "url": "https://anglesharp.github.io/"
         }
       ],
       "properties": [
@@ -866,8 +866,8 @@
       "copyright": "Copyright 2013-2026, AngleSharp.",
       "externalReferences": [
         {
-          "url": "https://anglesharp.github.io/",
-          "type": "website"
+          "type": "website",
+          "url": "https://anglesharp.github.io/"
         }
       ],
       "properties": [
@@ -901,8 +901,8 @@
       "copyright": "Egil Hansen",
       "externalReferences": [
         {
-          "url": "https://bunit.egilhansen.com/",
-          "type": "website"
+          "type": "website",
+          "url": "https://bunit.egilhansen.com/"
         }
       ],
       "properties": [
@@ -936,8 +936,8 @@
       "copyright": "Copyright (c) .NET Foundation and Contributors",
       "externalReferences": [
         {
-          "url": "https://github.com/Humanizr/Humanizer",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/Humanizr/Humanizer"
         }
       ],
       "properties": [
@@ -971,8 +971,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1006,8 +1006,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1041,8 +1041,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1076,8 +1076,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1111,8 +1111,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1146,8 +1146,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1181,8 +1181,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1216,8 +1216,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1251,8 +1251,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1286,8 +1286,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1321,8 +1321,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1356,8 +1356,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1391,8 +1391,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1426,8 +1426,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1461,8 +1461,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1496,8 +1496,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1531,8 +1531,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1566,8 +1566,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1601,8 +1601,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1636,8 +1636,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1671,8 +1671,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1706,8 +1706,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1741,8 +1741,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1776,8 +1776,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1811,8 +1811,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1846,8 +1846,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -1881,8 +1881,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -1916,8 +1916,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "http://go.microsoft.com/fwlink/?LinkId=624683",
-          "type": "website"
+          "type": "website",
+          "url": "http://go.microsoft.com/fwlink/?LinkId=624683"
         }
       ],
       "properties": [
@@ -1951,8 +1951,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://github.com/dotnet/roslyn-analyzers",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/dotnet/roslyn-analyzers"
         }
       ],
       "properties": [
@@ -1986,8 +1986,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://github.com/dotnet/roslyn",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/dotnet/roslyn"
         }
       ],
       "properties": [
@@ -2021,8 +2021,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://github.com/dotnet/roslyn",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/dotnet/roslyn"
         }
       ],
       "properties": [
@@ -2056,8 +2056,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://github.com/dotnet/roslyn",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/dotnet/roslyn"
         }
       ],
       "properties": [
@@ -2091,8 +2091,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://github.com/dotnet/roslyn",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/dotnet/roslyn"
         }
       ],
       "properties": [
@@ -2126,8 +2126,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://github.com/dotnet/roslyn",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/dotnet/roslyn"
         }
       ],
       "properties": [
@@ -2161,8 +2161,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://github.com/microsoft/vstest",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/microsoft/vstest"
         }
       ],
       "properties": [
@@ -2196,8 +2196,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://docs.microsoft.com/dotnet/standard/data/sqlite/",
-          "type": "website"
+          "type": "website",
+          "url": "https://docs.microsoft.com/dotnet/standard/data/sqlite/"
         }
       ],
       "properties": [
@@ -2231,8 +2231,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://docs.microsoft.com/dotnet/standard/data/sqlite/",
-          "type": "website"
+          "type": "website",
+          "url": "https://docs.microsoft.com/dotnet/standard/data/sqlite/"
         }
       ],
       "properties": [
@@ -2266,8 +2266,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://docs.microsoft.com/ef/core/",
-          "type": "website"
+          "type": "website",
+          "url": "https://docs.microsoft.com/ef/core/"
         }
       ],
       "properties": [
@@ -2301,8 +2301,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://docs.microsoft.com/ef/core/",
-          "type": "website"
+          "type": "website",
+          "url": "https://docs.microsoft.com/ef/core/"
         }
       ],
       "properties": [
@@ -2336,8 +2336,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://docs.microsoft.com/ef/core/",
-          "type": "website"
+          "type": "website",
+          "url": "https://docs.microsoft.com/ef/core/"
         }
       ],
       "properties": [
@@ -2371,8 +2371,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://docs.microsoft.com/ef/core/",
-          "type": "website"
+          "type": "website",
+          "url": "https://docs.microsoft.com/ef/core/"
         }
       ],
       "properties": [
@@ -2406,8 +2406,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://docs.microsoft.com/ef/core/",
-          "type": "website"
+          "type": "website",
+          "url": "https://docs.microsoft.com/ef/core/"
         }
       ],
       "properties": [
@@ -2441,8 +2441,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://docs.microsoft.com/ef/core/",
-          "type": "website"
+          "type": "website",
+          "url": "https://docs.microsoft.com/ef/core/"
         }
       ],
       "properties": [
@@ -2476,8 +2476,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://docs.microsoft.com/ef/core/",
-          "type": "website"
+          "type": "website",
+          "url": "https://docs.microsoft.com/ef/core/"
         }
       ],
       "properties": [
@@ -2511,8 +2511,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -2546,8 +2546,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -2581,8 +2581,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -2616,8 +2616,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -2651,8 +2651,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -2686,8 +2686,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -2721,8 +2721,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -2756,8 +2756,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -2791,8 +2791,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -2826,8 +2826,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -2861,8 +2861,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -2896,8 +2896,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -2931,8 +2931,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -2966,8 +2966,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3001,8 +3001,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3036,8 +3036,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3071,8 +3071,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3106,8 +3106,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3141,8 +3141,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3176,8 +3176,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3211,8 +3211,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3246,8 +3246,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3281,8 +3281,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3316,8 +3316,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3351,8 +3351,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3386,8 +3386,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3421,8 +3421,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3456,8 +3456,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3491,8 +3491,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3526,8 +3526,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3561,8 +3561,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3596,8 +3596,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -3631,8 +3631,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3666,8 +3666,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3701,8 +3701,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3736,8 +3736,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3771,8 +3771,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3806,8 +3806,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3841,8 +3841,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3876,8 +3876,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3911,8 +3911,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3946,8 +3946,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -3981,8 +3981,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -4016,8 +4016,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -4051,8 +4051,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -4086,8 +4086,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -4121,8 +4121,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -4156,8 +4156,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -4191,8 +4191,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -4226,8 +4226,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -4261,8 +4261,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -4296,8 +4296,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -4331,8 +4331,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -4366,8 +4366,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -4401,8 +4401,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -4436,8 +4436,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -4471,8 +4471,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -4506,8 +4506,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -4541,8 +4541,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -4576,8 +4576,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -4611,8 +4611,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -4646,8 +4646,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -4681,8 +4681,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -4716,8 +4716,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://github.com/microsoft/fluentui-blazor",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/microsoft/fluentui-blazor"
         }
       ],
       "properties": [
@@ -4751,8 +4751,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -4786,8 +4786,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -4821,8 +4821,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://asp.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://asp.net/"
         }
       ],
       "properties": [
@@ -4856,8 +4856,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://github.com/microsoft/vstest",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/microsoft/vstest"
         }
       ],
       "properties": [
@@ -4891,8 +4891,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://github.com/Microsoft/OpenAPI.NET",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/Microsoft/OpenAPI.NET"
         }
       ],
       "properties": [
@@ -4926,8 +4926,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://github.com/microsoft/playwright-dotnet",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/microsoft/playwright-dotnet"
         }
       ],
       "properties": [
@@ -4961,8 +4961,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://github.com/microsoft/vstest",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/microsoft/vstest"
         }
       ],
       "properties": [
@@ -4996,8 +4996,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://github.com/microsoft/vstest",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/microsoft/vstest"
         }
       ],
       "properties": [
@@ -5031,8 +5031,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://github.com/microsoft/vs-solutionpersistence",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/microsoft/vs-solutionpersistence"
         }
       ],
       "properties": [
@@ -5065,8 +5065,8 @@
       ],
       "externalReferences": [
         {
-          "url": "https://github.com/mono/t4",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/mono/t4"
         }
       ],
       "properties": [
@@ -5100,8 +5100,8 @@
       "copyright": "Copyright © James Newton-King 2008",
       "externalReferences": [
         {
-          "url": "https://www.newtonsoft.com/json",
-          "type": "website"
+          "type": "website",
+          "url": "https://www.newtonsoft.com/json"
         }
       ],
       "properties": [
@@ -5251,8 +5251,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -5286,8 +5286,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://github.com/dotnet/runtime",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/dotnet/runtime"
         }
       ],
       "properties": [
@@ -5321,8 +5321,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -5356,8 +5356,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -5391,8 +5391,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -5426,8 +5426,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -5461,8 +5461,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -5496,8 +5496,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -5531,8 +5531,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -5566,8 +5566,8 @@
       "copyright": "© Microsoft Corporation. All rights reserved.",
       "externalReferences": [
         {
-          "url": "https://dot.net/",
-          "type": "website"
+          "type": "website",
+          "url": "https://dot.net/"
         }
       ],
       "properties": [
@@ -5603,8 +5603,8 @@
       ],
       "externalReferences": [
         {
-          "url": "https://github.com/xunit/xunit",
-          "type": "website"
+          "type": "website",
+          "url": "https://github.com/xunit/xunit"
         }
       ],
       "properties": [

@@ -79,6 +79,56 @@ public sealed class EngineEventSinkTest : IDisposable
     }
 
     [Fact]
+    public async Task AnUpdateAndARemovalAreAnnouncedOnlyOnceSaved()
+    {
+        await using var context = _store.CreateContext();
+        var row = new Persistence.Entities.ExtractionQueueItem { LoadUnitId = 7, SourceItemId = Guid.NewGuid() };
+        await ExtractionQueueStore.UpsertAsync(context, row);
+        var command = new Persistence.Entities.CommandRecord { CommandType = 1001, Date = DateTime.Now };
+        await CommandStore.UpsertAsync(context, command);
+        await context.SaveChangesAsync();
+        _sink.Calls.Clear();
+
+        await ExtractionQueueStore.SetProcessedAsync(context, row.Id, true);
+        await CommandStore.SetStatusAsync(context, command.Id, Command.StatusTypes.Running, null);
+        Assert.Empty(_sink.Calls);
+        await context.SaveChangesAsync();
+        Assert.Equal([$"queue:Updated:{row.Id}", $"command:{command.Id}"], _sink.Calls);
+
+        _sink.Calls.Clear();
+        await ExtractionQueueStore.DeleteAsync(context, row.Id);
+        Assert.Empty(_sink.Calls);
+        await context.SaveChangesAsync();
+        Assert.Equal([$"queue:Removed:{row.Id}"], _sink.Calls);
+    }
+
+    [Fact]
+    public async Task AnUpdateWhoseSaveFailsIsNeverAnnounced()
+    {
+        long id;
+        await using (var first = _store.CreateContext())
+        {
+            var row = new Persistence.Entities.ExtractionQueueItem { LoadUnitId = 7, SourceItemId = Guid.NewGuid() };
+            await ExtractionQueueStore.UpsertAsync(first, row);
+            await first.SaveChangesAsync();
+            id = row.Id;
+        }
+
+        _sink.Calls.Clear();
+        await using var context = _store.CreateContext();
+        await ExtractionQueueStore.SetProcessedAsync(context, id, true);
+        // Somebody else removes the row in the meantime: the update touches nothing and the save fails.
+        await using (var other = _store.CreateContext())
+        {
+            await ExtractionQueueStore.DeleteAsync(other, id);
+            await other.SaveChangesAsync();
+        }
+
+        await Assert.ThrowsAnyAsync<Microsoft.EntityFrameworkCore.DbUpdateException>(() => context.SaveChangesAsync());
+        Assert.Equal([$"queue:Removed:{id}"], _sink.Calls);
+    }
+
+    [Fact]
     public void AMissionAddedToTheEngineReachesTheSinkAsStarted()
     {
         var mission = new PathMission(Guid.NewGuid()) { OperationType = OperationTypes.Outbound };

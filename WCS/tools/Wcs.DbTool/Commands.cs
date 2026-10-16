@@ -154,6 +154,8 @@ internal static class VerifyCommand
         output.WriteLine($"Verify {path}");
         var allOk = true;
         var manifest = BackupManifest.TryRead(path);
+        if (manifest?.Problem() is { } problem)
+            return BackupCommand.Fail(output, $"{BackupManifest.FileName}: {problem}");
         if (manifest != null)
             allOk &= CheckManifest(manifest, path, output);
 
@@ -217,6 +219,8 @@ internal static class RestoreCommand
         var manifest = BackupManifest.TryRead(backupDirectory);
         if (manifest == null)
             return BackupCommand.Fail(output, $"{backupDirectory} has no {BackupManifest.FileName}: restore takes a folder written by 'backup'");
+        if (manifest.Problem() is { } problem)
+            return BackupCommand.Fail(output, $"{BackupManifest.FileName}: {problem}; nothing was changed");
         if (manifest.Files.All(f => !string.Equals(f.Name, WcsDatabase.OperationalFileName, StringComparison.OrdinalIgnoreCase)))
             return BackupCommand.Fail(output, $"the backup has no {WcsDatabase.OperationalFileName}");
 
@@ -350,6 +354,28 @@ internal sealed class BackupManifest
     {
         var path = Path.Combine(directory, FileName);
         return File.Exists(path) ? JsonSerializer.Deserialize<BackupManifest>(File.ReadAllText(path), Json) : null;
+    }
+
+    /// <summary>
+    /// Why the manifest cannot be trusted, or <c>null</c>. Its file names become paths in the backup
+    /// and in the data folder: each one must be the bare name of a WCS database, listed once, so that
+    /// a manifest written by hand cannot reach a file outside those two folders.
+    /// </summary>
+    public string? Problem()
+    {
+        if (Format != 1) return $"format {Format} is not known to this tool (expected 1)";
+        if (Files is null || Files.Count == 0) return "it lists no file";
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in Files)
+        {
+            if (file is null || string.IsNullOrWhiteSpace(file.Name)) return "a file has no name";
+            if (Path.GetFileName(file.Name) != file.Name || file.Name.IndexOfAny(['/', '\\', ':']) >= 0)
+                return $"'{file.Name}' is not a bare file name";
+            if (WcsDatabaseFiles.KindOf(file.Name) == null) return $"'{file.Name}' is not a WCS database name";
+            if (!seen.Add(file.Name)) return $"'{file.Name}' is listed twice";
+            if (string.IsNullOrWhiteSpace(file.Sha256)) return $"'{file.Name}' has no sha256";
+        }
+        return null;
     }
 }
 

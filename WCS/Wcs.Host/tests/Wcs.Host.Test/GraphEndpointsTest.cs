@@ -200,6 +200,37 @@ public sealed class GraphEndpointsTest(HostFixture fixture) : IDisposable
     }
 
     [Theory]
+    [InlineData("""{"items":null,"geometries":[],"junctions":[],"doorMappings":[]}""")]
+    [InlineData("""{"items":[null],"geometries":[],"junctions":[],"doorMappings":[]}""")]
+    [InlineData("""{"items":[],"geometries":null,"junctions":[],"doorMappings":[]}""")]
+    [InlineData("""{"items":[],"geometries":[],"junctions":null,"doorMappings":[]}""")]
+    [InlineData("""{"items":[],"geometries":[],"junctions":[],"doorMappings":null}""")]
+    [InlineData("""{"items":[],"geometries":[],"junctions":[],"doorMappings":[],"plcConnections":[null]}""")]
+    public async Task PutRejectsNullListsAsABadRequest(string json)
+    {
+        var client = Client();
+        using var _ = fixture.GrantEditPermission(client);
+        Navigator.NavStatus = NavigatorStatusTypes.Stop;
+
+        var response = await client.PutAsync(Graph, new StringContent(json, Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ABatchOfGeometriesWithANullEntryIsABadRequest()
+    {
+        var client = Client();
+        using var _ = fixture.GrantEditPermission(client);
+        Navigator.NavStatus = NavigatorStatusTypes.Stop;
+
+        var response = await client.PutAsync(ApiRoutes.Prefix + ApiRoutes.ItemsGeometry,
+            new StringContent("[null]", Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Theory]
     [InlineData("zero")]
     [InlineData("negative")]
     [InlineData("duplicate")]
