@@ -10,6 +10,11 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    ignore:
+      # FluentUI 5 is a major version that breaks the web editor (its browser tests fail with it,
+      # 16/10/2026): the move to 5 is its own piece of work, in the queue of the internal repository.
+      - dependency-name: "Microsoft.FluentUI.AspNetCore.Components"
+        update-types: ["version-update:semver-major"]
     groups:
       # First match wins: the test tooling before the Microsoft.* group, which would take
       # Microsoft.NET.Test.Sdk and Microsoft.Playwright too.
