@@ -105,6 +105,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $prerelease = if ($env:WCS_VERSION.Contains('-')) { @('--prerelease') } else { @() }
-          $files = Get-ChildItem -LiteralPath release/dist -File | ForEach-Object FullName
+          # @() around both: a single value would come back as a string, and splatting a string
+          # passes it to gh one character at a time ("no matches found for `-`").
+          $prerelease = @(if ($env:WCS_VERSION.Contains('-')) { '--prerelease' })
+          $files = @(Get-ChildItem -LiteralPath release/dist -File | ForEach-Object FullName)
           gh release create $env:GITHUB_REF_NAME @files --draft --verify-tag --title "WCS $env:WCS_VERSION" --notes-file release/notes.md @prerelease

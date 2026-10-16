@@ -54,6 +54,10 @@ a patch never breaks what that page lists; a minor may, and says so in this file
 - `Wcs.DbTool`: `verify` and `restore` refuse a manifest whose file names are not bare WCS
   database names, are listed twice, or whose format is unknown, before touching any file.
 
+- Release workflow: the `--prerelease` switch and a single release file reach `gh` whole. They
+  were splatted one character at a time, so the draft release of `0.1.0-preview.1` was not
+  created (it was created by hand from the same tag).
+
 ### Changed
 
 - Host: a warning at startup when `Wcs:ApiKey` or `Wcs:ReadOnlyApiKey` is shorter than 32
