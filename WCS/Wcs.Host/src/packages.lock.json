@@ -45,6 +45,28 @@
         "resolved": "10.0.13",
         "contentHash": "zfCQ0/J/rATKKcpwcpQYFz8sxhvrzgGyblsATcfxqSCibRkPFmDZcFmfD0UfLi38q+VDMpwEVuzOCO3TpRy99Q=="
       },
+      "Microsoft.CodeAnalysis.Analyzers": {
+        "type": "Transitive",
+        "resolved": "5.9.0-1.26328.17",
+        "contentHash": "HP9NNk8ZjOSI2hgOyXnQg+kv7/X837Vr2nAlXiGAtqtYnYKjRRa1UmQFr8KFs5ynGYKqfbb8zB9APoWjiAGdMg=="
+      },
+      "Microsoft.CodeAnalysis.Common": {
+        "type": "Transitive",
+        "resolved": "5.9.0",
+        "contentHash": "IYaIaUWdIx539AReKZOBEqTskFusZfCh/wFSPilDvCn5Say8MegLw2LONcSIcVy+v3Gzv53qYBspgvBGSErfbQ==",
+        "dependencies": {
+          "Microsoft.CodeAnalysis.Analyzers": "5.9.0-1.26328.17"
+        }
+      },
+      "Microsoft.CodeAnalysis.CSharp": {
+        "type": "Transitive",
+        "resolved": "5.9.0",
+        "contentHash": "7JGDA0UT1+h7k9ZcA3rF4eFC8+QPq1xyYaXxag4p8r/zzPurEJxvdi7aM+MRL/SfP7XADXpWF/pl/eUYXOq/ww==",
+        "dependencies": {
+          "Microsoft.CodeAnalysis.Analyzers": "5.9.0-1.26328.17",
+          "Microsoft.CodeAnalysis.Common": "[5.9.0]"
+        }
+      },
       "Microsoft.Data.Sqlite.Core": {
         "type": "Transitive",
         "resolved": "10.0.13",
@@ -109,8 +131,8 @@
       },
       "Microsoft.FluentUI.AspNetCore.Components": {
         "type": "Transitive",
-        "resolved": "4.14.4",
-        "contentHash": "isJiT1YGAr6xUaVsfB/sfAFs69HDj3JMTn7pwi26/PUF2iOn8J+fjwSOHOVZ2+AhmA9f/OYLdRadjQBav9nJww=="
+        "resolved": "4.14.5",
+        "contentHash": "7ZgWTBA5sBMG9wzTAIoP6la2v7ZM48UU2b2Hx4YbuITtgHMmiLLgk0atG1l+beOnaiief1Ao9HfuQu6uWa4FUA=="
       },
       "Microsoft.OpenApi": {
         "type": "Transitive",
@@ -191,6 +213,7 @@
         "dependencies": {
           "Helper": "[0.1.0, )",
           "Log.Interface": "[0.1.0, )",
+          "Microsoft.CodeAnalysis.CSharp": "[5.9.0, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.13, )",
           "Wcs.Common": "[0.1.0, )",
           "Wcs.Connection.Interface": "[0.1.0, )",
@@ -201,7 +224,7 @@
       "wcs.webeditor": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.FluentUI.AspNetCore.Components": "[4.14.4, )",
+          "Microsoft.FluentUI.AspNetCore.Components": "[4.14.5, )",
           "Wcs.Api.Client": "[0.1.0, )",
           "Wcs.Api.Contracts": "[0.1.0, )"
         }
