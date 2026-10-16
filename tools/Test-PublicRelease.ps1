@@ -50,7 +50,7 @@
     pwsh -File tools/Test-PublicRelease.ps1
 
 .EXAMPLE
-    pwsh -File tools/Test-PublicRelease.ps1 -ReleaseTag v0.1.0-preview.1 -IncludeBrowserTests -IncludeReleaseDryRun
+    pwsh -File tools/Test-PublicRelease.ps1 -ReleaseTag v0.1.0 -IncludeBrowserTests -IncludeReleaseDryRun
 
 .EXAMPLE
     pwsh -File tools/Test-PublicRelease.ps1 -SelfTest

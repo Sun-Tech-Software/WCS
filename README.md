@@ -6,9 +6,10 @@
 > emergency stops or interlocks, and machine safety must not depend on it. Read
 > [SAFETY.md](SAFETY.md) before connecting it to any machine.
 >
-> **Preview.** This is an initial public preview. Its first version, `0.1.0-preview.1`, is
-> **source-only**: build it from this repository; no NuGet packages are published yet
-> ([using the libraries](#using-the-libraries-from-your-code)). Read the
+> **Version 0.1.0.** The first release after the public preview. It is **source-only**: build it
+> from this repository; no NuGet packages are published yet
+> ([using the libraries](#using-the-libraries-from-your-code)). Before 1.0 a minor version may
+> change things in incompatible ways ([versioning](docs/versioning-and-compatibility.md)). Read the
 > [known limitations](docs/known-limitations.md) before planning a production installation.
 
 The warehouse management system (WMS) reasons about goods: codes, lots, orders, stock. The
@@ -129,16 +130,16 @@ check that the working tree is still clean afterwards.
 
 ## Using the libraries from your code
 
-The preview is distributed **as source only**. The libraries a WMS adapter or a client program
+The WCS is distributed **as source only**. The libraries a WMS adapter or a client program
 uses (`Wcs.Wms.Contracts`, `Wcs.Api.Contracts`, `Wcs.Api.Client`, `Wcs.Common`,
 `Wcs.Connection.Interface`) are **not published on NuGet yet**; packages will come with a later
 release. Until then the supported way is a `ProjectReference` to a copy of this repository **at a
 release tag**, never at a moving branch:
 
-- a clone checked out at a tag, next to your solution: `git clone --branch v0.1.0-preview.1 https://github.com/Sun-Tech-Software/WCS.git`;
+- a clone checked out at a tag, next to your solution: `git clone --branch v0.1.0 https://github.com/Sun-Tech-Software/WCS.git`;
 - or a git submodule of your repository, pinned to a tag:
   `git submodule add https://github.com/Sun-Tech-Software/WCS.git external/WCS`, then
-  `git -C external/WCS checkout v0.1.0-preview.1` and commit the submodule.
+  `git -C external/WCS checkout v0.1.0` and commit the submodule.
 
 Then reference the projects you need, for example
 `<ProjectReference Include="external\WCS\WCS\Wcs.Api.Client\src\Wcs.Api.Client.csproj" />`. Moving to
@@ -167,7 +168,7 @@ to put this WCS under it, with real, runnable examples.
 | [Security and threat model](docs/integration/security-and-threat-model.md) | the expected network, keys and their rotation, TLS, logging and audit, threats |
 | [Backup, restore and disaster recovery](docs/integration/backup-restore-and-disaster-recovery.md) | backing up and restoring the data, recovering a host |
 | [Production readiness checklist](docs/integration/production-readiness-checklist.md) | from the test bench to production |
-| [Known limitations](docs/known-limitations.md) | what the preview does not do yet |
+| [Known limitations](docs/known-limitations.md) | what the WCS does not do yet |
 | [Supported platforms](docs/integration/supported-platforms.md) | what is tested where: Windows, Linux, x64, ARM64, browsers, .NET |
 | [Performance and sizing](docs/integration/performance-and-sizing.md) | what drives CPU, memory and disk, and how to measure your plant |
 | [Monitoring and alerting](docs/integration/monitoring-and-alerting.md) | health checks and scripts with exit codes for your monitoring system |

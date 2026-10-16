@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:06528f79-016d-40cc-8c81-d1fa28269fe8",
+  "serialNumber": "urn:uuid:bf96b938-5909-401e-bc18-48ebe6bd8989",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-10-16T10:51:24Z",
+    "timestamp": "2026-10-16T11:12:44Z",
     "tools": {
       "components": [
         {
@@ -18,7 +18,7 @@
       "type": "application",
       "bom-ref": "sun-tech-wcs",
       "name": "Sun Tech WCS",
-      "version": "0.1.0-preview.1",
+      "version": "0.1.0",
       "supplier": {
         "name": "Sun Tech Srl",
         "url": [

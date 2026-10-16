@@ -7,7 +7,7 @@ Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## How contributions are handled
 
-- The repository is an **initial public preview**, maintained by Sun Tech Srl.
+- The repository is maintained by Sun Tech Srl; its current version is `0.1.0`.
 - Issues and pull requests are welcome. They are reviewed, accepted and merged **at Sun Tech's
   discretion**: a pull request may be declined, changed before merging, or left open, and there is no
   guaranteed response time ([SUPPORT.md](SUPPORT.md)).

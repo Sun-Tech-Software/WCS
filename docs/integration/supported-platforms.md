@@ -1,7 +1,7 @@
 # Supported platforms
 
 Which operating systems, processor architectures, browsers and .NET SDK each part of the WCS has been
-run on for `0.1.0-preview.1`, and with what evidence. This page states what was **verified**; it is
+run on for `0.1.0`, and with what evidence. This page states what was **verified**; it is
 not a promise of support. **Sun Tech has not yet published an official support matrix**: until it
 does, nothing here is "officially supported", and the open points are listed in the
 [publication checklist](../publication-checklist.md).

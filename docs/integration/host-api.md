@@ -382,9 +382,9 @@ then add the reference to `WcsClientDemo.csproj` (adjust the relative path):
 
 Here `..\WCS` is the clone, next to the `WcsClientDemo` folder.
 
-**The preview is source-only: `Wcs.Api.Client` is not on NuGet yet**, and packages will come with a
+**The WCS is source-only: `Wcs.Api.Client` is not on NuGet yet**, and packages will come with a
 later release. Clone the repository **at the release tag** of the host you talk to
-(`git clone --branch v0.1.0-preview.1 https://github.com/Sun-Tech-Software/WCS.git WCS`), or add it to
+(`git clone --branch v0.1.0 https://github.com/Sun-Tech-Software/WCS.git WCS`), or add it to
 your repository as a git submodule pinned to that tag, and reference the project from there
 ([README](../../README.md#using-the-libraries-from-your-code)). To upgrade, move the clone or the
 submodule to the new tag and read [what may change](../versioning-and-compatibility.md#host-api-and-net-client).

@@ -10,6 +10,14 @@ released, and how its section here becomes the text of the GitHub release, is in
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.0] - 2026-10-16
+
+The first release without the preview suffix. It is distributed as source, like the preview, and the
+rules of [versioning and compatibility](docs/versioning-and-compatibility.md#before-10) apply from here:
+a patch never breaks what that page lists; a minor may, and says so in this file.
+
 ### Added
 
 - WMS contract: two **optional** routes, 44 and 45; a WMS that does not offer them answers `404` or
@@ -45,6 +53,10 @@ released, and how its section here becomes the text of the GitHub release, is in
   is built; a successful response with a `null` body is a `WcsApiException` naming the request.
 - `Wcs.DbTool`: `verify` and `restore` refuse a manifest whose file names are not bare WCS
   database names, are listed twice, or whose format is unknown, before touching any file.
+
+- Release workflow: the `--prerelease` switch and a single release file reach `gh` whole. They
+  were splatted one character at a time, so the draft release of `0.1.0-preview.1` was not
+  created (it was created by hand from the same tag).
 
 ### Changed
 
@@ -119,5 +131,6 @@ internal demo scripts.
 
 See [docs/known-limitations.md](docs/known-limitations.md).
 
-[Unreleased]: https://github.com/Sun-Tech-Software/WCS/compare/v0.1.0-preview.1...HEAD
+[Unreleased]: https://github.com/Sun-Tech-Software/WCS/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Sun-Tech-Software/WCS/releases/tag/v0.1.0
 [0.1.0-preview.1]: https://github.com/Sun-Tech-Software/WCS/releases/tag/v0.1.0-preview.1

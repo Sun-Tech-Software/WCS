@@ -129,13 +129,13 @@
       "log.interface": {
         "type": "Project",
         "dependencies": {
-          "Helper": "[0.1.0-preview.1, )"
+          "Helper": "[0.1.0, )"
         }
       },
       "log.windows": {
         "type": "Project",
         "dependencies": {
-          "Log.Interface": "[0.1.0-preview.1, )",
+          "Log.Interface": "[0.1.0, )",
           "System.Diagnostics.EventLog": "[10.0.13, )"
         }
       },
@@ -143,13 +143,13 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.AspNetCore.SignalR.Client": "[10.0.13, )",
-          "Wcs.Api.Contracts": "[0.1.0-preview.1, )"
+          "Wcs.Api.Contracts": "[0.1.0, )"
         }
       },
       "wcs.api.contracts": {
         "type": "Project",
         "dependencies": {
-          "Wcs.Common": "[0.1.0-preview.1, )"
+          "Wcs.Common": "[0.1.0, )"
         }
       },
       "wcs.common": {

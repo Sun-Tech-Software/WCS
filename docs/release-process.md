@@ -36,7 +36,7 @@ assemblies (`dotnet Wcs.Host.dll`). Framework-dependent because runtime security
 WCS through the runtime's own updates, without a new WCS release for each of them, and because the
 zips stay small.
 
-**No NuGet packages are published.** The preview is distributed as source: the libraries are
+**No NuGet packages are published.** The WCS is distributed as source: the libraries are
 referenced from a clone or a submodule at the release tag
 ([README](../README.md#using-the-libraries-from-your-code)). CI does run `dotnet pack` on every change,
 to keep the projects packable for when packages are published.
@@ -72,8 +72,8 @@ On a branch, through a pull request to `main` like any other change:
 From an up-to-date `main`, on the merged commit:
 
 ```powershell
-git tag -a v0.1.0-preview.1 -m "WCS 0.1.0-preview.1"
-git push origin v0.1.0-preview.1
+git tag -a v0.1.0 -m "WCS 0.1.0"
+git push origin v0.1.0
 ```
 
 Pushing the tag starts the `Release` workflow. It stops, and creates nothing, when:

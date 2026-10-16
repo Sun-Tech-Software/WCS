@@ -16,10 +16,11 @@ The WCS follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html)
   patch versions of the same major).
 - **Written in one place**: the `Version` property of `Directory.Build.props` at the root of the
   repository. Every project takes it from there; a project file never sets its own.
-- **Where it shows**: the release tag (`v0.1.0-preview.1`), the release and its files, the package
+- **Where it shows**: the release tag (`v0.1.0`), the release and its files, the package
   version when the projects are packed, and the assembly version `MAJOR.MINOR.PATCH.0`, which the host
-  reports in the `version` field of `GET /api/v1/status` (`0.1.0.0` for `0.1.0-preview.1`).
-- **The first version is `0.1.0-preview.1`**, a source-only preview: there are no NuGet packages, and
+  reports in the `version` field of `GET /api/v1/status` (`0.1.0.0` for `0.1.0`, as for its previews).
+- **The first public version was a preview of `0.1.0`**; `0.1.0` is the first release without the
+  preview suffix. It is source-only: there are no NuGet packages, and
   the libraries are referenced from a clone or a submodule at a release tag
   ([README](../README.md#using-the-libraries-from-your-code)).
 

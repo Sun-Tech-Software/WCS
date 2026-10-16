@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-The repository is an **initial public preview**; its first version is `0.1.0-preview.1`
+The current version is `0.1.0`, the first release after the public preview
 ([versioning](docs/versioning-and-compatibility.md)). Security fixes are made on the default branch
 (`main`) and come out in the next version; earlier versions are not patched. Older commits, forks and
 copies modified by others are not supported.
@@ -62,7 +62,7 @@ Out of scope:
   ([THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md));
 - installations that ignore the documented requirements, for example a host exposed to the Internet,
   `Wcs:AllowInsecureRemoteHttp` on an untrusted network, or keys stored in tracked files;
-- the documented limits of the preview, such as shared keys without per-operator identity and the
+- the documented limits of the WCS, such as shared keys without per-operator identity and the
   absence of rate limiting ([known limitations](docs/known-limitations.md)): suggestions to improve
   them are welcome as ordinary issues.
 

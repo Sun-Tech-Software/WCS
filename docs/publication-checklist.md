@@ -1,7 +1,7 @@
 # Publication checklist
 
 The one list of what must be true, decided or tested before the WCS is published as open source and
-`0.1.0-preview.1` is released, and who can do it. It complements the [release process](release-process.md)
+its first version is released, and who can do it. It complements the [release process](release-process.md)
 (how any version is tagged and built) with what only the **first** publication needs.
 
 Each item belongs to one group:
@@ -35,10 +35,10 @@ to it. Nothing here is done by writing it in this file.
       examples in line with the code ([contracts](contracts/README.md)).
 - [ ] **SBOM**: `sbom/wcs.cdx.json` matches the restored packages (`sbom/Test-WcsSbom.ps1`).
 - [ ] **Vulnerable packages**: none, direct or transitive (CI job `vulnerable-packages`).
-- [ ] **Tag and version**: the tag is `v0.1.0-preview.1` and matches `Version` in
+- [ ] **Tag and version**: the tag is `vX.Y.Z` and matches `Version` in
       `Directory.Build.props`; the `Release` workflow refuses anything else.
 - [ ] **Changelog**: [CHANGELOG.md](../CHANGELOG.md) has the dated
-      `## [0.1.0-preview.1] - 2026-10-15` section; the `Release` workflow refuses an undated or empty
+      `## [X.Y.Z] - YYYY-MM-DD` section; the `Release` workflow refuses an undated or empty
       section.
 - [ ] **Release assets and checksums**: the `Release` workflow builds the three zips, the SBOM and
       `SHA256SUMS.txt`, starts the applications from the extracted archives, and attaches them to a draft release.
@@ -142,10 +142,10 @@ The loopback driver proves that the WCS's logic runs; it proves nothing about ma
 - [ ] **Publication date** and who announces it.
 - [ ] **What Sun Tech offers around the open-source WCS**: support terms, the proprietary driver's
       licence and price, integration services, and whether any of it is mentioned in the README.
-- [ ] **Support commitment for the preview**: whether issues get a response time, and how long the
-      preview line is maintained.
+- [ ] **Support commitment**: whether issues get a response time, and how long each version line is
+      maintained.
 - [ ] **NuGet packages**: whether and when the contracts and clients are published as packages, under
-      which owner (today the preview is source-only).
+      which owner (today the WCS is source-only).
 - [ ] **Signed binaries**: whether releases are code-signed (today they are not, and the checksums do
       not prove who built them).
 - [ ] **Trademarks**: use of the names "Sun Tech" and "WCS" by forks, and any trademark notice.

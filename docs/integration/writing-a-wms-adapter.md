@@ -30,10 +30,10 @@ dependencies) for the route constants and the request and answer records, as the
 </ItemGroup>
 ```
 
-**The preview is source-only: `Wcs.Wms.Contracts` is not on NuGet yet**, and packages will come with a
+**The WCS is source-only: `Wcs.Wms.Contracts` is not on NuGet yet**, and packages will come with a
 later release. Reference the project from a copy of this repository **at a release tag** (the version
 your WCS host runs), never at a moving branch: a clone checked out at the tag
-(`git clone --branch v0.1.0-preview.1 https://github.com/Sun-Tech-Software/WCS.git`) or a git
+(`git clone --branch v0.1.0 https://github.com/Sun-Tech-Software/WCS.git`) or a git
 submodule of your repository pinned to the tag, with the `ProjectReference` path adjusted to where it
 lies ([README](../../README.md#using-the-libraries-from-your-code)). Moving to a new version is moving
 the clone or the submodule to the new tag, after reading what changed in the

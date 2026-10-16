@@ -20,8 +20,8 @@ body:
     id: version
     attributes:
       label: Version or commit
-      description: The release (for example `0.1.0-preview.1`), or the commit you built from (`git rev-parse --short HEAD`).
-      placeholder: 0.1.0-preview.1 or a1b2c3d
+      description: The release (for example `0.1.0`), or the commit you built from (`git rev-parse --short HEAD`).
+      placeholder: 0.1.0 or a1b2c3d
     validations:
       required: true
 

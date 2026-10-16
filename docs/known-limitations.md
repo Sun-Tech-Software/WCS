@@ -1,8 +1,8 @@
 # Known limitations
 
-This repository is an **initial public preview**. The engine behind it has run real plants, but this
-public form of it (the host, the web editor, the contracts, the sample WMS and the guides) is new: its
-first version is `0.1.0-preview.1`, and before 1.0 a minor version may change it in incompatible ways
+This repository is at version **0.1.0**, the first release after the public preview. The engine behind
+it has run real plants, but this public form of it (the host, the web editor, the contracts, the sample
+WMS and the guides) is new, and before 1.0 a minor version may change it in incompatible ways
 ([versioning and compatibility](versioning-and-compatibility.md)). This page lists what the WCS does not
 do, or does only partly, today. Each point was checked against the code of this repository.
 
@@ -164,7 +164,7 @@ Program against status codes, not texts.
 
 ## Distribution
 
-The preview is distributed as source. No NuGet package of the contracts and clients
+The WCS is distributed as source. No NuGet package of the contracts and clients
 (`Wcs.Wms.Contracts`, `Wcs.Api.Contracts`, `Wcs.Api.Client`, `Wcs.Common`, `Wcs.Connection.Interface`)
 is published yet; they will come with a later release. Until then a WMS adapter, a client program or a
 driver references the projects from a clone of this repository, or a git submodule, checked out at a
