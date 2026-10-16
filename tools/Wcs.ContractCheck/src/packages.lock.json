@@ -624,20 +624,20 @@
       "log.interface": {
         "type": "Project",
         "dependencies": {
-          "Helper": "[0.1.0-preview.1, )"
+          "Helper": "[0.1.0, )"
         }
       },
       "wcs.api.client": {
         "type": "Project",
         "dependencies": {
           "Microsoft.AspNetCore.SignalR.Client": "[10.0.13, )",
-          "Wcs.Api.Contracts": "[0.1.0-preview.1, )"
+          "Wcs.Api.Contracts": "[0.1.0, )"
         }
       },
       "wcs.api.contracts": {
         "type": "Project",
         "dependencies": {
-          "Wcs.Common": "[0.1.0-preview.1, )"
+          "Wcs.Common": "[0.1.0, )"
         }
       },
       "wcs.common": {
@@ -646,25 +646,25 @@
       "wcs.connection.interface": {
         "type": "Project",
         "dependencies": {
-          "Wcs.Common": "[0.1.0-preview.1, )"
+          "Wcs.Common": "[0.1.0, )"
         }
       },
       "wcs.connection.test": {
         "type": "Project",
         "dependencies": {
-          "Wcs.Connection.Interface": "[0.1.0-preview.1, )"
+          "Wcs.Connection.Interface": "[0.1.0, )"
         }
       },
       "wcs.engine": {
         "type": "Project",
         "dependencies": {
-          "Helper": "[0.1.0-preview.1, )",
-          "Log.Interface": "[0.1.0-preview.1, )",
+          "Helper": "[0.1.0, )",
+          "Log.Interface": "[0.1.0, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.12, )",
-          "Wcs.Common": "[0.1.0-preview.1, )",
-          "Wcs.Connection.Interface": "[0.1.0-preview.1, )",
-          "Wcs.Connection.Test": "[0.1.0-preview.1, )",
-          "Wcs.Wms.Contracts": "[0.1.0-preview.1, )"
+          "Wcs.Common": "[0.1.0, )",
+          "Wcs.Connection.Interface": "[0.1.0, )",
+          "Wcs.Connection.Test": "[0.1.0, )",
+          "Wcs.Wms.Contracts": "[0.1.0, )"
         }
       },
       "wcs.host": {
@@ -673,24 +673,24 @@
           "Microsoft.AspNetCore.App.Internal.Assets": "[10.0.12, )",
           "Microsoft.AspNetCore.OpenApi": "[10.0.12, )",
           "Microsoft.Extensions.Hosting.WindowsServices": "[10.0.12, )",
-          "Wcs.Api.Contracts": "[0.1.0-preview.1, )",
-          "Wcs.Engine": "[0.1.0-preview.1, )",
-          "Wcs.WebEditor": "[0.1.0-preview.1, )",
-          "Wcs.Wms.Client": "[0.1.0-preview.1, )"
+          "Wcs.Api.Contracts": "[0.1.0, )",
+          "Wcs.Engine": "[0.1.0, )",
+          "Wcs.WebEditor": "[0.1.0, )",
+          "Wcs.Wms.Client": "[0.1.0, )"
         }
       },
       "wcs.webeditor": {
         "type": "Project",
         "dependencies": {
           "Microsoft.FluentUI.AspNetCore.Components": "[4.14.4, )",
-          "Wcs.Api.Client": "[0.1.0-preview.1, )",
-          "Wcs.Api.Contracts": "[0.1.0-preview.1, )"
+          "Wcs.Api.Client": "[0.1.0, )",
+          "Wcs.Api.Contracts": "[0.1.0, )"
         }
       },
       "wcs.wms.client": {
         "type": "Project",
         "dependencies": {
-          "Wcs.Wms.Contracts": "[0.1.0-preview.1, )"
+          "Wcs.Wms.Contracts": "[0.1.0, )"
         }
       },
       "wcs.wms.contracts": {

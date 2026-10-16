@@ -8,7 +8,7 @@
     the "version" field of GET /api/v1/status.
   -->
   <PropertyGroup>
-    <Version>0.1.0-preview.1</Version>
+    <Version>0.1.0</Version>
     <Authors>Sun Tech Srl</Authors>
     <Company>Sun Tech Srl</Company>
     <Copyright>Copyright 2026 Sun Tech Srl</Copyright>

@@ -7,8 +7,9 @@ cranes, bays, racks) and moves load units through it; your WMS keeps deciding wh
 Everything here was checked against the code of this repository, and the examples (commands, HTTP
 requests and answers, configuration, C#) were run.
 
-This is an **initial public preview**: read [Known limitations](known-limitations.md) before
-planning a production installation. Its first version, `0.1.0-preview.1`, is **source-only**: no
+This is version **0.1.0**, the first release after the public preview: read
+[Known limitations](known-limitations.md) before planning a production installation. It is
+**source-only**: no
 NuGet packages yet; your code references the libraries from a clone or a submodule at a release tag
 ([README](../README.md#using-the-libraries-from-your-code)). **The WCS is not a safety system**: read
 [SAFETY.md](../SAFETY.md) before connecting it to machines.

@@ -275,7 +275,7 @@
       "log.interface": {
         "type": "Project",
         "dependencies": {
-          "Helper": "[0.1.0-preview.1, )"
+          "Helper": "[0.1.0, )"
         }
       },
       "wcs.common": {
@@ -284,25 +284,25 @@
       "wcs.connection.interface": {
         "type": "Project",
         "dependencies": {
-          "Wcs.Common": "[0.1.0-preview.1, )"
+          "Wcs.Common": "[0.1.0, )"
         }
       },
       "wcs.connection.test": {
         "type": "Project",
         "dependencies": {
-          "Wcs.Connection.Interface": "[0.1.0-preview.1, )"
+          "Wcs.Connection.Interface": "[0.1.0, )"
         }
       },
       "wcs.engine": {
         "type": "Project",
         "dependencies": {
-          "Helper": "[0.1.0-preview.1, )",
-          "Log.Interface": "[0.1.0-preview.1, )",
+          "Helper": "[0.1.0, )",
+          "Log.Interface": "[0.1.0, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.12, )",
-          "Wcs.Common": "[0.1.0-preview.1, )",
-          "Wcs.Connection.Interface": "[0.1.0-preview.1, )",
-          "Wcs.Connection.Test": "[0.1.0-preview.1, )",
-          "Wcs.Wms.Contracts": "[0.1.0-preview.1, )"
+          "Wcs.Common": "[0.1.0, )",
+          "Wcs.Connection.Interface": "[0.1.0, )",
+          "Wcs.Connection.Test": "[0.1.0, )",
+          "Wcs.Wms.Contracts": "[0.1.0, )"
         }
       },
       "wcs.wms.contracts": {
@@ -312,7 +312,7 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.NET.Test.Sdk": "[18.10.0, )",
-          "Wcs.Wms.Contracts": "[0.1.0-preview.1, )",
+          "Wcs.Wms.Contracts": "[0.1.0, )",
           "xunit": "[2.9.3, )"
         }
       }

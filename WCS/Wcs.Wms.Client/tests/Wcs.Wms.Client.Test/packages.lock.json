@@ -90,7 +90,7 @@
       "wcs.wms.client": {
         "type": "Project",
         "dependencies": {
-          "Wcs.Wms.Contracts": "[0.1.0-preview.1, )"
+          "Wcs.Wms.Contracts": "[0.1.0, )"
         }
       },
       "wcs.wms.contracts": {

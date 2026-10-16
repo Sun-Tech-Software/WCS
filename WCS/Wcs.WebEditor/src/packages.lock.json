@@ -31,13 +31,13 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.AspNetCore.SignalR.Client": "[10.0.13, )",
-          "Wcs.Api.Contracts": "[0.1.0-preview.1, )"
+          "Wcs.Api.Contracts": "[0.1.0, )"
         }
       },
       "wcs.api.contracts": {
         "type": "Project",
         "dependencies": {
-          "Wcs.Common": "[0.1.0-preview.1, )"
+          "Wcs.Common": "[0.1.0, )"
         }
       },
       "wcs.common": {

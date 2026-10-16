@@ -46,5 +46,6 @@ Nothing in this repository is a commitment to provide them, or to provide them o
 
 ## Supported versions
 
-Only the **current preview** (the default branch, `main`) is supported, in the sense above. There is
-no released version yet, and no long-term support for any commit.
+Only the **latest release** (today `0.1.0`) and the default branch, `main`, are supported, in the
+sense above: fixes come out in the next version, earlier versions are not patched, and there is no
+long-term support for any commit.

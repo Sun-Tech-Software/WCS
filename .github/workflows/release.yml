@@ -4,7 +4,7 @@
 # (framework-dependent: they need the .NET 10 runtime, ASP.NET Core included, on the machine), zips
 # each one with the licence files, adds the SBOM, writes SHA256SUMS.txt and attaches everything to a
 # DRAFT GitHub release whose text is the version's section of CHANGELOG.md. A maintainer reviews the
-# draft and publishes it by hand. Nothing is pushed to NuGet: the preview is distributed as source.
+# draft and publishes it by hand. Nothing is pushed to NuGet: the WCS is distributed as source.
 name: Release
 
 on:

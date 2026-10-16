@@ -356,7 +356,7 @@
       "log.interface": {
         "type": "Project",
         "dependencies": {
-          "Helper": "[0.1.0-preview.1, )"
+          "Helper": "[0.1.0, )"
         }
       },
       "wcs.common": {
@@ -365,13 +365,13 @@
       "wcs.connection.interface": {
         "type": "Project",
         "dependencies": {
-          "Wcs.Common": "[0.1.0-preview.1, )"
+          "Wcs.Common": "[0.1.0, )"
         }
       },
       "wcs.connection.test": {
         "type": "Project",
         "dependencies": {
-          "Wcs.Connection.Interface": "[0.1.0-preview.1, )"
+          "Wcs.Connection.Interface": "[0.1.0, )"
         }
       },
       "wcs.wms.contracts": {
