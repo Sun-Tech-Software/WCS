@@ -621,13 +621,16 @@ public class AutomationDeviceGroupManager(AutomationDevice device) : IDisposable
 
         try
         {
+            // One list for the whole decision: the getter scans the sources and the missions every
+            // time, and reading it again between two checks could also see a different state.
+            List<PathMission?> readyToLoad = [];
             if (device.LastGroupMovement is GroupMovementType.Extracting or GroupMovementType.None &&
                 !(Navigator.Defragmentation == DefragmentationTypes.Enabled && 
                   device is { EnableDefragmentation: true, IdCellToDefragment: > 0 }) &&
                 device.GroupLoadingActive &&
                 (!device.WaitBelongedItemsEmptyBeforeLoading ||
                  device is { WaitBelongedItemsEmptyBeforeLoading: true, LUsLoaded.Count: 0 }) &&
-                device.LUsReadyToLoad.Count > 0)
+                (readyToLoad = device.LUsReadyToLoad).Count > 0)
             {
                 // Verifica se sono disponibili LU per il caricamento
 
@@ -635,14 +638,14 @@ public class AutomationDeviceGroupManager(AutomationDevice device) : IDisposable
                     _timeLastCheck = DateTime.Now;
 
                 if (device.WaitingTimeForcedLoading == 0 ||
-                    device.LUsReadyToLoad.Count >= device.BelongedItems.Count ||
+                    readyToLoad.Count >= device.BelongedItems.Count ||
                     (DateTime.Now - _timeLastCheck).TotalMilliseconds > device.WaitingTimeForcedLoading ||
-                    (LookForArrivingLu(4) == false &&
+                    (LookForArrivingLu(readyToLoad, 4) == false &&
                      !device.IsLinkedToStorage))
                 {
                     var lastLevelToWrite = 0;
 
-                    var luToCheck = device.LUsReadyToLoad.FirstOrDefault();
+                    var luToCheck = readyToLoad.FirstOrDefault();
 
                     if (luToCheck is { PositionItem: not null })
                         lastLevelToWrite = luToCheck.PositionItem.GroupLevelId;
@@ -752,17 +755,18 @@ public class AutomationDeviceGroupManager(AutomationDevice device) : IDisposable
     /// <summary>
     /// Cerca LU in arrivo nei dispositivi collegati per determinare se attendere prima di caricare
     /// </summary>
+    /// <param name="readyToLoad">Le LU pronte al caricamento, lette una volta dal chiamante</param>
     /// <param name="nLevels">Numero di livelli da verificare nella ricerca</param>
     /// <returns>True se ci sono LU in arrivo, false altrimenti</returns>
-    private bool LookForArrivingLu(int nLevels = 0)
+    private bool LookForArrivingLu(List<PathMission?> readyToLoad, int nLevels = 0)
     {
-        if (device.LUsReadyToLoad.Count == 0)
+        if (readyToLoad.Count == 0)
             return false;
 
         if (nLevels == 0)
             nLevels = device.BelongedItems.Count;
 
-        var missionsToCheck = device.LUsReadyToLoad[0];
+        var missionsToCheck = readyToLoad[0];
 
         if (missionsToCheck == null || missionsToCheck.MissionType == MissionTypes.Extraction ||
             missionsToCheck.MissionType == MissionTypes.Rejection || missionsToCheck.PositionItem == null)

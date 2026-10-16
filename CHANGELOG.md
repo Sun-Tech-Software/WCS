@@ -30,6 +30,11 @@ released, and how its section here becomes the text of the GitHub release, is in
 
 - Host: a warning at startup when `Wcs:ApiKey` or `Wcs:ReadOnlyApiKey` is shorter than 32
   characters.
+- Engine: transit times (`GET /api/v1/log/transit-times`) read each month once, with one query
+  instead of three: about four times faster on a month of 200,000 log rows.
+- Engine: a group's loading decision reads the load units ready to load once, instead of up to
+  four times.
+- `Wcs.Api.Client` disposes every HTTP response; the host compares API keys without allocating.
 
 ## [0.1.0-preview.1] - 2026-10-15
 

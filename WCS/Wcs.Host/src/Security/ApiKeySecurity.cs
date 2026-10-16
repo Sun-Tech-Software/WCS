@@ -52,7 +52,22 @@ internal static class ApiKeySecurity
             : ApiKeyAccess.None;
     }
 
-    private static bool Matches(string provided, string expected) =>
-        CryptographicOperations.FixedTimeEquals(
-            Encoding.UTF8.GetBytes(provided), Encoding.UTF8.GetBytes(expected));
+    /// <summary>
+    /// Constant-time comparison of the UTF-8 bytes. It runs on every authenticated request, so the
+    /// bytes go on the stack instead of two new arrays each time; an unusually long key falls back
+    /// to arrays, with the same comparison.
+    /// </summary>
+    private static bool Matches(string provided, string expected)
+    {
+        const int stackLimit = 512;
+        if (Encoding.UTF8.GetByteCount(provided) > stackLimit || Encoding.UTF8.GetByteCount(expected) > stackLimit)
+            return CryptographicOperations.FixedTimeEquals(
+                Encoding.UTF8.GetBytes(provided), Encoding.UTF8.GetBytes(expected));
+
+        Span<byte> providedBytes = stackalloc byte[stackLimit];
+        Span<byte> expectedBytes = stackalloc byte[stackLimit];
+        providedBytes = providedBytes[..Encoding.UTF8.GetBytes(provided, providedBytes)];
+        expectedBytes = expectedBytes[..Encoding.UTF8.GetBytes(expected, expectedBytes)];
+        return CryptographicOperations.FixedTimeEquals(providedBytes, expectedBytes);
+    }
 }

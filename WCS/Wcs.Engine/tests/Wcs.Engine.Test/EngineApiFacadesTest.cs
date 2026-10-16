@@ -150,6 +150,24 @@ public sealed class EngineApiFacadesTest : IDisposable
     }
 
     [Fact]
+    public async Task ARowOnBothPatternsIsADepartureAndAnArrivalButNotItsOwnArrival()
+    {
+        // "01%" and "0%" both take 0100: it is the departure, and the arrival is the first row on
+        // "0%" strictly after it; equal dates go to the row written first.
+        var mission = Guid.NewGuid();
+        var other = Guid.NewGuid();
+        var t0 = FirstOfThisMonth.AddDays(1).AddHours(10);
+        await HistoryQueries.AppendLogAsync(new NavigatorLogEntry { Date = t0, Asi = "0100", MissionId = mission, Status = 1 });
+        await HistoryQueries.AppendLogAsync(new NavigatorLogEntry { Date = t0.AddSeconds(30), Asi = "0300", MissionId = mission, Status = 1 });
+        await HistoryQueries.AppendLogAsync(new NavigatorLogEntry { Date = t0.AddSeconds(30), Asi = "0200", MissionId = mission, Status = 1 });
+        await HistoryQueries.AppendLogAsync(new NavigatorLogEntry { Date = t0, Asi = "0100", MissionId = other, Status = 1 });
+
+        var transit = Assert.Single(await HistoryQueries.TransitTimesAsync(t0.AddMinutes(-1), t0.AddMinutes(5), "01%", "0%"));
+
+        Assert.Equal((mission, "0100", "0300", 30), (transit.MissionId, transit.FromAsi, transit.ToAsi, transit.Seconds));
+    }
+
+    [Fact]
     public async Task HandledLoadUnitsAreSummarisedByPeriodAndType()
     {
         var monday = FirstOfThisMonth.AddDays(7); // dentro il mese, di sicuro

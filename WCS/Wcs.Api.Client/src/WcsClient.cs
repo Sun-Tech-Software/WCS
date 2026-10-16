@@ -49,7 +49,7 @@ public sealed class WcsClient : IDisposable
 
     public async Task<CommandDto> EnqueueCommandAsync(CommandRequest request, CancellationToken ct = default)
     {
-        var response = await _http.PostAsJsonAsync(R(ApiRoutes.Commands), request, ct);
+        using var response = await _http.PostAsJsonAsync(R(ApiRoutes.Commands), request, ct);
         await EnsureAsync(response);
         return await ReadRequiredAsync<CommandDto>(response, ct);
     }
@@ -61,14 +61,14 @@ public sealed class WcsClient : IDisposable
     public Task<CommandDto?> GetCommandAsync(long id, CancellationToken ct = default) => GetOrNullAsync<CommandDto>($"{R(ApiRoutes.Commands)}/{id}", ct);
     public async Task<bool> UpdateCommandAsync(long id, CommandUpdate update, CancellationToken ct = default)
     {
-        var response = await _http.PutAsJsonAsync($"{R(ApiRoutes.Commands)}/{id}", update, ct);
+        using var response = await _http.PutAsJsonAsync($"{R(ApiRoutes.Commands)}/{id}", update, ct);
         if (response.StatusCode == HttpStatusCode.NotFound) return false;
         await EnsureAsync(response);
         return true;
     }
 
     public Task<DiagramDto?> GetDiagramAsync(CancellationToken ct = default) => GetOrNullAsync<DiagramDto>(R(ApiRoutes.Diagram), ct);
-    public async Task SaveDiagramAsync(DiagramDto diagram, CancellationToken ct = default) => await EnsureAsync(await _http.PutAsJsonAsync(R(ApiRoutes.Diagram), diagram, ct));
+    public async Task SaveDiagramAsync(DiagramDto diagram, CancellationToken ct = default) => await EnsureAsync(_http.PutAsJsonAsync(R(ApiRoutes.Diagram), diagram, ct));
     public Task<List<PlantItemDto>> GetItemsAsync(IEnumerable<DeviceTypes>? deviceTypes = null, CancellationToken ct = default) =>
         GetAsync<List<PlantItemDto>>(R(ApiRoutes.Items) + RepeatedQuery("deviceType", deviceTypes?.Select(t => (int)t)), ct);
     public Task<List<ItemStatus>> GetItemStatusesAsync(CancellationToken ct = default) => GetAsync<List<ItemStatus>>(R(ApiRoutes.Items) + "/status", ct);
@@ -93,18 +93,18 @@ public sealed class WcsClient : IDisposable
     /// </para>
     /// </remarks>
     public async Task CreateItemAsync(PlantItemConfigDto config, CancellationToken ct = default) =>
-        await EnsureAsync(await _http.PostAsJsonAsync(R(ApiRoutes.Items), config, ct));
-    public async Task DeleteItemAsync(Guid id, CancellationToken ct = default) => await EnsureAsync(await _http.DeleteAsync($"{R(ApiRoutes.Items)}/{id}", ct));
-    public async Task KeepItemsAsync(IEnumerable<Guid> kept, CancellationToken ct = default) => await EnsureAsync(await _http.PostAsJsonAsync(R(ApiRoutes.Items) + "/keep", kept.ToArray(), ct));
+        await EnsureAsync(_http.PostAsJsonAsync(R(ApiRoutes.Items), config, ct));
+    public async Task DeleteItemAsync(Guid id, CancellationToken ct = default) => await EnsureAsync(_http.DeleteAsync($"{R(ApiRoutes.Items)}/{id}", ct));
+    public async Task KeepItemsAsync(IEnumerable<Guid> kept, CancellationToken ct = default) => await EnsureAsync(_http.PostAsJsonAsync(R(ApiRoutes.Items) + "/keep", kept.ToArray(), ct));
     /// <summary>Svuota l'impianto: dispositivi, giunzioni, mappa porte, missioni e coda di estrazione. Rifiutato con <c>409</c> se il motore e' in Run.</summary>
-    public async Task RemoveAllItemsAsync(CancellationToken ct = default) => await EnsureAsync(await _http.DeleteAsync(R(ApiRoutes.Items), ct));
+    public async Task RemoveAllItemsAsync(CancellationToken ct = default) => await EnsureAsync(_http.DeleteAsync(R(ApiRoutes.Items), ct));
     public Task<List<JunctionDto>> GetJunctionsAsync(CancellationToken ct = default) => GetAsync<List<JunctionDto>>(R(ApiRoutes.Junctions), ct);
-    public async Task DeleteJunctionAsync(Guid id, CancellationToken ct = default) => await EnsureAsync(await _http.DeleteAsync($"{R(ApiRoutes.Junctions)}/{id}", ct));
+    public async Task DeleteJunctionAsync(Guid id, CancellationToken ct = default) => await EnsureAsync(_http.DeleteAsync($"{R(ApiRoutes.Junctions)}/{id}", ct));
     public Task<List<DoorMappingDto>> GetDoorMappingsAsync(CancellationToken ct = default) => GetAsync<List<DoorMappingDto>>(R(ApiRoutes.DoorMappings), ct);
-    public async Task ReplaceDoorMappingsAsync(IEnumerable<DoorMappingDto> mappings, CancellationToken ct = default) => await EnsureAsync(await _http.PutAsJsonAsync(R(ApiRoutes.DoorMappings), mappings.ToArray(), ct));
+    public async Task ReplaceDoorMappingsAsync(IEnumerable<DoorMappingDto> mappings, CancellationToken ct = default) => await EnsureAsync(_http.PutAsJsonAsync(R(ApiRoutes.DoorMappings), mappings.ToArray(), ct));
     /// <summary>Svuota la mappa porte di un dispositivo: nessuna riga per quell'item, non una riga vuota.</summary>
-    public async Task ClearDoorMappingsAsync(Guid itemId, CancellationToken ct = default) => await EnsureAsync(await _http.DeleteAsync($"{R(ApiRoutes.DoorMappings)}/{itemId}", ct));
-    public async Task LinkBufferCellAsync(DoorMappingLink link, CancellationToken ct = default) => await EnsureAsync(await _http.PostAsJsonAsync(R(ApiRoutes.DoorMappings) + "/link", link, ct));
+    public async Task ClearDoorMappingsAsync(Guid itemId, CancellationToken ct = default) => await EnsureAsync(_http.DeleteAsync($"{R(ApiRoutes.DoorMappings)}/{itemId}", ct));
+    public async Task LinkBufferCellAsync(DoorMappingLink link, CancellationToken ct = default) => await EnsureAsync(_http.PostAsJsonAsync(R(ApiRoutes.DoorMappings) + "/link", link, ct));
     public Task<List<AutomaticCell>> GetAutomaticCellsAsync(CancellationToken ct = default) => GetAsync<List<AutomaticCell>>(R(ApiRoutes.AutomaticCells), ct);
 
     /// <summary>La decorazione del disegno: il vuoto se l'impianto non ne ha mai avuta una - non un errore.</summary>
@@ -113,7 +113,7 @@ public sealed class WcsClient : IDisposable
 
     /// <summary>Sostituisce la decorazione del disegno. Esige il permesso di modifica (423 senza), 409 se il motore e' in Run.</summary>
     public async Task SetPlantDecorationAsync(string xml, CancellationToken ct = default) =>
-        await EnsureAsync(await _http.PutAsJsonAsync(R(ApiRoutes.PlantDecoration), new PlantDecorationDto(xml), ct));
+        await EnsureAsync(_http.PutAsJsonAsync(R(ApiRoutes.PlantDecoration), new PlantDecorationDto(xml), ct));
 
     public Task<List<MissionDto>> GetMissionsAsync(decimal? loadUnitId = null, Guid? itemId = null, MissionTypes? type = null, CancellationToken ct = default) =>
         GetAsync<List<MissionDto>>(R(ApiRoutes.Missions) + Query(("udc", loadUnitId), ("itemId", itemId), ("type", type == null ? null : (int)type)), ct);
@@ -146,7 +146,7 @@ public sealed class WcsClient : IDisposable
     /// (202): a step of the mission is in flight, and the move waits for its end (item 54, decision 4).
     /// </returns>
     public async Task<MissionChangeApplied> SetMissionPositionAsync(Guid missionId, Guid itemId, CancellationToken ct = default) =>
-        await ChangeAppliedAsync(await _http.PutAsJsonAsync($"{R(ApiRoutes.Missions)}/{missionId}/position", new MissionPositionUpdate(itemId), ct));
+        await ChangeAppliedAsync(_http.PutAsJsonAsync($"{R(ApiRoutes.Missions)}/{missionId}/position", new MissionPositionUpdate(itemId), ct));
 
     /// <summary>
     /// Manda la missione verso il dispositivo indicato - un magazzino vuol dire una cella scelta dal
@@ -188,7 +188,7 @@ public sealed class WcsClient : IDisposable
     /// (item 54, decision 4); the mission's row shows it meanwhile (<see cref="MissionDto.PendingChange"/>).
     /// </returns>
     public async Task<MissionChangeApplied> SetMissionDestinationAsync(Guid missionId, Guid itemId, MissionGatewayUpdate? gateway = null, CancellationToken ct = default) =>
-        await ChangeAppliedAsync(await _http.PutAsJsonAsync($"{R(ApiRoutes.Missions)}/{missionId}/destination", new MissionDestinationUpdate(itemId, gateway), ct));
+        await ChangeAppliedAsync(_http.PutAsJsonAsync($"{R(ApiRoutes.Missions)}/{missionId}/destination", new MissionDestinationUpdate(itemId, gateway), ct));
 
     /// <summary>
     /// <see cref="SetMissionDestinationAsync(Guid, Guid, MissionGatewayUpdate?, CancellationToken)"/> with the
@@ -197,7 +197,7 @@ public sealed class WcsClient : IDisposable
     /// remarks; a refused cell is a <see cref="WcsApiException"/> with the 422 «Cella rifiutata».
     /// </summary>
     public async Task<MissionChangeApplied> SetMissionDestinationAsync(Guid missionId, MissionDestinationUpdate update, CancellationToken ct = default) =>
-        await ChangeAppliedAsync(await _http.PutAsJsonAsync($"{R(ApiRoutes.Missions)}/{missionId}/destination", update, ct));
+        await ChangeAppliedAsync(_http.PutAsJsonAsync($"{R(ApiRoutes.Missions)}/{missionId}/destination", update, ct));
 
     /// <summary>
     /// The storage cells the operator can choose for the mission's load unit in a storage, a group of
@@ -208,8 +208,9 @@ public sealed class WcsClient : IDisposable
         GetAsync<List<StorageCellCandidateDto>>($"{R(ApiRoutes.Missions)}/{missionId}/storage-cells" + Query(("itemId", itemId)), ct);
 
     /// <summary>The answer of a change of a mission: made now (204), waiting for the end of a step (202), or a refusal thrown.</summary>
-    private static async Task<MissionChangeApplied> ChangeAppliedAsync(HttpResponseMessage response)
+    private static async Task<MissionChangeApplied> ChangeAppliedAsync(Task<HttpResponseMessage> sending)
     {
+        using var response = await sending;
         await EnsureAsync(response);
         return response.StatusCode == HttpStatusCode.Accepted ? MissionChangeApplied.AtTheEndOfTheMovement : MissionChangeApplied.Now;
     }
@@ -229,14 +230,14 @@ public sealed class WcsClient : IDisposable
     public Task<List<decimal>> GetExtractionQueueLoadUnitsAsync(CancellationToken ct = default) => GetAsync<List<decimal>>(R(ApiRoutes.ExtractionQueue) + "/load-units", ct);
     public async Task<bool> SetExtractionPriorityAsync(long id, int priority, CancellationToken ct = default)
     {
-        var response = await _http.PatchAsJsonAsync($"{R(ApiRoutes.ExtractionQueue)}/{id}/priority", new PriorityUpdate(priority), ct);
+        using var response = await _http.PatchAsJsonAsync($"{R(ApiRoutes.ExtractionQueue)}/{id}/priority", new PriorityUpdate(priority), ct);
         if (response.StatusCode == HttpStatusCode.NotFound) return false;
         await EnsureAsync(response);
         return true;
     }
     public async Task<CommandDto?> DeleteFromExtractionQueueAsync(long id, string? workstationId = null, string? userId = null, CancellationToken ct = default)
     {
-        var response = await _http.DeleteAsync($"{R(ApiRoutes.ExtractionQueue)}/{id}" + Query(("workstationId", workstationId), ("userId", userId)), ct);
+        using var response = await _http.DeleteAsync($"{R(ApiRoutes.ExtractionQueue)}/{id}" + Query(("workstationId", workstationId), ("userId", userId)), ct);
         if (response.StatusCode == HttpStatusCode.NotFound) return null;
         await EnsureAsync(response);
         return await response.Content.ReadFromJsonAsync<CommandDto>(ct);
@@ -252,7 +253,7 @@ public sealed class WcsClient : IDisposable
         GetAsync<List<LogEntryDto>>(R(ApiRoutes.Log) + Query(("from", from), ("to", to), ("itemId", itemId), ("missionId", missionId), ("take", take)), ct);
     public Task<List<TransitTime>> GetTransitTimesAsync(DateTime from, DateTime to, string fromAsi, string toAsi, CancellationToken ct = default) =>
         GetAsync<List<TransitTime>>(R(ApiRoutes.Log) + "/transit-times" + Query(("from", from), ("to", to), ("fromAsi", fromAsi), ("toAsi", toAsi)), ct);
-    public async Task AppendLogAsync(LogEntryRequest entry, CancellationToken ct = default) => await EnsureAsync(await _http.PostAsJsonAsync(R(ApiRoutes.Log), entry, ct));
+    public async Task AppendLogAsync(LogEntryRequest entry, CancellationToken ct = default) => await EnsureAsync(_http.PostAsJsonAsync(R(ApiRoutes.Log), entry, ct));
     /// <summary>
     /// I messaggi scambiati con i PLC nell'intervallo. E' la lettura che <c>FrmPcmLog</c> del
     /// Client fa oggi con una <c>SELECT</c> su <c>PCM_LOG</c> del gestionale, tabella che nessuno
@@ -263,7 +264,7 @@ public sealed class WcsClient : IDisposable
 
     public Task<List<PlcConnectionDto>> GetPlcConnectionsAsync(CancellationToken ct = default) => GetAsync<List<PlcConnectionDto>>(R(ApiRoutes.PlcConnections), ct);
     /// <summary>Sostituisce l'elenco intero delle connessioni PLC. Esige il permesso di modifica (423 senza) e il motore fermo, Stop e non solo fuori da Run (409 altrimenti); non toglie una connessione che un dispositivo usa ancora (409, con le connessioni e i dispositivi nel campo <see cref="PlcConnectionProblems.InUseExtension"/>, compito 4c).</summary>
-    public async Task ReplacePlcConnectionsAsync(IEnumerable<PlcConnectionDto> connections, CancellationToken ct = default) => await EnsureAsync(await _http.PutAsJsonAsync(R(ApiRoutes.PlcConnections), connections.ToArray(), ct));
+    public async Task ReplacePlcConnectionsAsync(IEnumerable<PlcConnectionDto> connections, CancellationToken ct = default) => await EnsureAsync(_http.PutAsJsonAsync(R(ApiRoutes.PlcConnections), connections.ToArray(), ct));
     public Task<PlcConnectionStatus?> GetPlcConnectionStatusAsync(long id, CancellationToken ct = default) => GetOrNullAsync<PlcConnectionStatus>($"{R(ApiRoutes.PlcConnections)}/{id}/status", ct);
 
     public Task<List<PlantItemConfigDto>> GetItemConfigurationsAsync(CancellationToken ct = default) => GetAsync<List<PlantItemConfigDto>>(R(ApiRoutes.ItemsConfig), ct);
@@ -273,7 +274,7 @@ public sealed class WcsClient : IDisposable
     /// con <see cref="HttpStatusCode.NotFound"/> se non esiste: per crearlo c'e'
     /// <see cref="CreateItemAsync"/>.
     /// </summary>
-    public async Task SaveItemConfigurationAsync(PlantItemConfigDto config, CancellationToken ct = default) => await EnsureAsync(await _http.PutAsJsonAsync($"{R(ApiRoutes.Items)}/{config.ItemId}/config", config, ct));
+    public async Task SaveItemConfigurationAsync(PlantItemConfigDto config, CancellationToken ct = default) => await EnsureAsync(_http.PutAsJsonAsync($"{R(ApiRoutes.Items)}/{config.ItemId}/config", config, ct));
     /// <summary>
     /// Colloca un dispositivo nel disegno solo se la versione letta dal chiamante e' ancora
     /// corrente. Restituisce la nuova versione da usare per la scrittura successiva.
@@ -282,7 +283,7 @@ public sealed class WcsClient : IDisposable
         PlantItemGeometryUpdateDto geometry,
         CancellationToken ct = default)
     {
-        var response = await _http.PutAsJsonAsync(
+        using var response = await _http.PutAsJsonAsync(
             $"{R(ApiRoutes.Items)}/{geometry.ItemId}/geometry",
             geometry,
             ct);
@@ -298,20 +299,20 @@ public sealed class WcsClient : IDisposable
         IReadOnlyCollection<PlantItemGeometryUpdateDto> geometries,
         CancellationToken ct = default)
     {
-        var response = await _http.PutAsJsonAsync(R(ApiRoutes.ItemsGeometry), geometries, ct);
+        using var response = await _http.PutAsJsonAsync(R(ApiRoutes.ItemsGeometry), geometries, ct);
         await EnsureGeometryWriteAsync(response, ct);
         return await ReadRequiredAsync<List<PlantItemGeometryVersionDto>>(response, ct);
     }
-    public async Task SetConnectionTypeForAllAsync(ConnectionTypes connectionType, CancellationToken ct = default) => await EnsureAsync(await _http.PostAsJsonAsync(R(ApiRoutes.Items) + "/connection-type", new ConnectionTypeUpdate(connectionType), ct));
+    public async Task SetConnectionTypeForAllAsync(ConnectionTypes connectionType, CancellationToken ct = default) => await EnsureAsync(_http.PostAsJsonAsync(R(ApiRoutes.Items) + "/connection-type", new ConnectionTypeUpdate(connectionType), ct));
     public async Task<JunctionDto> AddJunctionAsync(JunctionRequest request, CancellationToken ct = default)
     {
-        var response = await _http.PostAsJsonAsync(R(ApiRoutes.Junctions), request, ct);
+        using var response = await _http.PostAsJsonAsync(R(ApiRoutes.Junctions), request, ct);
         await EnsureAsync(response);
         return await ReadRequiredAsync<JunctionDto>(response, ct);
     }
     public async Task<bool> SetJunctionPriorityAsync(Guid junctionId, JunctionRequest request, CancellationToken ct = default)
     {
-        var response = await _http.PutAsJsonAsync($"{R(ApiRoutes.Junctions)}/{junctionId}", request, ct);
+        using var response = await _http.PutAsJsonAsync($"{R(ApiRoutes.Junctions)}/{junctionId}", request, ct);
         if (response.StatusCode == HttpStatusCode.NotFound) return false;
         await EnsureAsync(response);
         return true;
@@ -334,7 +335,7 @@ public sealed class WcsClient : IDisposable
 
     /// <summary>Sostituisce l'impianto intero con quello dato (compito 12): esige il permesso di modifica, risponde 423 senza.</summary>
     public async Task ReplacePlantGraphAsync(PlantGraphDto graph, CancellationToken ct = default) =>
-        await EnsureAsync(await _http.PutAsJsonAsync(R(ApiRoutes.PlantGraph), graph, ct));
+        await EnsureAsync(_http.PutAsJsonAsync(R(ApiRoutes.PlantGraph), graph, ct));
 
     /// <summary>
     /// Legge la geometria di un vecchio disegno <c>.edd</c>/<c>.xml</c> caricato per l'importazione
@@ -347,7 +348,7 @@ public sealed class WcsClient : IDisposable
     {
         using var body = new StreamContent(content);
         body.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
-        var response = await _http.PostAsync(R(ApiRoutes.PlantGraphLegacyGeometry), body, ct);
+        using var response = await _http.PostAsync(R(ApiRoutes.PlantGraphLegacyGeometry), body, ct);
         await EnsureAsync(response);
         return await ReadRequiredAsync<LegacyGeometryImportDto>(response, ct);
     }
@@ -361,7 +362,7 @@ public sealed class WcsClient : IDisposable
     /// </summary>
     public async Task<EditLockDto> AcquireEditLockAsync(string holder, CancellationToken ct = default)
     {
-        var response = await _http.PostAsJsonAsync(R(ApiRoutes.EditLock), new EditLockRequest(holder), ct);
+        using var response = await _http.PostAsJsonAsync(R(ApiRoutes.EditLock), new EditLockRequest(holder), ct);
         if (response.StatusCode != HttpStatusCode.OK && response.StatusCode != HttpStatusCode.Conflict)
             await EnsureAsync(response);
         return await ReadRequiredAsync<EditLockDto>(response, ct);
@@ -372,18 +373,18 @@ public sealed class WcsClient : IDisposable
 
     /// <summary>Rilascia il permesso. Se <paramref name="holder"/> non e' il titolare l'host non fa niente: non serve saperlo qui per chiamarlo alla chiusura del circuito.</summary>
     public async Task ReleaseEditLockAsync(string holder, CancellationToken ct = default) =>
-        await EnsureAsync(await _http.DeleteAsync(R(ApiRoutes.EditLock) + Query(("holder", holder)), ct));
+        await EnsureAsync(_http.DeleteAsync(R(ApiRoutes.EditLock) + Query(("holder", holder)), ct));
 
     private async Task<T> GetAsync<T>(string url, CancellationToken ct)
     {
-        var response = await _http.GetAsync(url, ct);
+        using var response = await _http.GetAsync(url, ct);
         await EnsureAsync(response);
         return await ReadRequiredAsync<T>(response, ct);
     }
 
     private async Task<T?> GetOrNullAsync<T>(string url, CancellationToken ct) where T : class
     {
-        var response = await _http.GetAsync(url, ct);
+        using var response = await _http.GetAsync(url, ct);
         if (response.StatusCode == HttpStatusCode.NotFound) return null;
         await EnsureAsync(response);
         return await response.Content.ReadFromJsonAsync<T>(ct);
@@ -397,6 +398,13 @@ public sealed class WcsClient : IDisposable
         await response.Content.ReadFromJsonAsync<T>(ct)
         ?? throw new WcsApiException(response.StatusCode,
             $"null body from {response.RequestMessage?.Method} {response.RequestMessage?.RequestUri}");
+
+    /// <summary>A request whose answer is only success or failure: the response is disposed once checked.</summary>
+    private static async Task EnsureAsync(Task<HttpResponseMessage> sending)
+    {
+        using var response = await sending;
+        await EnsureAsync(response);
+    }
 
     private static async Task EnsureAsync(HttpResponseMessage response)
     {

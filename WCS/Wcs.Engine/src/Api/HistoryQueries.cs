@@ -121,7 +121,9 @@ public static class HistoryQueries
     /// Voce D82. Prima ogni riga del registro con missione e ASI somigliante a uno dei due pattern
     /// veniva portata in memoria, ordinata e accoppiata: su un anno di storico era un anno di
     /// righe. Ora a ogni file di mese si chiedono tre aggregati per missione — la prima partenza,
-    /// il primo arrivo dopo quella partenza nello stesso mese, il primo arrivo del mese — e si
+    /// il primo arrivo dopo quella partenza nello stesso mese, il primo arrivo del mese — in una sola
+    /// query che legge le righe del mese una volta (voce 56, O3: erano tre query, quattro volte piu'
+    /// lente su 200.000 righe), e si
     /// compongono qui: la partenza e' quella del primo mese che ne ha una (i mesi sono in ordine,
     /// e ogni riga di un mese e' dopo ogni riga del precedente); l'arrivo e' quello «dopo la
     /// partenza» nel mese della partenza, altrimenti il primo arrivo del primo mese successivo,
@@ -133,23 +135,31 @@ public static class HistoryQueries
         var (start, end) = Window(from, to);
         var months = await StoreAccess.ReadHistoryMonthsAsync<TransitPartials>(start, end, async c =>
         {
-            var log = c.NavigatorLog.AsNoTracking()
-                .Where(x => x.Date >= start && x.Date < end && x.MissionId != null && x.Asi != null);
-            var departures = log.Where(x => EF.Functions.Like(x.Asi, fromAsiPattern));
-            var arrivals = log.Where(x => EF.Functions.Like(x.Asi, toAsiPattern));
-            var firstDepartureDates = departures.GroupBy(x => x.MissionId)
-                .Select(g => new { MissionId = g.Key, Date = g.Min(x => x.Date) });
-            var arrivalsAfterDeparture =
-                from arrival in arrivals
-                join departure in firstDepartureDates on arrival.MissionId equals departure.MissionId
-                where arrival.Date > departure.Date
-                select arrival;
+            // c: the rows of the month on either ASI, read once; d: the first departure of each
+            // mission. A row whose ASI matches both patterns counts as a departure and as an
+            // arrival, as with the three separate queries. Ties on the date go to the first written.
+            var points = await c.Database.SqlQuery<TransitPoint>($"""
+                WITH c AS MATERIALIZED (
+                  SELECT Id, MissionId, Asi, Date, (Asi LIKE {fromAsiPattern}) AS IsDeparture, (Asi LIKE {toAsiPattern}) AS IsArrival
+                  FROM NavigatorLog
+                  WHERE Date >= {start} AND Date < {end} AND MissionId IS NOT NULL AND Asi IS NOT NULL
+                    AND (Asi LIKE {fromAsiPattern} OR Asi LIKE {toAsiPattern})),
+                d AS (SELECT MissionId, MIN(Date) AS DepartureDate FROM c WHERE IsDeparture GROUP BY MissionId)
+                SELECT Kind, MissionId, Asi, Date FROM (
+                  SELECT 0 AS Kind, MissionId, Asi, Date, ROW_NUMBER() OVER (PARTITION BY MissionId ORDER BY Date, Id) AS Position
+                  FROM c WHERE IsDeparture
+                  UNION ALL
+                  SELECT 1, c.MissionId, c.Asi, c.Date, ROW_NUMBER() OVER (PARTITION BY c.MissionId ORDER BY c.Date, c.Id)
+                  FROM c JOIN d ON d.MissionId = c.MissionId WHERE c.IsArrival AND c.Date > d.DepartureDate
+                  UNION ALL
+                  SELECT 2, MissionId, Asi, Date, ROW_NUMBER() OVER (PARTITION BY MissionId ORDER BY Date, Id)
+                  FROM c WHERE IsArrival)
+                WHERE Position = 1
+                """).ToListAsync();
 
-            var partials = new TransitPartials(
-                await FirstPerMissionAsync(departures),
-                await FirstPerMissionAsync(arrivalsAfterDeparture),
-                await FirstPerMissionAsync(arrivals));
-            return [partials];
+            Dictionary<Guid, LogPoint> Of(int kind) =>
+                points.Where(p => p.Kind == kind).ToDictionary(p => p.MissionId, p => new LogPoint(p.Asi, p.Date));
+            return [new TransitPartials(Of(0), Of(1), Of(2))];
         });
 
         var result = new List<TransitTimeRow>();
@@ -176,14 +186,8 @@ public static class HistoryQueries
         return result.OrderBy(x => x.Start).ToList();
     }
 
-    /// <summary>Per ogni missione, la riga piu' vecchia della query (a parita' di data, la prima scritta), calcolata dal database.</summary>
-    private static async Task<Dictionary<Guid, LogPoint>> FirstPerMissionAsync(IQueryable<NavigatorLogEntry> rows)
-    {
-        var firsts = await rows.GroupBy(x => x.MissionId!.Value)
-            .Select(g => g.OrderBy(x => x.Date).ThenBy(x => x.Id).First())
-            .ToListAsync();
-        return firsts.ToDictionary(x => x.MissionId!.Value, x => new LogPoint(x.Asi!, x.Date));
-    }
+    /// <summary>A row of the query of <see cref="TransitTimesAsync"/>: 0 first departure, 1 first arrival after it, 2 first arrival.</summary>
+    private sealed record TransitPoint(int Kind, Guid MissionId, string Asi, DateTime Date);
 
     /// <summary>Una riga del registro ridotta a quello che l'attraversamento usa.</summary>
     private sealed record LogPoint(string Asi, DateTime Date);
