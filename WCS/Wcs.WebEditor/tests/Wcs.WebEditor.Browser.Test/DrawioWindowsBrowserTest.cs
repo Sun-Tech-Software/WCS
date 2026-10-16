@@ -149,7 +149,9 @@ public sealed class DrawioWindowsBrowserTest(DrawioEditorFixture fixture, ITestO
         await popup.Locator("#drawio-test-route-lu-type-error").WaitForAsync(new() { State = WaitForSelectorState.Visible });
         await popup.Keyboard.TypeAsync("17");
         await popup.Locator("#drawio-test-route-lu-type-error").WaitForAsync(new() { State = WaitForSelectorState.Detached });
-        Assert.Equal("17", await luType.InputValueAsync());
+        // The error goes already with the "1", a valid number: the value is read with a retrying
+        // expectation, or it can be read while the page is still taking the "7" (CI, 16/10).
+        await Microsoft.Playwright.Assertions.Expect(luType).ToHaveValueAsync("17");
 
         // The tabs' arrows: from Test Route to Remove all LU, the page selects it and moves the focus.
         await popup.Locator("#drawio-operations-tab-test-route").FocusAsync();

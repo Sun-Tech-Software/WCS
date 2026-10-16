@@ -549,9 +549,9 @@ function Find-WorkflowSupplyChainProblem {
     param([System.Collections.IDictionary]$Files)
     $problems = [System.Collections.Generic.List[string]]::new()
     $knownActionComments = @{
-        'actions/checkout@11d5960a326750d5838078e36cf38b85af677262' = 'v4.4.0'
-        'actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9' = 'v4.3.1'
-        'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02' = 'v4.6.2'
+        'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' = 'v7.0.1'
+        'actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68' = 'v6.0.0'
+        'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9' = 'v7.0.2'
     }
     $usesPattern = '(?m)^\s*(?:-\s*)?(?:uses|''uses''|"uses")\s*:\s*(?:''([^'']+)''|"([^"]+)"|([^\s#]+))(?:\s*#\s*(.*?))?\s*$'
     foreach ($path in $Files.Keys) {
@@ -569,7 +569,7 @@ function Find-WorkflowSupplyChainProblem {
             }
             $comment = $match.Groups[4].Value.Trim()
             if ($comment -notmatch '^v\d+(?:\.\d+)*(?:[-.][0-9A-Za-z]+)*$') {
-                $problems.Add("${path}: action '$action' needs one release version comment such as '# v4.4.0'")
+                $problems.Add("${path}: action '$action' needs one release version comment such as '# v7.0.1'")
                 continue
             }
             if ($knownActionComments.ContainsKey($action) -and $comment -cne $knownActionComments[$action]) {
@@ -868,13 +868,13 @@ function Invoke-SelfTest {
         ([string]::IsNullOrEmpty((Resolve-EffectiveReleaseTag '' 'true' 'branch' 'main')))
 
     # Workflow supply chain
-    $checkoutSha = '11d5960a326750d5838078e36cf38b85af677262'
-    $uploadSha = 'ea165f8d65b6e75b540449e92b4886f43607fa02'
+    $checkoutSha = '3d3c42e5aac5ba805825da76410c181273ba90b1'
+    $uploadSha = 'cf430e030ddbb5b0abf93d22962f4752f3646cd9'
     $gitleaksDigest = 'e4b7d556f0cddbe23d10d8fac2ab0f29f68f019091c6599ffbeaa8a4fb71ac78'
     $approvedGitleaksScript = ((Get-ApprovedGitleaksInstallScript) -split "`n" | ForEach-Object { "          $_" }) -join "`n"
     $secureWorkflows = [ordered]@{
-        '.github/workflows/ci.yml' = "steps:`n  - uses: actions/checkout@$checkoutSha # v4.4.0`n  - uses: ./local-action"
-        '.github/workflows/release.yml' = "jobs:`n  release:`n    name: Release`n    runs-on: windows-latest`n    timeout-minutes: 60`n    steps:`n      - name: Install pinned gitleaks`n        shell: pwsh -NoProfile -Command `". '{0}'`"`n        run: |`n$approvedGitleaksScript`n      - name: Release checks, package and smoke test`n        shell: pwsh -NoProfile -Command `". '{0}'`"`n        run: ./tools/Test-PublicRelease.ps1 -ReleaseTag `$env:GITHUB_REF_NAME -RepositoryUrl `"`$env:GITHUB_SERVER_URL/`$env:GITHUB_REPOSITORY`" -ReleaseArtifactsDirectory release/dist`n      - uses: actions/upload-artifact@$uploadSha # v4.6.2"
+        '.github/workflows/ci.yml' = "steps:`n  - uses: actions/checkout@$checkoutSha # v7.0.1`n  - uses: ./local-action"
+        '.github/workflows/release.yml' = "jobs:`n  release:`n    name: Release`n    runs-on: windows-latest`n    timeout-minutes: 60`n    steps:`n      - name: Install pinned gitleaks`n        shell: pwsh -NoProfile -Command `". '{0}'`"`n        run: |`n$approvedGitleaksScript`n      - name: Release checks, package and smoke test`n        shell: pwsh -NoProfile -Command `". '{0}'`"`n        run: ./tools/Test-PublicRelease.ps1 -ReleaseTag `$env:GITHUB_REF_NAME -RepositoryUrl `"`$env:GITHUB_SERVER_URL/`$env:GITHUB_REPOSITORY`" -ReleaseArtifactsDirectory release/dist`n      - uses: actions/upload-artifact@$uploadSha # v7.0.2"
     }
     Assert 'workflow supply chain: immutable action SHAs and embedded digest pass' `
         ((Find-WorkflowSupplyChainProblem $secureWorkflows).Count -eq 0)
