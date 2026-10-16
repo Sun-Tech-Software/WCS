@@ -4,9 +4,9 @@
     "net10.0": {
       "Microsoft.FluentUI.AspNetCore.Components": {
         "type": "Direct",
-        "requested": "[4.14.4, )",
-        "resolved": "4.14.4",
-        "contentHash": "isJiT1YGAr6xUaVsfB/sfAFs69HDj3JMTn7pwi26/PUF2iOn8J+fjwSOHOVZ2+AhmA9f/OYLdRadjQBav9nJww=="
+        "requested": "[4.14.5, )",
+        "resolved": "4.14.5",
+        "contentHash": "7ZgWTBA5sBMG9wzTAIoP6la2v7ZM48UU2b2Hx4YbuITtgHMmiLLgk0atG1l+beOnaiief1Ao9HfuQu6uWa4FUA=="
       },
       "Microsoft.AspNetCore.Http.Connections.Client": {
         "type": "Transitive",
