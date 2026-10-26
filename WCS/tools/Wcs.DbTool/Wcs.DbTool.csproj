@@ -15,7 +15,7 @@
 
   <ItemGroup>
     <!-- The SQLite Online Backup API (SqliteConnection.BackupDatabase). Same version as the EF Core provider of Wcs.Engine. -->
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.13" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
   </ItemGroup>
 
   <ItemGroup>
