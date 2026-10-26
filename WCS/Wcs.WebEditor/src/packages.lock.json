@@ -4,33 +4,33 @@
     "net10.0": {
       "Microsoft.FluentUI.AspNetCore.Components": {
         "type": "Direct",
-        "requested": "[4.14.4, )",
-        "resolved": "4.14.4",
-        "contentHash": "isJiT1YGAr6xUaVsfB/sfAFs69HDj3JMTn7pwi26/PUF2iOn8J+fjwSOHOVZ2+AhmA9f/OYLdRadjQBav9nJww=="
+        "requested": "[4.14.5, )",
+        "resolved": "4.14.5",
+        "contentHash": "7ZgWTBA5sBMG9wzTAIoP6la2v7ZM48UU2b2Hx4YbuITtgHMmiLLgk0atG1l+beOnaiief1Ao9HfuQu6uWa4FUA=="
       },
       "Microsoft.AspNetCore.Http.Connections.Client": {
         "type": "Transitive",
-        "resolved": "10.0.13",
-        "contentHash": "r9hlU+te+QWFJlUCt2C22TDKY3oMER8ayC7Qzeq6yJ5toHBKcSqshhyyaLKK1jgBuyNi4ejly0wE8ANV8TyfWQ=="
+        "resolved": "10.0.14",
+        "contentHash": "z5HhaD3m3nHcXY/nQi2j72a3KmM6lIvT0c9hdIm9nzvI1Zrv1GVpi+K6fySMFBouDw+2Ud8RRaqs+QCKYhvodA=="
       },
       "Microsoft.AspNetCore.SignalR.Client": {
         "type": "Transitive",
-        "resolved": "10.0.13",
-        "contentHash": "17fMUI5gkRwR9qXXTELd5OChcFn3lkgWpiblaaELQ45zOL7VuU7HJYAYnMk+Irjf2jpRxHT7b0imy+NVIFyoYQ==",
+        "resolved": "10.0.14",
+        "contentHash": "AdKnYJ7U+GYJfbL5siSN17lzA3mMC44rAK+UXq3qN7u0GB+0s327GihUN7PS8UvFxyo7MnTME5PtPQV6ZRQDHA==",
         "dependencies": {
-          "Microsoft.AspNetCore.Http.Connections.Client": "10.0.13",
-          "Microsoft.AspNetCore.SignalR.Client.Core": "10.0.13"
+          "Microsoft.AspNetCore.Http.Connections.Client": "10.0.14",
+          "Microsoft.AspNetCore.SignalR.Client.Core": "10.0.14"
         }
       },
       "Microsoft.AspNetCore.SignalR.Client.Core": {
         "type": "Transitive",
-        "resolved": "10.0.13",
-        "contentHash": "zfCQ0/J/rATKKcpwcpQYFz8sxhvrzgGyblsATcfxqSCibRkPFmDZcFmfD0UfLi38q+VDMpwEVuzOCO3TpRy99Q=="
+        "resolved": "10.0.14",
+        "contentHash": "VqJeoJoI2LZrG3hic5p5nBo9FOdt8nwJswKVff+7Zl7L/Bo9YQ5vpuPzyQn3/a0y4eIP7KX7Gq3cb4cXYecbFA=="
       },
       "wcs.api.client": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.AspNetCore.SignalR.Client": "[10.0.13, )",
+          "Microsoft.AspNetCore.SignalR.Client": "[10.0.14, )",
           "Wcs.Api.Contracts": "[0.1.0, )"
         }
       },
