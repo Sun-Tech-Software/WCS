@@ -15,7 +15,7 @@
     <!-- Usato dal compito 2: Key.razor e' il primo componente interattivo, e bUnit lo collauda
          fuori da un browser vero. Versione 2.10.3, l'unico pacchetto "bunit" attuale (dalla 2.x
          sostituisce la coppia bunit.core/bunit.web). -->
-    <PackageReference Include="bunit" Version="2.11.3" />
+    <PackageReference Include="bunit" Version="2.13.3" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Wcs.WebEditor.csproj" />
